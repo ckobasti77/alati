@@ -50,7 +50,10 @@ export const list = query({
 
     if (args.search) {
       const needle = args.search.toLowerCase();
-      items = items.filter((sale) => sale.title.toLowerCase().includes(needle));
+      items = items.filter((sale) => {
+        if (sale.title.toLowerCase().includes(needle)) return true;
+        return sale.variantLabel?.toLowerCase().includes(needle);
+      });
     }
 
     const total = items.length;
@@ -72,6 +75,8 @@ export const list = query({
 export const create = mutation({
   args: {
     productId: v.optional(v.id("products")),
+    variantId: v.optional(v.string()),
+    variantLabel: v.optional(v.string()),
     title: v.string(),
     kolicina: v.optional(v.number()),
     nabavnaCena: v.number(),
@@ -85,14 +90,32 @@ export const create = mutation({
     let title = args.title.trim();
     const kolicina = Math.max(args.kolicina ?? 1, 1);
     let productId = args.productId;
+    let variantId = args.variantId;
+    let variantLabel = args.variantLabel?.trim();
     const buyerName = args.buyerName?.trim();
 
     if (productId) {
       const product = await ctx.db.get(productId);
       if (product) {
         if (!title) title = product.name;
+        const productVariants = product.variants ?? [];
+        if (productVariants.length > 0) {
+          const foundVariant = variantId
+            ? productVariants.find((variant) => variant.id === variantId)
+            : undefined;
+          let normalizedVariant = foundVariant;
+          if (!normalizedVariant) {
+            normalizedVariant = productVariants.find((variant) => variant.isDefault) ?? productVariants[0];
+          }
+          variantId = normalizedVariant?.id ?? variantId;
+          variantLabel = variantLabel || normalizedVariant?.label || variantLabel;
+        } else {
+          variantId = variantLabel = undefined;
+        }
       } else {
         productId = undefined;
+        variantId = undefined;
+        variantLabel = undefined;
       }
     }
 
@@ -102,6 +125,8 @@ export const create = mutation({
 
     await ctx.db.insert("sales", {
       productId,
+      variantId,
+      variantLabel,
       title,
       kolicina,
       nabavnaCena: args.nabavnaCena,
@@ -109,6 +134,69 @@ export const create = mutation({
       napomena: args.napomena?.trim() || undefined,
       buyerName: buyerName || undefined,
       kreiranoAt: now,
+    });
+  },
+});
+
+export const update = mutation({
+  args: {
+    id: v.id("sales"),
+    productId: v.optional(v.id("products")),
+    variantId: v.optional(v.string()),
+    variantLabel: v.optional(v.string()),
+    title: v.string(),
+    kolicina: v.optional(v.number()),
+    nabavnaCena: v.number(),
+    prodajnaCena: v.number(),
+    napomena: v.optional(v.string()),
+    buyerName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    let title = args.title.trim();
+    const kolicina = Math.max(args.kolicina ?? 1, 1);
+    let productId = args.productId;
+    let variantId = args.variantId;
+    let variantLabel = args.variantLabel?.trim();
+    const buyerName = args.buyerName?.trim();
+
+    if (productId) {
+      const product = await ctx.db.get(productId);
+      if (product) {
+        if (!title) title = product.name;
+        const productVariants = product.variants ?? [];
+        if (productVariants.length > 0) {
+          const foundVariant = variantId ? productVariants.find((variant) => variant.id === variantId) : undefined;
+          let normalizedVariant = foundVariant;
+          if (!normalizedVariant) {
+            normalizedVariant = productVariants.find((variant) => variant.isDefault) ?? productVariants[0];
+          }
+          variantId = normalizedVariant?.id ?? variantId;
+          variantLabel = variantLabel || normalizedVariant?.label || variantLabel;
+        } else {
+          variantId = undefined;
+          variantLabel = undefined;
+        }
+      } else {
+        productId = undefined;
+        variantId = undefined;
+        variantLabel = undefined;
+      }
+    }
+
+    if (!title) {
+      throw new Error("Naziv prodaje je obavezan.");
+    }
+
+    await ctx.db.patch(args.id, {
+      productId,
+      variantId,
+      variantLabel,
+      title,
+      kolicina,
+      nabavnaCena: args.nabavnaCena,
+      prodajnaCena: args.prodajnaCena,
+      napomena: args.napomena?.trim() || undefined,
+      buyerName: buyerName || undefined,
     });
   },
 });

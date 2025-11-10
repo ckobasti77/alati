@@ -9,8 +9,10 @@
  */
 
 import type * as client from "../client.js";
+import type * as images from "../images.js";
 import type * as products from "../products.js";
 import type * as sales from "../sales.js";
+import type * as social from "../social.js";
 
 import type {
   ApiFromModules,
@@ -28,8 +30,10 @@ import type {
  */
 declare const fullApi: ApiFromModules<{
   client: typeof client;
+  images: typeof images;
   products: typeof products;
   sales: typeof sales;
+  social: typeof social;
 }>;
 declare const fullApiWithMounts: typeof fullApi;
 

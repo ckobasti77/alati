@@ -29,3 +29,12 @@ npx convex dev
 `
 
 Produkcioni Convex URL podesava se u .env.local.
+
+## Automatsko objavljivanje na Meta mreze
+Dodavanje proizvoda automatski objavljuje istu objavu na Facebook stranici i Instagram nalogu. Potrebno je u Convex okruzenju definisati sledece promenljive:
+
+- `FACEBOOK_PAGE_ID` i `FACEBOOK_PAGE_ACCESS_TOKEN` (token mora imati `pages_manage_posts` i `pages_read_engagement` dozvole).
+- `INSTAGRAM_BUSINESS_ID` i `INSTAGRAM_ACCESS_TOKEN` (sa `instagram_basic` i `instagram_content_publish` opsegom). Ako ne podesite zaseban Instagram token, koristi se Facebook token.
+- Opcioni `META_GRAPH_VERSION` ukoliko zelite drugu verziju Graph API-ja (podrazumevano je `v21.0`).
+
+Slike se salju po redosledu kojim su unete u formu (glavna slika ide prva), uz naziv, opis i cenu proizvoda.
