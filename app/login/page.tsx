@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,20 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth-client";
 
 export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="py-10 text-center text-sm text-slate-500">
+          Priprema forme za prijavu...
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const { login, status } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
