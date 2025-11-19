@@ -152,7 +152,7 @@ function ProductsContent() {
   const createProduct = useConvexMutation("products:create");
   const updateProduct = useConvexMutation("products:update");
   const removeProduct = useConvexMutation<{ id: string; token: string }>("products:remove");
-  const generateUploadUrl = useConvexMutation<{ token: string }>("images:generateUploadUrl");
+  const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
