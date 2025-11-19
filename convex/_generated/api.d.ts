@@ -8,10 +8,12 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
 import type * as client from "../client.js";
 import type * as images from "../images.js";
+import type * as maintenance from "../maintenance.js";
+import type * as orders from "../orders.js";
 import type * as products from "../products.js";
-import type * as sales from "../sales.js";
 import type * as social from "../social.js";
 
 import type {
@@ -29,10 +31,12 @@ import type {
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
   client: typeof client;
   images: typeof images;
+  maintenance: typeof maintenance;
+  orders: typeof orders;
   products: typeof products;
-  sales: typeof sales;
   social: typeof social;
 }>;
 declare const fullApiWithMounts: typeof fullApi;

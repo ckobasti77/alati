@@ -12,10 +12,13 @@ export interface ProductVariant {
   nabavnaCena: number;
   prodajnaCena: number;
   isDefault: boolean;
+  opis?: string;
+  images?: ProductImage[];
 }
 
 export interface Product {
   _id: string;
+  userId: string;
   name: string;
   nabavnaCena: number;
   prodajnaCena: number;
@@ -26,8 +29,13 @@ export interface Product {
   updatedAt: number;
 }
 
-export interface Sale {
+export type OrderStage = "poruceno" | "poslato" | "stiglo" | "legle_pare";
+export type TransportMode = "Kol" | "Joe" | "Posta" | "Bex" | "Aks";
+
+export interface Order {
   _id: string;
+  userId: string;
+  stage: OrderStage;
   productId?: string;
   variantId?: string;
   variantLabel?: string;
@@ -36,12 +44,17 @@ export interface Sale {
   nabavnaCena: number;
   prodajnaCena: number;
   napomena?: string;
-  buyerName?: string;
+  transportCost?: number;
+  transportMode?: TransportMode;
+  customerName: string;
+  address: string;
+  phone: string;
+  myProfitPercent?: number;
   kreiranoAt: number;
 }
 
-export interface SaleListResponse {
-  items: Sale[];
+export interface OrderListResponse {
+  items: Order[];
   pagination: {
     page: number;
     pageSize: number;
@@ -50,9 +63,10 @@ export interface SaleListResponse {
   };
 }
 
-export interface SalesSummary {
-  brojProdaja: number;
+export interface OrdersSummary {
+  brojNarudzbina: number;
   ukupnoProdajno: number;
   ukupnoNabavno: number;
   profit: number;
+  mojProfit: number;
 }
