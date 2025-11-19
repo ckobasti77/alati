@@ -93,6 +93,8 @@ const productSchema = z
 
 type ProductFormValues = z.infer<typeof productSchema>;
 
+type VariantFormEntry = z.infer<typeof variantSchema>;
+
 type DraftImage = {
   storageId: string;
   url?: string | null;
@@ -161,7 +163,7 @@ function ProductsContent() {
     form.register("productType");
   }, [form]);
   const productType = useWatch({ control: form.control, name: "productType" }) as ProductFormValues["productType"];
-  const variants = (useWatch({ control: form.control, name: "variants" }) ?? []) as ProductFormValues["variants"];
+  const variants = (useWatch({ control: form.control, name: "variants" }) ?? []) as VariantFormEntry[];
   const resolvedProductType = productType ?? "single";
   const normalizedVariants = resolvedProductType === "variant" && Array.isArray(variants) ? variants : [];
 
@@ -293,7 +295,7 @@ function ProductsContent() {
         return {};
       });
     } else {
-      const current = (form.getValues("variants") ?? []) as ProductFormValues["variants"];
+      const current = (form.getValues("variants") ?? []) as VariantFormEntry[];
       if (current.length === 0) {
         seedInitialVariant();
       }
@@ -301,7 +303,7 @@ function ProductsContent() {
   };
 
   const handleAddVariant = () => {
-    const current = (form.getValues("variants") ?? []) as ProductFormValues["variants"];
+    const current = (form.getValues("variants") ?? []) as VariantFormEntry[];
     const shouldBeDefault = current.length === 0 || !current.some((variant) => variant.isDefault);
     const entry = createVariantFormEntry({
       isDefault: shouldBeDefault,
@@ -313,7 +315,7 @@ function ProductsContent() {
   };
 
   const handleRemoveVariant = (id: string) => {
-    const current = (form.getValues("variants") ?? []) as ProductFormValues["variants"];
+    const current = (form.getValues("variants") ?? []) as VariantFormEntry[];
     if (current.length === 1) {
       form.setValue("variants", [], { shouldDirty: true, shouldValidate: true });
       setVariantImages((prev) => {
@@ -348,7 +350,7 @@ function ProductsContent() {
   };
 
   const handleSetDefaultVariant = (id: string) => {
-    const current = (form.getValues("variants") ?? []) as ProductFormValues["variants"];
+    const current = (form.getValues("variants") ?? []) as VariantFormEntry[];
     const next = current.map((variant) => ({
       ...variant,
       isDefault: variant.id === id,
