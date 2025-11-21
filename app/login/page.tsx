@@ -55,9 +55,6 @@ function LoginContent() {
     <div className="mx-auto flex max-w-md flex-col gap-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold text-slate-900">Prijavljivanje</h1>
-        <p className="text-sm text-slate-600">
-          Glavni admin: <span className="font-semibold">kodmajstora / preterajmiagregat</span>
-        </p>
       </div>
       <Card>
         <CardHeader>

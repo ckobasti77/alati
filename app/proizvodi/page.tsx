@@ -2,11 +2,12 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
+import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { CloudUpload, Images } from "lucide-react";
+import { ArrowUpRight, CloudUpload, Images, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,6 +15,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Form,
   FormField,
@@ -140,11 +147,14 @@ export default function ProductsPage() {
 }
 
 function ProductsContent() {
+  const router = useRouter();
   const { token } = useAuth();
   const sessionToken = token as string;
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [images, setImages] = useState<DraftImage[]>([]);
   const [variantImages, setVariantImages] = useState<Record<string, DraftImage[]>>({});
+  const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const fileInputId = useMemo(() => `product-images-${generateId()}`, []);
@@ -188,6 +198,17 @@ function ProductsContent() {
       return {};
     });
     setEditingProduct(null);
+    setIsDraggingFiles(false);
+  };
+
+  const closeModal = () => {
+    resetForm();
+    setIsModalOpen(false);
+  };
+
+  const openCreateModal = () => {
+    resetForm();
+    setIsModalOpen(true);
   };
 
   const buildImagePayload = (list: DraftImage[] = []) => {
@@ -246,7 +267,7 @@ function ProductsContent() {
         await createProduct(payload);
         toast.success("Proizvod je dodat.");
       }
-      resetForm();
+      closeModal();
     } catch (error) {
       console.error(error);
       toast.error("Cuvanje nije uspelo.");
@@ -258,7 +279,7 @@ function ProductsContent() {
       await removeProduct({ id, token: sessionToken });
       toast.success("Proizvod je obrisan.");
       if (editingProduct?._id === id) {
-        resetForm();
+        closeModal();
       }
     } catch (error) {
       console.error(error);
@@ -508,6 +529,11 @@ function ProductsContent() {
   };
 
   useEffect(() => {
+    if (!isModalOpen) {
+      setIsDraggingFiles(false);
+      return;
+    }
+
     const handleWindowDragOver = (event: DragEvent) => {
       const hasFiles = Array.from(event.dataTransfer?.items ?? []).some((item) => item.kind === "file");
       if (hasFiles) {
@@ -545,11 +571,18 @@ function ProductsContent() {
       window.removeEventListener("drop", handleWindowDrop);
       window.removeEventListener("dragleave", handleWindowDragLeave);
     };
-  }, [uploadImages]);
+  }, [isModalOpen, uploadImages]);
 
   const handleSetMainImage = (storageId: string) => {
     setImages((prev) => prev.map((image) => ({ ...image, isMain: image.storageId === storageId })));
   };
+
+  const handleOpenPreview = (url?: string | null, alt?: string) => {
+    if (!url) return;
+    setPreviewImage({ url, alt });
+  };
+
+  const handleClosePreview = () => setPreviewImage(null);
 
   const handleSetVariantMainImage = (variantId: string, storageId: string) => {
     setVariantImages((prev) => {
@@ -642,11 +675,16 @@ function ProductsContent() {
       });
       return map;
     });
+    setIsModalOpen(true);
+  };
+
+  const handleRowClick = (id: string) => {
+    router.push(`/proizvodi/${id}`);
   };
 
   return (
-    <div className="relative space-y-6">
-      {isDraggingFiles && (
+    <div className="relative mx-auto max-w-6xl space-y-6">
+      {isModalOpen && isDraggingFiles && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-slate-900/25 backdrop-blur-[1px]">
           <div className="flex items-center gap-3 rounded-2xl border border-white/60 bg-white/75 px-6 py-3 text-slate-800 shadow-2xl shadow-blue-500/25 ring-1 ring-white/70">
             <div className="rounded-full bg-blue-600 p-2.5 text-white shadow-md shadow-blue-500/40">
@@ -654,41 +692,62 @@ function ProductsContent() {
             </div>
             <div className="space-y-0.5">
               <p className="text-sm font-semibold">Otpusti slike da ih dodas</p>
-              <p className="text-xs text-slate-600">Drop radi gde god da spustis fajlove na ovoj stranici.</p>
+              <p className="text-xs text-slate-600">Drop radi gde god da spustis fajlove dok je modal otvoren.</p>
             </div>
           </div>
         </div>
       )}
-      <header className="max-w-4xl mx-auto flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Proizvodi</h1>
-          <p className="text-sm text-slate-500">Sacuvaj nabavnu i prodajnu cenu u evrima.</p>
+          <p className="text-sm text-slate-500">Klikni na red za detalje ili otvori modal za novi unos.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+            {items.length} proizvoda
+          </div>
+          <Button onClick={openCreateModal} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Dodaj novi proizvod
+          </Button>
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-4xl space-y-2">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Button
-            type="button"
-            className="w-full"
-            variant={resolvedProductType === "single" ? "default" : "outline"}
-            onClick={() => handleProductTypeChange("single")}
-          >
-            Obican proizvod
-          </Button>
-          <Button
-            type="button"
-            className="w-full"
-            variant={resolvedProductType === "variant" ? "default" : "outline"}
-            onClick={() => handleProductTypeChange("variant")}
-          >
-            Tipski proizvod
-          </Button>
-        </div>
-        <p className="text-sm text-slate-500">
-          Obican ima jednu cenu i opis, tipski moze da ima vise tipova sa sopstvenim cenama i opisima.
-        </p>
-      </div>
+      <Dialog open={isModalOpen} onOpenChange={(open) => (open ? setIsModalOpen(true) : closeModal())}>
+        <DialogContent className="max-w-5xl overflow-hidden p-0">
+          <div className="max-h-[85vh] overflow-y-auto px-6 pb-6 pt-4 space-y-4">
+            <DialogHeader className="space-y-1">
+              <DialogTitle>{editingProduct ? "Izmeni proizvod" : "Novi proizvod"}</DialogTitle>
+              <p className="text-sm text-slate-500">
+                {editingProduct
+                  ? `Trenutno menjas: ${editingProduct.name}`
+                  : "Sacuvaj nabavnu i prodajnu cenu u evrima."}
+              </p>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  className="w-full"
+                  variant={resolvedProductType === "single" ? "default" : "outline"}
+                  onClick={() => handleProductTypeChange("single")}
+                >
+                  Obican proizvod
+                </Button>
+                <Button
+                  type="button"
+                  className="w-full"
+                  variant={resolvedProductType === "variant" ? "default" : "outline"}
+                  onClick={() => handleProductTypeChange("variant")}
+                >
+                  Tipski proizvod
+                </Button>
+              </div>
+              <p className="text-sm text-slate-500">
+                Obican ima jednu cenu i opis, tipski moze da ima vise tipova sa sopstvenim cenama i opisima.
+              </p>
+            </div>
 
       <div className="mx-auto w-full max-w-4xl">
         <Card className="w-full">
@@ -717,7 +776,7 @@ function ProductsContent() {
               render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel>Opis</FormLabel>
-                  <Textarea rows={3} placeholder="npr. Crna boja, 1m duzina" {...field} />
+                  <Textarea rows={3} placeholder="npr. Crna boja, 1m duzina" autoResize {...field} />
                   <FormMessage>{fieldState.error?.message}</FormMessage>
                 </FormItem>
               )}
@@ -818,7 +877,7 @@ function ProductsContent() {
                           render={({ field, fieldState }) => (
                             <FormItem>
                               <FormLabel>Opis tipa (opciono)</FormLabel>
-                              <Textarea rows={2} placeholder="npr. Bela boja, velicina M" {...field} />
+                              <Textarea rows={2} placeholder="npr. Bela boja, velicina M" autoResize {...field} />
                               <FormMessage>{fieldState.error?.message}</FormMessage>
                             </FormItem>
                           )}
@@ -882,32 +941,49 @@ function ProductsContent() {
                           <div className="grid gap-3 sm:grid-cols-2">
                             {variantImages[variant.id]?.map((image) => (
                               <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
-                                <div className="relative aspect-video overflow-hidden rounded-md bg-slate-100">
-                                  {(() => {
-                                    const resolvedUrl = image.url ?? image.previewUrl;
-                                    if (resolvedUrl) {
-                                      return (
+                                {(() => {
+                                  const resolvedUrl = image.url ?? image.previewUrl;
+                                  return (
+                                    <div
+                                      className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
+                                        resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
+                                      }`}
+                                      onClick={() => handleOpenPreview(resolvedUrl, image.fileName ?? "Variant image")}
+                                    >
+                                      {resolvedUrl ? (
                                         // eslint-disable-next-line @next/next/no-img-element
                                         <img src={resolvedUrl} alt={image.fileName ?? "Variant image"} className="h-full w-full object-cover" />
-                                      );
-                                    }
-                                    return (
-                                      <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
-                                        Bez pregleda
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
+                                      ) : (
+                                        <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
+                                          Bez pregleda
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                                 <div className="flex items-center justify-between text-xs">
-                                  <label className="flex items-center gap-2 font-medium text-slate-600">
-                                    <input
-                                      type="radio"
-                                      name={`variant-main-${variant.id}`}
-                                      checked={image.isMain}
-                                      onChange={() => handleSetVariantMainImage(variant.id, image.storageId)}
-                                    />
-                                    Glavna
-                                  </label>
+                                  <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-2 font-medium text-slate-600">
+                                      <input
+                                        type="radio"
+                                        name={`variant-main-${variant.id}`}
+                                        checked={image.isMain}
+                                        onChange={() => handleSetVariantMainImage(variant.id, image.storageId)}
+                                      />
+                                      Glavna
+                                    </label>
+                                    {(() => {
+                                      const resolvedUrl = image.url ?? image.previewUrl;
+                                      if (!resolvedUrl) return null;
+                                      return (
+                                        <Button type="button" variant="secondary" size="sm" asChild>
+                                          <a href={resolvedUrl} download={image.fileName ?? "slika"}>
+                                            Preuzmi
+                                          </a>
+                                        </Button>
+                                      );
+                                    })()}
+                                  </div>
                                   <Button
                                     type="button"
                                     variant="ghost"
@@ -1005,12 +1081,15 @@ function ProductsContent() {
                       {(() => {
                         const resolvedUrl = image.url ?? image.previewUrl;
                         return (
-                          <div className="relative aspect-video overflow-hidden rounded-md bg-slate-100">
+                          <div
+                            className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
+                              resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
+                            }`}
+                            onClick={() => handleOpenPreview(resolvedUrl, image.fileName ?? "Product image")}
+                          >
                             {resolvedUrl ? (
-                              <>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={resolvedUrl} alt={image.fileName ?? "Product image"} className="h-full w-full object-cover" />
-                              </>
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={resolvedUrl} alt={image.fileName ?? "Product image"} className="h-full w-full object-cover" />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
                                 Bez pregleda
@@ -1020,15 +1099,28 @@ function ProductsContent() {
                         );
                       })()}
                       <div className="flex items-center justify-between text-xs">
-                        <label className="flex items-center gap-2 font-medium text-slate-600">
-                          <input
-                            type="radio"
-                            name="main-image"
-                            checked={image.isMain}
-                            onChange={() => handleSetMainImage(image.storageId)}
-                          />
-                          Glavna
-                        </label>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 font-medium text-slate-600">
+                            <input
+                              type="radio"
+                              name="main-image"
+                              checked={image.isMain}
+                              onChange={() => handleSetMainImage(image.storageId)}
+                            />
+                            Glavna
+                          </label>
+                          {(() => {
+                            const resolvedUrl = image.url ?? image.previewUrl;
+                            if (!resolvedUrl) return null;
+                            return (
+                              <Button type="button" variant="secondary" size="sm" asChild>
+                                <a href={resolvedUrl} download={image.fileName ?? "slika"}>
+                                  Preuzmi
+                                </a>
+                              </Button>
+                            );
+                          })()}
+                        </div>
                         <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveImage(image.storageId)}>
                           Ukloni
                         </Button>
@@ -1051,10 +1143,14 @@ function ProductsContent() {
         </CardContent>
         </Card>
       </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
           <CardTitle>Lista proizvoda ({items.length})</CardTitle>
+          <p className="text-sm text-slate-500">Klikni na red da otvoris pregled proizvoda.</p>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
@@ -1081,7 +1177,11 @@ function ProductsContent() {
                   const variantsList = product.variants ?? [];
                   const defaultVariant = variantsList.find((variant) => variant.isDefault) ?? variantsList[0];
                   return (
-                    <TableRow key={product._id}>
+                    <TableRow
+                      key={product._id}
+                      className="cursor-pointer transition hover:bg-slate-50"
+                      onClick={() => handleRowClick(product._id)}
+                    >
                       <TableCell>
                         {(() => {
                           const images = product.images ?? [];
@@ -1097,7 +1197,12 @@ function ProductsContent() {
                         return <div className="h-12 w-12 rounded-md border border-dashed border-slate-200 text-center text-[10px] uppercase text-slate-400">N/A</div>;
                           })()}
                         </TableCell>
-                        <TableCell className="font-medium text-slate-700">{product.name}</TableCell>
+                        <TableCell className="font-medium text-slate-700">
+                          <span className="inline-flex items-center gap-1">
+                            {product.name}
+                            <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                          </span>
+                        </TableCell>
                         <TableCell className="max-w-sm text-sm text-slate-600">
                           {variantsList.length === 0 ? (
                             "-"
@@ -1128,10 +1233,24 @@ function ProductsContent() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" size="sm" onClick={() => handleStartEdit(product)}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleStartEdit(product);
+                              }}
+                            >
                               Izmeni
                             </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleDelete(product._id)}>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDelete(product._id);
+                              }}
+                            >
                               Obrisi
                             </Button>
                           </div>
@@ -1144,6 +1263,32 @@ function ProductsContent() {
           </Table>
         </CardContent>
       </Card>
+
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={handleClosePreview}
+        >
+          <div
+            className="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-black/40 p-3 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={handleClosePreview}
+              className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800 shadow"
+            >
+              Zatvori
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewImage.url}
+              alt={previewImage.alt ?? "Pregled slike"}
+              className="mx-auto max-h-[82vh] w-auto rounded-xl object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

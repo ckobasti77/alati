@@ -131,6 +131,38 @@ function normalizeVariants(
   });
 }
 
+export const get = query({
+  args: { token: v.string(), id: v.id("products") },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const product = await ctx.db.get(args.id);
+    if (!product || product.userId !== user._id) {
+      return null;
+    }
+
+    const images = await Promise.all(
+      (product.images ?? []).map(async (image) => ({
+        ...image,
+        url: await ctx.storage.getUrl(image.storageId),
+      })),
+    );
+
+    const variants = await Promise.all(
+      (product.variants ?? []).map(async (variant) => {
+        const variantImages = await Promise.all(
+          (variant.images ?? []).map(async (image) => ({
+            ...image,
+            url: await ctx.storage.getUrl(image.storageId),
+          })),
+        );
+        return { ...variant, images: variantImages };
+      }),
+    );
+
+    return { ...product, images, variants };
+  },
+});
+
 export const list = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
