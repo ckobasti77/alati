@@ -367,7 +367,7 @@ function ProductDetailsContent() {
     }
 
     setIsUploadingImages(true);
-    const additions: (ProductImage & { url?: string })[] = [];
+    const additions: (ProductImage & { url?: string | null })[] = [];
     try {
       for (const file of accepted) {
         const uploadUrl = await generateUploadUrl({ token: sessionToken });
