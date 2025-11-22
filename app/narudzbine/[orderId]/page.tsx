@@ -49,9 +49,24 @@ export default function OrderDetailsPage() {
 function OrderDetailsContent() {
   const params = useParams();
   const router = useRouter();
+  const orderId = typeof params?.orderId === "string" ? params.orderId : "";
+
+  if (!orderId) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-4 text-center">
+        <p className="text-lg font-semibold text-slate-800">Nije prosledjen ID narudzbine.</p>
+        <Button onClick={() => router.push("/narudzbine")}>Nazad na narudzbine</Button>
+      </div>
+    );
+  }
+
+  return <OrderDetails orderId={orderId} />;
+}
+
+function OrderDetails({ orderId }: { orderId: string }) {
+  const router = useRouter();
   const { token } = useAuth();
   const sessionToken = token as string;
-  const orderId = params?.orderId as string;
   const [isUpdatingStage, setIsUpdatingStage] = useState(false);
   const updateOrder = useConvexMutation("orders:update");
   const queryResult = useConvexQuery<OrderWithProduct | null>("orders:get", {
@@ -252,9 +267,7 @@ function OrderDetailsContent() {
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Transport</p>
                 <p className="text-base font-semibold text-slate-900">{formatCurrency(transport, "EUR")}</p>
-                {order.transportMode ? (
-                  <p className="text-xs text-slate-500">{order.transportMode}</p>
-                ) : null}
+                {order.transportMode ? <p className="text-xs text-slate-500">{order.transportMode}</p> : null}
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Stage</p>
@@ -287,8 +300,7 @@ function OrderDetailsContent() {
               <p className="text-xs uppercase tracking-wide text-slate-500">Moj deo</p>
               {shouldShowMyShare ? (
                 <p className="text-base font-semibold text-emerald-700">
-                  {formatCurrency(mojDeo, "EUR")}{" "}
-                  <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
+                  {formatCurrency(mojDeo, "EUR")} <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
                 </p>
               ) : (
                 <p className="text-sm text-slate-500">Bice dostupno kada stage bude "legle pare".</p>
@@ -304,9 +316,7 @@ function OrderDetailsContent() {
         </CardHeader>
         <CardContent className="space-y-2">
           <p className="text-sm text-slate-700">{order.napomena || "Nema dodatnih napomena."}</p>
-          <p className="text-xs text-slate-500">
-            Telefon: {order.phone} • Adresa: {order.address}
-          </p>
+          <p className="text-xs text-slate-500">Telefon: {order.phone} ? Adresa: {order.address}</p>
         </CardContent>
       </Card>
     </div>

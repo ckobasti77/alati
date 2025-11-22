@@ -158,6 +158,8 @@ function ProductsContent() {
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
+  const productUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const dialogScrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputId = useMemo(() => `product-images-${generateId()}`, []);
   const hiddenFileInputStyle = useMemo<CSSProperties>(
     () => ({ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, opacity: 0 }),
@@ -540,7 +542,29 @@ function ProductsContent() {
       toast.info("Sacekaj da se zavrsi trenutno otpremanje.");
       return;
     }
+    const scrollContainer = dialogScrollRef.current;
+    const prevScroll = scrollContainer?.scrollTop ?? null;
     variantUploadInputsRef.current[variantId]?.click();
+    requestAnimationFrame(() => {
+      if (prevScroll !== null && scrollContainer) {
+        scrollContainer.scrollTo({ top: prevScroll });
+      }
+    });
+  };
+
+  const handleOpenProductPicker = () => {
+    if (isUploadingImages) {
+      toast.info("Sacekaj da se zavrsi trenutno otpremanje.");
+      return;
+    }
+    const scrollContainer = dialogScrollRef.current;
+    const prevScroll = scrollContainer?.scrollTop ?? null;
+    productUploadInputRef.current?.click();
+    requestAnimationFrame(() => {
+      if (prevScroll !== null && scrollContainer) {
+        scrollContainer.scrollTo({ top: prevScroll });
+      }
+    });
   };
 
   useEffect(() => {
@@ -730,7 +754,10 @@ function ProductsContent() {
 
       <Dialog open={isModalOpen} onOpenChange={(open) => (open ? setIsModalOpen(true) : closeModal())}>
         <DialogContent className="max-w-5xl overflow-hidden p-0">
-          <div className="max-h-[85vh] overflow-y-auto px-6 pb-6 pt-4 space-y-4">
+          <div
+            ref={dialogScrollRef}
+            className="max-h-[85vh] overflow-y-auto px-6 pb-6 pt-4 space-y-4"
+          >
             <DialogHeader className="space-y-1">
               <DialogTitle>{editingProduct ? "Izmeni proizvod" : "Novi proizvod"}</DialogTitle>
               <p className="text-sm text-slate-500">
@@ -1062,6 +1089,7 @@ function ProductsContent() {
                   onChange={handleFilesSelected}
                   tabIndex={-1}
                   style={hiddenFileInputStyle}
+                  ref={productUploadInputRef}
                 />
                 <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-3 text-slate-700">
@@ -1075,16 +1103,18 @@ function ProductsContent() {
                     </div>
                   </div>
                   <div className="flex flex-col items-center gap-2 sm:items-end">
-                    <label
-                      htmlFor={fileInputId}
-                      className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+                    <Button
+                      type="button"
+                      onClick={handleOpenProductPicker}
+                      className={`rounded-full px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
                         isUploadingImages
                           ? "bg-slate-400 opacity-70"
                           : "bg-blue-600 hover:-translate-y-[1px] hover:bg-blue-700"
                       }`}
+                      disabled={isUploadingImages}
                     >
                       Izaberi fajlove
-                    </label>
+                    </Button>
                     <div className="flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 ring-1 ring-slate-200">
                       <Images className="h-4 w-4 text-slate-400" />
                       Drag & Drop
