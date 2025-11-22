@@ -65,7 +65,7 @@ const variantSchema = z.object({
   label: z.string().min(1, "Naziv tipa je obavezan."),
   nabavnaCena: priceField("Nabavna cena"),
   prodajnaCena: priceField("Prodajna cena"),
-  opis: z.string().max(500, "Opis tipa moze imati najvise 500 karaktera.").optional(),
+  opis: z.string().optional(),
   isDefault: z.boolean(),
 });
 
@@ -75,7 +75,7 @@ const productSchema = z
     name: z.string().min(2, "Naziv je obavezan."),
     nabavnaCena: priceField("Nabavna cena"),
     prodajnaCena: priceField("Prodajna cena"),
-    opis: z.string().max(2000, "Opis moze imati najvise 2000 karaktera.").optional(),
+    opis: z.string().optional(),
     variants: z.array(variantSchema).optional(),
   })
   .superRefine((data, ctx) => {
