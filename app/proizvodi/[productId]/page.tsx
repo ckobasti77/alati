@@ -487,7 +487,7 @@ function ProductDetailsContent() {
           url: image.url ?? "",
           alt: `${variant.label}`,
           label: variant.label,
-          origin: { type: "variant", variantId: variant.id },
+          origin: { type: "variant" as const, variantId: variant.id },
         })),
       ) ?? [];
     return [...baseImages, ...variantImages].filter((item) => Boolean(item.url));
