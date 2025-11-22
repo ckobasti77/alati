@@ -379,10 +379,12 @@ function ProductDetailsContent() {
           const remaining = ensureMainImage((current.images ?? []).filter((image) => image.storageId !== item.storageId));
           return { ...current, images: remaining };
         }
+        if (item.origin.type !== "variant") return current;
         const currentVariants = current.variants ?? [];
         if (currentVariants.length === 0) return current;
+        const { variantId } = item.origin;
         const nextVariants = currentVariants.map((variant) => {
-          if (variant.id !== item.origin.variantId) return variant;
+          if (variant.id !== variantId) return variant;
           const remaining = ensureMainImage(
             (variant.images ?? []).filter((image) => image.storageId !== item.storageId),
           );
