@@ -63,6 +63,10 @@ export interface OrderListResponse {
   };
 }
 
+export interface OrderWithProduct extends Order {
+  product?: Product;
+}
+
 export interface OrdersSummary {
   brojNarudzbina: number;
   ukupnoProdajno: number;

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowUpRight } from "lucide-react";
 import { useConvexQuery } from "@/lib/convex";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,10 +26,15 @@ export default function DashboardPage() {
 function DashboardContent() {
   const { token } = useAuth();
   const sessionToken = token as string;
+  const router = useRouter();
   const summary = useConvexQuery<OrdersSummary>("orders:summary", { token: sessionToken });
   const latest = useConvexQuery<Order[]>("orders:latest", { token: sessionToken });
 
   const rows = useMemo(() => latest ?? [], [latest]);
+
+  const handleRowClick = (id: string) => {
+    router.push(`/narudzbine/${id}`);
+  };
 
   return (
     <div className="space-y-8">
@@ -96,9 +103,18 @@ function DashboardContent() {
                   const shouldShowMyShare = order.stage === "legle_pare" && order.myProfitPercent !== undefined;
 
                   return (
-                    <TableRow key={order._id}>
+                    <TableRow
+                      key={order._id}
+                      className="cursor-pointer transition hover:bg-slate-50"
+                      onClick={() => handleRowClick(order._id)}
+                    >
                       <TableCell>{formatDate(order.kreiranoAt)}</TableCell>
-                      <TableCell className="font-medium text-slate-700">{order.title}</TableCell>
+                      <TableCell className="font-medium text-slate-700">
+                        <span className="inline-flex items-center gap-1">
+                          {order.title}
+                          <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                        </span>
+                      </TableCell>
                       <TableCell>{order.kolicina}</TableCell>
                       <TableCell className="text-right">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
                       <TableCell className="text-right">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
@@ -157,7 +157,12 @@ function ProductsContent() {
   const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
   const fileInputId = useMemo(() => `product-images-${generateId()}`, []);
+  const hiddenFileInputStyle = useMemo<CSSProperties>(
+    () => ({ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, opacity: 0 }),
+    [],
+  );
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
   const createProduct = useConvexMutation("products:create");
   const updateProduct = useConvexMutation("products:update");
@@ -197,6 +202,7 @@ function ProductsContent() {
       );
       return {};
     });
+    variantUploadInputsRef.current = {};
     setEditingProduct(null);
     setIsDraggingFiles(false);
   };
@@ -368,6 +374,7 @@ function ProductsContent() {
       delete copy[id];
       return copy;
     });
+    delete variantUploadInputsRef.current[id];
   };
 
   const handleSetDefaultVariant = (id: string) => {
@@ -526,6 +533,14 @@ function ProductsContent() {
     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
       setIsDraggingFiles(false);
     }
+  };
+
+  const handleOpenVariantPicker = (variantId: string) => {
+    if (isUploadingImages) {
+      toast.info("Sacekaj da se zavrsi trenutno otpremanje.");
+      return;
+    }
+    variantUploadInputsRef.current[variantId]?.click();
   };
 
   useEffect(() => {
@@ -920,12 +935,16 @@ function ProductsContent() {
                         <div className="flex items-center justify-between">
                           <FormLabel>Slike tipa</FormLabel>
                           <div className="flex items-center gap-2">
-                            <label
-                              htmlFor={`variant-upload-${variant.id}`}
-                              className="cursor-pointer rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-slate-900/20 transition hover:bg-slate-800"
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-slate-900/20 transition hover:bg-slate-800"
+                              disabled={isUploadingImages}
+                              onClick={() => handleOpenVariantPicker(variant.id)}
+                              aria-controls={`variant-upload-${variant.id}`}
                             >
                               Dodaj slike
-                            </label>
+                            </Button>
                             <input
                               id={`variant-upload-${variant.id}`}
                               type="file"
@@ -933,7 +952,15 @@ function ProductsContent() {
                               multiple
                               disabled={isUploadingImages}
                               onChange={(event) => handleVariantFilesSelected(variant.id, event)}
-                              className="sr-only"
+                              tabIndex={-1}
+                              style={hiddenFileInputStyle}
+                              ref={(node) => {
+                                if (!node) {
+                                  delete variantUploadInputsRef.current[variant.id];
+                                  return;
+                                }
+                                variantUploadInputsRef.current[variant.id] = node;
+                              }}
                             />
                           </div>
                         </div>
@@ -1033,7 +1060,8 @@ function ProductsContent() {
                   multiple
                   disabled={isUploadingImages}
                   onChange={handleFilesSelected}
-                  className="sr-only"
+                  tabIndex={-1}
+                  style={hiddenFileInputStyle}
                 />
                 <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-3 text-slate-700">

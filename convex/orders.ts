@@ -95,6 +95,44 @@ export const summary = query({
   },
 });
 
+export const get = query({
+  args: { token: v.string(), id: v.id("orders") },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const order = await ctx.db.get(args.id);
+    if (!order || order.userId !== user._id) {
+      return null;
+    }
+
+    let product;
+    if (order.productId) {
+      const storedProduct = await ctx.db.get(order.productId);
+      if (storedProduct && storedProduct.userId === user._id) {
+        const images = await Promise.all(
+          (storedProduct.images ?? []).map(async (image) => ({
+            ...image,
+            url: await ctx.storage.getUrl(image.storageId),
+          })),
+        );
+        const variants = await Promise.all(
+          (storedProduct.variants ?? []).map(async (variant) => {
+            const variantImages = await Promise.all(
+              (variant.images ?? []).map(async (image) => ({
+                ...image,
+                url: await ctx.storage.getUrl(image.storageId),
+              })),
+            );
+            return { ...variant, images: variantImages };
+          }),
+        );
+        product = { ...storedProduct, images, variants };
+      }
+    }
+
+    return { ...order, product };
+  },
+});
+
 export const list = query({
   args: {
     token: v.string(),

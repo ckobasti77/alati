@@ -96,7 +96,7 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
   return (
     <div className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/80 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3 w-full">
-        <div className="space-y-1 w-full">
+        <div className="space-y-1 w-fullf">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
           {isEditing ? (
             multiline ? (
