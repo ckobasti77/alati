@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Copy, ImageOff, Loader2, PenLine, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, ImageOff, Loader2, Maximize2, PenLine, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,15 @@ import type { Product, ProductImage, ProductVariant } from "@/types/order";
 type ProductWithUrls = Product & {
   images?: (ProductImage & { url?: string | null })[];
   variants?: (ProductVariant & { images?: (ProductImage & { url?: string | null })[] })[];
+};
+
+type GalleryItem = {
+  id: string;
+  storageId: string;
+  url: string;
+  alt: string;
+  label: string;
+  origin: { type: "product" } | { type: "variant"; variantId: string };
 };
 
 const parsePrice = (value: string) => {
@@ -96,7 +105,7 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
   return (
     <div className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/80 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3 w-full">
-        <div className="space-y-1 w-fullf">
+        <div className="space-y-1 w-full">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
           {isEditing ? (
             multiline ? (
@@ -192,6 +201,7 @@ function ProductDetailsContent() {
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
   const [product, setProduct] = useState<ProductWithUrls | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
 
   const isLoading = queryResult === undefined;
 
@@ -250,6 +260,13 @@ function ProductDetailsContent() {
       toast.error("Cuvanje nije uspelo.");
       throw error;
     }
+  };
+
+  const ensureMainImage = (list: (ProductImage & { url?: string | null })[] = []) => {
+    if (list.length === 0) return [];
+    if (list.some((image) => image.isMain)) return list;
+    const [first, ...rest] = list;
+    return [{ ...first, isMain: true }, ...rest];
   };
 
   const handleBaseFieldSave = async (field: "name" | "opis" | "nabavnaCena" | "prodajnaCena", value: string) => {
@@ -355,6 +372,28 @@ function ProductDetailsContent() {
     );
   };
 
+  const handleRemoveSingleImage = async (item: GalleryItem) => {
+    await applyUpdate(
+      (current) => {
+        if (item.origin.type === "product") {
+          const remaining = ensureMainImage((current.images ?? []).filter((image) => image.storageId !== item.storageId));
+          return { ...current, images: remaining };
+        }
+        const currentVariants = current.variants ?? [];
+        if (currentVariants.length === 0) return current;
+        const nextVariants = currentVariants.map((variant) => {
+          if (variant.id !== item.origin.variantId) return variant;
+          const remaining = ensureMainImage(
+            (variant.images ?? []).filter((image) => image.storageId !== item.storageId),
+          );
+          return { ...variant, images: remaining };
+        });
+        return { ...current, variants: nextVariants };
+      },
+      "Slika obrisana.",
+    );
+  };
+
   const uploadImages = async (fileList: FileList | File[]) => {
     if (!product) return;
     const accepted = Array.from(fileList instanceof FileList ? Array.from(fileList) : fileList).filter((file) => {
@@ -420,25 +459,36 @@ function ProductDetailsContent() {
     event.target.value = "";
   };
 
-  const gallery = useMemo(() => {
+  const handleOpenPreview = (item: GalleryItem) => {
+    if (!item.url) return;
+    setPreviewImage({ url: item.url, alt: item.alt || item.label });
+  };
+
+  const handleClosePreview = () => setPreviewImage(null);
+
+  const gallery: GalleryItem[] = useMemo(() => {
     if (!product) return [];
     const baseImages =
       product.images?.map((image) => ({
         id: image.storageId,
-        url: image.url,
+        storageId: image.storageId,
+        url: image.url ?? "",
         alt: product.name,
         label: image.isMain ? "Glavna" : "Slika",
+        origin: { type: "product" } as const,
       })) ?? [];
     const variantImages =
       product.variants?.flatMap((variant) =>
         (variant.images ?? []).map((image) => ({
           id: `${variant.id}-${image.storageId}`,
-          url: image.url,
+          storageId: image.storageId,
+          url: image.url ?? "",
           alt: `${variant.label}`,
           label: variant.label,
+          origin: { type: "variant", variantId: variant.id },
         })),
       ) ?? [];
-    return [...baseImages, ...variantImages].filter((item) => item.url);
+    return [...baseImages, ...variantImages].filter((item) => Boolean(item.url));
   }, [product]);
 
   if (isLoading) {
@@ -627,14 +677,31 @@ function ProductDetailsContent() {
                 {gallery.map((item) => (
                   <div
                     key={item.id}
-                    className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                    className="group relative aspect-[4/3] cursor-zoom-in overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition hover:shadow-md"
+                    onClick={() => handleOpenPreview(item)}
                   >
+                    <button
+                      type="button"
+                      className="absolute right-2 top-2 z-10 rounded-full bg-white/90 p-2 text-slate-600 shadow-sm opacity-0 transition hover:bg-white hover:text-red-600 group-hover:opacity-100"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRemoveSingleImage(item);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={item.url ?? undefined}
+                      src={item.url}
                       alt={item.alt}
                       className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02] group-hover:brightness-95"
                     />
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <div className="flex items-center gap-2 rounded-full bg-slate-900/60 px-3 py-2 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">
+                        <Maximize2 className="h-4 w-4" />
+                        <span>Povecaj</span>
+                      </div>
+                    </div>
                     <div className="absolute left-2 top-2 inline-flex items-center gap-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                       {item.label}
                     </div>
@@ -645,6 +712,32 @@ function ProductDetailsContent() {
           </CardContent>
         </Card>
       </div>
+
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={handleClosePreview}
+        >
+          <div
+            className="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-black/40 p-3 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={handleClosePreview}
+              className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800 shadow"
+            >
+              Zatvori
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewImage.url}
+              alt={previewImage.alt ?? "Pregled slike"}
+              className="mx-auto max-h-[82vh] w-auto rounded-xl object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

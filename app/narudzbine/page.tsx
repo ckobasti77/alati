@@ -289,46 +289,7 @@ function OrdersContent() {
   };
 
   const handleStartOrderEdit = (order: Order) => {
-    setEditingOrder(order);
-    const product = order.productId ? (products ?? []).find((item) => item._id === order.productId) : undefined;
-    const productVariants = getProductVariants(product);
-    let resolvedVariantId: string | undefined = order.variantId ?? "";
-    if (productVariants.length === 0) {
-      resolvedVariantId = "";
-    } else if (!resolvedVariantId) {
-      resolvedVariantId = productVariants.find((variant) => variant.isDefault)?.id ?? productVariants[0].id;
-    } else if (!productVariants.some((variant) => variant.id === resolvedVariantId)) {
-      resolvedVariantId = productVariants.find((variant) => variant.isDefault)?.id ?? productVariants[0].id;
-    }
-    const resolvedVariant =
-      resolvedVariantId && productVariants.length > 0
-        ? productVariants.find((variant) => variant.id === resolvedVariantId)
-        : undefined;
-    form.reset({
-      stage: order.stage,
-      productId: order.productId ?? "",
-      variantId: resolvedVariantId ?? "",
-      customerName: order.customerName ?? "",
-      address: order.address ?? "",
-      phone: order.phone ?? "",
-      transportCost: order.transportCost,
-      transportMode: order.transportMode,
-      myProfitPercent: order.myProfitPercent,
-      note: order.napomena ?? "",
-    });
-    if (order.productId) {
-      if (product) {
-        setProductInput(resolvedVariant ? composeVariantLabel(product, resolvedVariant) : product.name);
-      } else {
-        setProductInput(order.title);
-      }
-    } else {
-      setProductInput(order.title);
-    }
-    setProductSearch("");
-    setProductMenuOpen(false);
-    setExpandedProductId(null);
-    setIsModalOpen(true);
+    router.push(`/narudzbine/${order._id}`);
   };
 
   const handleStageChange = async (order: Order, nextStage: OrderStage) => {
