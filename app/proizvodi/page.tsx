@@ -1316,7 +1316,9 @@ function ProductsContent() {
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="max-w-md text-sm text-slate-500 line-clamp-1">{product.opis ?? "-"}</TableCell>
+                        <TableCell className="max-w-md whitespace-nowrap overflow-hidden text-ellipsis text-sm text-slate-500">
+                          {product.opis ?? "-"}
+                        </TableCell>
                         <TableCell className="text-right">
                           {formatCurrency(defaultVariant?.nabavnaCena ?? product.nabavnaCena, "EUR")}
                         </TableCell>
