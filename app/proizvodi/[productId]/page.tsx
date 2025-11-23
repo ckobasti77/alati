@@ -412,10 +412,11 @@ function ProductDetailsContent() {
         if (item.origin.type !== "variant") return current;
         const variants = current.variants ?? [];
         if (variants.length === 0) return current;
+        const { variantId } = item.origin;
         return {
           ...current,
           variants: variants.map((variant) => {
-            if (variant.id !== item.origin.variantId) return variant;
+            if (variant.id !== variantId) return variant;
             const variantImages = variant.images ?? [];
             if (variantImages.length === 0) return variant;
             return {
