@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Copy, ImageOff, Loader2, Maximize2, PenLine, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Download, ImageOff, Loader2, Maximize2, PenLine, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,8 @@ type GalleryItem = {
   url: string;
   alt: string;
   label: string;
+  fileName?: string | null;
+  isMain: boolean;
   origin: { type: "product" } | { type: "variant"; variantId: string };
 };
 
@@ -396,6 +398,37 @@ function ProductDetailsContent() {
     );
   };
 
+  const handleSetAsMain = async (item: GalleryItem) => {
+    await applyUpdate(
+      (current) => {
+        if (item.origin.type === "product") {
+          const images = current.images ?? [];
+          if (images.length === 0) return current;
+          return {
+            ...current,
+            images: images.map((image) => ({ ...image, isMain: image.storageId === item.storageId })),
+          };
+        }
+        if (item.origin.type !== "variant") return current;
+        const variants = current.variants ?? [];
+        if (variants.length === 0) return current;
+        return {
+          ...current,
+          variants: variants.map((variant) => {
+            if (variant.id !== item.origin.variantId) return variant;
+            const variantImages = variant.images ?? [];
+            if (variantImages.length === 0) return variant;
+            return {
+              ...variant,
+              images: variantImages.map((image) => ({ ...image, isMain: image.storageId === item.storageId })),
+            };
+          }),
+        };
+      },
+      "Glavna slika podesena.",
+    );
+  };
+
   const uploadImages = async (fileList: FileList | File[]) => {
     if (!product) return;
     const accepted = Array.from(fileList instanceof FileList ? Array.from(fileList) : fileList).filter((file) => {
@@ -477,6 +510,8 @@ function ProductDetailsContent() {
         url: image.url ?? "",
         alt: product.name,
         label: image.isMain ? "Glavna" : "Slika",
+        fileName: image.fileName,
+        isMain: Boolean(image.isMain),
         origin: { type: "product" } as const,
       })) ?? [];
     const variantImages =
@@ -487,6 +522,8 @@ function ProductDetailsContent() {
           url: image.url ?? "",
           alt: `${variant.label}`,
           label: variant.label,
+          fileName: image.fileName,
+          isMain: Boolean(image.isMain),
           origin: { type: "variant" as const, variantId: variant.id },
         })),
       ) ?? [];
@@ -682,16 +719,46 @@ function ProductDetailsContent() {
                     className="group relative aspect-[4/3] cursor-zoom-in overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition hover:shadow-md"
                     onClick={() => handleOpenPreview(item)}
                   >
-                    <button
-                      type="button"
-                      className="absolute right-2 top-2 z-10 rounded-full bg-white/90 p-2 text-slate-600 shadow-sm opacity-0 transition hover:bg-white hover:text-red-600 group-hover:opacity-100"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleRemoveSingleImage(item);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-white/90 p-1 text-slate-600 shadow-sm opacity-0 transition group-hover:opacity-100">
+                      <button
+                        type="button"
+                        className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
+                        title="Otvori pregled"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleOpenPreview(item);
+                        }}
+                      >
+                        <Maximize2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        className={`rounded-full px-2 py-1 text-xs font-semibold transition ${
+                          item.isMain
+                            ? "bg-emerald-50 text-emerald-700 shadow-[0_1px_0_rgba(16,185,129,0.25)]"
+                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                        }`}
+                        disabled={item.isMain}
+                        title={item.isMain ? "Vec je glavna" : "Postavi kao glavnu"}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleSetAsMain(item);
+                        }}
+                      >
+                        Glavna
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full p-1 hover:bg-slate-100 hover:text-red-600"
+                        title="Obrisi sliku"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleRemoveSingleImage(item);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={item.url}
@@ -707,6 +774,15 @@ function ProductDetailsContent() {
                     <div className="absolute left-2 top-2 inline-flex items-center gap-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                       {item.label}
                     </div>
+                    <a
+                      href={item.url}
+                      download={item.fileName ?? `${item.id}.jpg`}
+                      className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm opacity-0 transition hover:bg-slate-100 group-hover:opacity-100"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <Download className="h-4 w-4" />
+                      Preuzmi
+                    </a>
                   </div>
                 ))}
               </div>
