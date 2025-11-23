@@ -154,7 +154,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
   })();
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           <Button

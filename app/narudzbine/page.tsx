@@ -325,7 +325,7 @@ function OrdersContent() {
   };
 
   return (
-    <div className="relative mx-auto max-w-6xl space-y-6">
+    <div className="relative mx-auto space-y-6">
       <Dialog
         open={isModalOpen}
         onOpenChange={(open) => {
@@ -827,34 +827,23 @@ function OrdersContent() {
                         {order.title}
                         <ArrowUpRight className="h-4 w-4 text-slate-400" />
                       </span>
-                      {order.variantLabel && (
-                        <span className="block text-xs font-normal text-slate-500">{order.variantLabel}</span>
-                      )}
                     </TableCell>
                     <TableCell className="max-w-[220px]">
                       <p className="font-medium text-slate-800">{order.customerName}</p>
                       <p className="text-xs text-slate-500">{order.phone}</p>
-                      <p className="text-xs text-slate-500">{order.address}</p>
                     </TableCell>
                     <TableCell>{order.kolicina}</TableCell>
                     <TableCell className="text-right">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
                     <TableCell className="text-right">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex flex-col items-end leading-tight">
-                        <span>{formatCurrency(transport, "EUR")}</span>
-                        {order.transportMode ? (
-                          <span className="text-xs text-slate-500">{order.transportMode}</span>
-                        ) : null}
-                      </div>
+                      {formatCurrency(transport, "EUR")}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
                       <span className={prof < 0 ? "text-red-600" : ""}>{formatCurrency(prof, "EUR")}</span>
                     </TableCell>
                     <TableCell className="text-right font-semibold text-emerald-700">
                       {order.myProfitPercent !== undefined ? (
-                        <span>
-                          {formatCurrency(mojDeo, "EUR")} <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
-                        </span>
+                        <span>{formatCurrency(mojDeo, "EUR")}</span>
                       ) : (
                         <span className="text-slate-400">-</span>
                       )}

@@ -7,7 +7,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, CloudUpload, Images, Plus } from "lucide-react";
+import { ArrowUpRight, CloudUpload, Images, LayoutGrid, List, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -157,6 +157,7 @@ function ProductsContent() {
   const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
   const productUploadInputRef = useRef<HTMLInputElement | null>(null);
   const dialogScrollRef = useRef<HTMLDivElement | null>(null);
@@ -722,7 +723,7 @@ function ProductsContent() {
   };
 
   return (
-    <div className="relative mx-auto max-w-6xl space-y-6">
+    <div className="relative mx-auto space-y-6">
       {isModalOpen && isDraggingFiles && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-slate-900/25 backdrop-blur-[1px]">
           <div className="flex items-center gap-3 rounded-2xl border border-white/60 bg-white/75 px-6 py-3 text-slate-800 shadow-2xl shadow-blue-500/25 ring-1 ring-white/70">
@@ -1206,53 +1207,86 @@ function ProductsContent() {
       </Dialog>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Lista proizvoda ({items.length})</CardTitle>
-          <p className="text-sm text-slate-500">Klikni na red da otvoris pregled proizvoda.</p>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Lista proizvoda ({items.length})</CardTitle>
+            <p className="text-sm text-slate-500">
+              {viewMode === "list"
+                ? "Klikni na red da otvoris pregled proizvoda."
+                : "Klikni na sliku da otvoris pregled proizvoda."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
+            <Button
+              type="button"
+              variant={viewMode === "list" ? "default" : "ghost"}
+              size="sm"
+              className="gap-2 rounded-full"
+              onClick={() => setViewMode("list")}
+            >
+              <List className="h-4 w-4" />
+              Lista
+            </Button>
+            <Button
+              type="button"
+              variant={viewMode === "grid" ? "default" : "ghost"}
+              size="sm"
+              className="gap-2 rounded-full"
+              onClick={() => setViewMode("grid")}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Grid
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Slika</TableHead>
-                <TableHead>Naziv</TableHead>
-                <TableHead>Tipovi</TableHead>
-                <TableHead>Opis</TableHead>
-                <TableHead className="text-right">Nabavna (EUR)</TableHead>
-                <TableHead className="text-right">Prodajna (EUR)</TableHead>
-                <TableHead>Akcije</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.length === 0 ? (
+        <CardContent className={viewMode === "list" ? "overflow-x-auto" : "pb-6"}>
+          {viewMode === "list" ? (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-sm text-slate-500">
-                    Dodaj prvi proizvod.
-                  </TableCell>
+                  <TableHead>Slika</TableHead>
+                  <TableHead>Naziv</TableHead>
+                  <TableHead>Tipovi</TableHead>
+                  <TableHead>Opis</TableHead>
+                  <TableHead className="text-right">Nabavna (EUR)</TableHead>
+                  <TableHead className="text-right">Prodajna (EUR)</TableHead>
+                  <TableHead>Akcije</TableHead>
                 </TableRow>
-              ) : (
-                items.map((product) => {
-                  const variantsList = product.variants ?? [];
-                  const defaultVariant = variantsList.find((variant) => variant.isDefault) ?? variantsList[0];
-                  return (
-                    <TableRow
-                      key={product._id}
-                      className="cursor-pointer transition hover:bg-slate-50"
-                      onClick={() => handleRowClick(product._id)}
-                    >
-                      <TableCell>
-                        {(() => {
-                          const images = product.images ?? [];
-                          const mainImage = images.find((image) => image.isMain) ?? images[0];
-                          if (mainImage?.url) {
-                          return (
-                            <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={mainImage.url} alt={product.name} className="h-full w-full object-cover" />
-                            </div>
-                          );
-                        }
-                        return <div className="h-12 w-12 rounded-md border border-dashed border-slate-200 text-center text-[10px] uppercase text-slate-400">N/A</div>;
+              </TableHeader>
+              <TableBody>
+                {items.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-sm text-slate-500">
+                      Dodaj prvi proizvod.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  items.map((product) => {
+                    const variantsList = product.variants ?? [];
+                    const defaultVariant = variantsList.find((variant) => variant.isDefault) ?? variantsList[0];
+                    return (
+                      <TableRow
+                        key={product._id}
+                        className="cursor-pointer transition hover:bg-slate-50"
+                        onClick={() => handleRowClick(product._id)}
+                      >
+                        <TableCell>
+                          {(() => {
+                            const images = product.images ?? [];
+                            const mainImage = images.find((image) => image.isMain) ?? images[0];
+                            if (mainImage?.url) {
+                              return (
+                                <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={mainImage.url} alt={product.name} className="h-full w-full object-cover" />
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-200 text-center text-[10px] uppercase text-slate-400">
+                                N/A
+                              </div>
+                            );
                           })()}
                         </TableCell>
                         <TableCell className="font-medium text-slate-700">
@@ -1267,22 +1301,22 @@ function ProductsContent() {
                           ) : (
                             <div className="space-y-1">
                               {variantsList.map((variant) => (
-                                <div key={variant.id} className="space-y-0.5">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className={variant.isDefault ? "font-semibold text-slate-800" : "text-slate-600"}>
-                                      {`${product.name} - ${variant.label}`}
-                                    </span>
-                                    <span className="text-xs text-slate-500">
+                                <div key={variant.id} className="flex items-center justify-between gap-3 rounded-md border border-slate-200/80 px-3 py-1">
+                                  <span className={variant.isDefault ? "font-semibold text-slate-800" : "text-slate-700"}>
+                                    {variant.label}
+                                  </span>
+                                  <div className="text-right text-[11px] leading-tight text-slate-500">
+                                    <div>Nab {formatCurrency(variant.nabavnaCena, "EUR")}</div>
+                                    <div className="font-semibold text-slate-700">
                                       {formatCurrency(variant.prodajnaCena, "EUR")}
-                                    </span>
+                                    </div>
                                   </div>
-                                  {variant.opis ? <p className="text-xs text-slate-500">{variant.opis}</p> : null}
                                 </div>
                               ))}
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="max-w-md text-sm text-slate-500">{product.opis ?? "-"}</TableCell>
+                        <TableCell className="max-w-md text-sm text-slate-500 line-clamp-1">{product.opis ?? "-"}</TableCell>
                         <TableCell className="text-right">
                           {formatCurrency(defaultVariant?.nabavnaCena ?? product.nabavnaCena, "EUR")}
                         </TableCell>
@@ -1313,12 +1347,51 @@ function ProductsContent() {
                             </Button>
                           </div>
                         </TableCell>
-                    </TableRow>
-                  );
-                })
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          ) : (
+            <>
+              {items.length === 0 ? (
+                <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
+                  Dodaj prvi proizvod.
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {items.map((product) => {
+                    const images = product.images ?? [];
+                    const mainImage = images.find((image) => image.isMain) ?? images[0];
+                    const mainUrl = mainImage?.url;
+                    return (
+                      <button
+                        key={product._id}
+                        type="button"
+                        className="group relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                        onClick={() => handleRowClick(product._id)}
+                      >
+                        {mainUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={mainUrl} alt={product.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Bez slike
+                          </div>
+                        )}
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent opacity-0 transition group-hover:opacity-100" />
+                        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/60 to-transparent px-3 pb-3 pt-6 text-white">
+                          <p className="w-full truncate text-sm font-semibold">{product.name}</p>
+                          <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
-            </TableBody>
-          </Table>
+            </>
+          )}
         </CardContent>
       </Card>
 
