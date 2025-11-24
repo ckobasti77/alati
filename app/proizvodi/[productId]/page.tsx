@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
+import { cn } from "@/lib/utils";
 import type { Product, ProductImage, ProductVariant } from "@/types/order";
 
 type ProductWithUrls = Product & {
@@ -41,17 +43,19 @@ type InlineFieldProps = {
   label: string;
   value?: string | number | null;
   multiline?: boolean;
+  richText?: boolean;
   formatter?: (value?: string | number | null) => string;
   onSave: (nextValue: string) => Promise<void>;
 };
 
-function InlineField({ label, value, multiline = false, formatter, onSave }: InlineFieldProps) {
+function InlineField({ label, value, multiline = false, richText = false, formatter, onSave }: InlineFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [draft, setDraft] = useState<string>(value ? String(value) : "");
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const valueAsString = value === null || value === undefined ? "" : String(value);
+  const previewHtml = richText ? formatRichTextToHtml(valueAsString) : "";
 
   useEffect(() => {
     if (isEditing) {
@@ -67,7 +71,7 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
         });
       }
     }
-  }, [isEditing, multiline]);
+  }, [isEditing, multiline, richText]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -111,13 +115,12 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
           {isEditing ? (
             multiline ? (
-              <Textarea
+              <RichTextEditor
                 ref={textareaRef}
-                autoResize
-                rows={3}
                 value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                className="text-sm w-full"
+                onChange={setDraft}
+                placeholder="Dodaj opis"
+                className="mt-1"
               />
             ) : (
               <Input
@@ -126,6 +129,18 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
                 onChange={(event) => setDraft(event.target.value)}
                 className="text-sm"
               />
+            )
+          ) : richText ? (
+            previewHtml ? (
+              <div
+                className={cn(
+                  richTextOutputClassNames,
+                  "text-base text-slate-900 [&_p]:mb-1 [&_ul]:mb-1",
+                )}
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
+            ) : (
+              <p className="text-sm text-slate-400">-</p>
             )
           ) : (
             <p className="text-base font-semibold text-slate-900">{displayValue}</p>
@@ -597,6 +612,7 @@ function ProductDetailsContent() {
                 label="Opis"
                 value={product.opis ?? ""}
                 multiline
+                richText
                 onSave={(val) => handleBaseFieldSave("opis", val)}
               />
               <div className="grid gap-2 sm:grid-cols-2 text-sm text-slate-600">
@@ -660,6 +676,7 @@ function ProductDetailsContent() {
                           label="Opis tipa"
                           value={variant.opis ?? ""}
                           multiline
+                          richText
                           onSave={(val) => handleVariantFieldSave(variant.id, "opis", val)}
                         />
                       </div>

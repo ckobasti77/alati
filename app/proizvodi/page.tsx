@@ -37,9 +37,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
+import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
+import { cn } from "@/lib/utils";
 import type { Product } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -819,7 +821,13 @@ function ProductsContent() {
               render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel>Opis</FormLabel>
-                  <Textarea rows={3} placeholder="npr. Crna boja, 1m duzina" autoResize {...field} />
+                  <RichTextEditor
+                    name={field.name}
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    placeholder="npr. Crna boja, 1m duzina"
+                  />
                   <FormMessage>{fieldState.error?.message}</FormMessage>
                 </FormItem>
               )}
@@ -920,7 +928,13 @@ function ProductsContent() {
                           render={({ field, fieldState }) => (
                             <FormItem>
                               <FormLabel>Opis tipa (opciono)</FormLabel>
-                              <Textarea rows={2} placeholder="npr. Bela boja, velicina M" autoResize {...field} />
+                              <RichTextEditor
+                                name={field.name}
+                                value={field.value ?? ""}
+                                onChange={field.onChange}
+                                onBlur={field.onBlur}
+                                placeholder="npr. Bela boja, velicina M"
+                              />
                               <FormMessage>{fieldState.error?.message}</FormMessage>
                             </FormItem>
                           )}
@@ -1316,8 +1330,20 @@ function ProductsContent() {
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="max-w-md whitespace-nowrap overflow-hidden text-ellipsis text-sm text-slate-500">
-                          {product.opis ?? "-"}
+                        <TableCell className="max-w-md align-top text-sm text-slate-600">
+                          {(() => {
+                            const opisHtml = formatRichTextToHtml(product.opis ?? "");
+                            if (!opisHtml) return <span className="text-slate-400">-</span>;
+                            return (
+                              <div
+                                className={cn(
+                                  richTextOutputClassNames,
+                                  "max-h-32 overflow-auto rounded-md bg-slate-50/70 px-2 py-1.5",
+                                )}
+                                dangerouslySetInnerHTML={{ __html: opisHtml }}
+                              />
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="text-right">
                           {formatCurrency(defaultVariant?.nabavnaCena ?? product.nabavnaCena, "EUR")}

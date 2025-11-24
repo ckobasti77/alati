@@ -17,6 +17,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatCurrency, formatDate } from "@/lib/format";
 import { myProfitShare, profit, ukupnoNabavno, ukupnoProdajno } from "@/lib/calc";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
+import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
+import { cn } from "@/lib/utils";
 import type { Order, OrderListResponse, OrderStage, Product, ProductVariant } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -84,6 +86,22 @@ const defaultFormValues: OrderFormValues = {
   myProfitPercent: undefined,
   note: "",
 };
+
+function RichTextSnippet({ text, className }: { text?: string | null; className?: string }) {
+  if (!text || text.trim().length === 0) return null;
+  const html = formatRichTextToHtml(text);
+  if (!html) return null;
+  return (
+    <div
+      className={cn(
+        richTextOutputClassNames,
+        "max-h-16 overflow-hidden text-xs text-slate-500 [&_p]:mb-0 [&_ul]:mb-0",
+        className,
+      )}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
 
 const getProductVariants = (product?: Product): ProductVariant[] => {
   if (!product) return [];
@@ -462,7 +480,7 @@ function OrdersContent() {
                                     {hasVariants ? (
                                       <p className="text-xs text-slate-500">{variants.length} tip{variants.length === 1 ? "" : "a"} dostupno</p>
                                     ) : (
-                                      product.opis && <p className="text-xs text-slate-500 line-clamp-2">{product.opis}</p>
+                                      <RichTextSnippet text={product.opis} />
                                     )}
                                   </div>
                                   {hasVariants && (
@@ -493,10 +511,10 @@ function OrdersContent() {
                                           Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
                                         </span>
                                         {variant.opis ? (
-                                          <span className="text-[11px] text-slate-500 line-clamp-2">{variant.opis}</span>
-                                        ) : product.opis ? (
-                                          <span className="text-[11px] text-slate-500 line-clamp-2">{product.opis}</span>
-                                        ) : null}
+                                          <RichTextSnippet text={variant.opis} className="text-[11px]" />
+                                        ) : (
+                                          <RichTextSnippet text={product.opis} className="text-[11px]" />
+                                        )}
                                         {variant.isDefault && (
                                           <span className="text-[11px] font-semibold text-emerald-600">Podrazumevani tip</span>
                                         )}
@@ -580,7 +598,7 @@ function OrdersContent() {
                           <span className="text-xs text-slate-500">
                             Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
                           </span>
-                          {variant.opis ? <span className="text-xs text-slate-500 line-clamp-2">{variant.opis}</span> : null}
+                          <RichTextSnippet text={variant.opis} />
                           {variant.isDefault && <span className="text-[11px] font-medium text-emerald-600">Podrazumevano</span>}
                         </button>
                       ))}
