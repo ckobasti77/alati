@@ -38,7 +38,7 @@ function ToolbarButton({ label, icon, onClick }: ToolbarButtonProps) {
 export const RichTextEditor = forwardRef<HTMLTextAreaElement | null, RichTextEditorProps>(
   ({ value = "", onChange, placeholder, name, maxLength, onBlur, className }, ref) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    useImperativeHandle<HTMLTextAreaElement | null>(ref, () => textareaRef.current, []);
+    useImperativeHandle(ref, () => textareaRef.current);
     const safeValue = value ?? "";
     const placeholderText = placeholder ?? "Upisi opis, koristi **bold**, _italic_ i - liste";
 
