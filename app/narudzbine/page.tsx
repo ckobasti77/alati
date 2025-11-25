@@ -602,9 +602,7 @@ function OrdersContent() {
                           <span className="text-xs text-slate-500">
                             Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
                           </span>
-                          <RichTextSnippet
-                            text={variant.opis || product?.opisFbInsta || product?.opisKp || product?.opis}
-                          />
+                          <RichTextSnippet text={variant.opis || selectedProduct?.opisFbInsta || selectedProduct?.opisKp || selectedProduct?.opis} />
                           {variant.isDefault && <span className="text-[11px] font-medium text-emerald-600">Podrazumevano</span>}
                         </button>
                       ))}
