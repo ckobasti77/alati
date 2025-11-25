@@ -204,13 +204,22 @@ export const create = mutation({
     nabavnaCena: v.number(),
     prodajnaCena: v.number(),
     opis: v.optional(v.string()),
+    opisKp: v.optional(v.string()),
+    opisFbInsta: v.optional(v.string()),
+    publishKp: v.optional(v.boolean()),
+    publishFb: v.optional(v.boolean()),
+    publishIg: v.optional(v.boolean()),
     variants: v.optional(v.array(productVariantArg)),
     images: v.optional(v.array(productImageArg)),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const now = Date.now();
-    const opis = args.opis?.trim();
+    const opisKp = args.opisKp?.trim();
+    const opisFbInsta = args.opisFbInsta?.trim() ?? args.opis?.trim();
+    const publishKp = Boolean(args.publishKp);
+    const publishFb = Boolean(args.publishFb);
+    const publishIg = Boolean(args.publishIg);
     const images = normalizeImages(undefined, args.images);
     const variants = normalizeVariants(args.variants);
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
@@ -221,7 +230,12 @@ export const create = mutation({
       prodajnaCena: defaultVariant?.prodajnaCena ?? args.prodajnaCena,
       variants,
       images,
-      opis: opis ? opis : undefined,
+      opis: opisFbInsta ? opisFbInsta : undefined,
+      opisFbInsta: opisFbInsta || undefined,
+      opisKp: opisKp || undefined,
+      publishKp,
+      publishFb,
+      publishIg,
       createdAt: now,
       updatedAt: now,
     });
@@ -236,6 +250,11 @@ export const update = mutation({
     nabavnaCena: v.number(),
     prodajnaCena: v.number(),
     opis: v.optional(v.string()),
+    opisKp: v.optional(v.string()),
+    opisFbInsta: v.optional(v.string()),
+    publishKp: v.optional(v.boolean()),
+    publishFb: v.optional(v.boolean()),
+    publishIg: v.optional(v.boolean()),
     variants: v.optional(v.array(productVariantArg)),
     images: v.optional(v.array(productImageArg)),
   },
@@ -249,6 +268,14 @@ export const update = mutation({
       throw new Error("Neautorizovan pristup proizvodu.");
     }
     const opis = args.opis?.trim();
+    const opisKp = args.opisKp?.trim();
+    const opisFbInsta = args.opisFbInsta?.trim();
+    const resolvedOpisFb = opisFbInsta === undefined ? product.opisFbInsta ?? product.opis : opisFbInsta || undefined;
+    const resolvedOpisKp = opisKp === undefined ? product.opisKp : opisKp || undefined;
+    const resolvedOpisLegacy = opis === undefined ? resolvedOpisFb ?? product.opis : opis || undefined;
+    const publishKp = args.publishKp ?? product.publishKp ?? false;
+    const publishFb = args.publishFb ?? product.publishFb ?? false;
+    const publishIg = args.publishIg ?? product.publishIg ?? false;
     const images = normalizeImages(product.images, args.images);
     const variants = normalizeVariants(args.variants, product.variants);
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
@@ -273,7 +300,12 @@ export const update = mutation({
       prodajnaCena: defaultVariant?.prodajnaCena ?? args.prodajnaCena,
       variants,
       images,
-      opis: opis ? opis : undefined,
+      opis: resolvedOpisLegacy,
+      opisFbInsta: resolvedOpisFb,
+      opisKp: resolvedOpisKp,
+      publishKp,
+      publishFb,
+      publishIg,
       updatedAt: Date.now(),
     });
     await Promise.all(

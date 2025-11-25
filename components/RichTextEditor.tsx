@@ -1,9 +1,8 @@
 "use client";
 
-import { forwardRef, useImperativeHandle, useRef, type ReactNode } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, type ReactNode } from "react";
 import { Bold, Italic, List as ListIcon } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { cn } from "@/lib/utils";
 
 type RichTextEditorProps = {
@@ -39,8 +38,9 @@ function ToolbarButton({ label, icon, onClick }: ToolbarButtonProps) {
 export const RichTextEditor = forwardRef<HTMLTextAreaElement | null, RichTextEditorProps>(
   ({ value = "", onChange, placeholder, name, maxLength, onBlur, className }, ref) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    useImperativeHandle(ref, () => textareaRef.current);
+    useImperativeHandle<HTMLTextAreaElement | null>(ref, () => textareaRef.current, []);
     const safeValue = value ?? "";
+    const placeholderText = placeholder ?? "Upisi opis, koristi **bold**, _italic_ i - liste";
 
     const updateSelection = (start: number, end = start) => {
       requestAnimationFrame(() => {
@@ -136,8 +136,106 @@ export const RichTextEditor = forwardRef<HTMLTextAreaElement | null, RichTextEdi
       }
     };
 
-    const previewHtml = formatRichTextToHtml(safeValue.trim() ? safeValue : "");
-    const isEmpty = previewHtml.length === 0;
+    const renderInline = (text: string): ReactNode[] => {
+      // Bold first (** or __)
+      const boldPattern = /(\*\*|__)([\s\S]*?)(\1)/g;
+      const boldNodes: ReactNode[] = [];
+      let last = 0;
+      let match: RegExpExecArray | null;
+      while ((match = boldPattern.exec(text))) {
+        if (match.index > last) {
+          boldNodes.push(text.slice(last, match.index));
+        }
+        const [full, marker, content] = match;
+        boldNodes.push(
+          <span key={`${match.index}-b-start`} className="text-transparent">
+            {marker}
+          </span>,
+        );
+        boldNodes.push(
+          <span key={`${match.index}-b-text`} className="font-semibold">
+            {content}
+          </span>,
+        );
+        boldNodes.push(
+          <span key={`${match.index}-b-end`} className="text-transparent">
+            {marker}
+          </span>,
+        );
+        last = match.index + full.length;
+      }
+      if (last < text.length) {
+        boldNodes.push(text.slice(last));
+      }
+
+      // Now italic on string nodes
+      const italicPattern = /(\*|_)([^*_]+?)\1/g;
+      const italicNodes: ReactNode[] = [];
+      boldNodes.forEach((node, index) => {
+        if (typeof node !== "string") {
+          italicNodes.push(node);
+          return;
+        }
+        let cursor = 0;
+        let italicMatch: RegExpExecArray | null;
+        while ((italicMatch = italicPattern.exec(node))) {
+          if (italicMatch.index > cursor) {
+            italicNodes.push(node.slice(cursor, italicMatch.index));
+          }
+          const [full, marker, content] = italicMatch;
+          italicNodes.push(
+            <span key={`${index}-i-start-${italicMatch.index}`} className="text-transparent">
+              {marker}
+            </span>,
+          );
+          italicNodes.push(
+            <span key={`${index}-i-text-${italicMatch.index}`} className="italic">
+              {content}
+            </span>,
+          );
+          italicNodes.push(
+            <span key={`${index}-i-end-${italicMatch.index}`} className="text-transparent">
+              {marker}
+            </span>,
+          );
+          cursor = italicMatch.index + full.length;
+        }
+        if (cursor < node.length) {
+          italicNodes.push(node.slice(cursor));
+        }
+      });
+
+      return italicNodes;
+    };
+
+    const overlayContent = useMemo(() => {
+      if (!safeValue.trim()) return null;
+      const lines = safeValue.split(/\r?\n/);
+      return lines.map((line, idx) => {
+        const listMatch = line.match(/^(\s*)-\s(.*)$/);
+        if (listMatch) {
+          const [, indent, rest] = listMatch;
+          return (
+            <div key={idx} className="relative whitespace-pre-wrap break-words">
+              <span
+                className="relative text-transparent before:absolute before:left-0 before:text-black before:content-['•']"
+                aria-hidden
+              >
+                {`${indent}- `}
+              </span>
+              {renderInline(rest)}
+            </div>
+          );
+        }
+        return (
+          <div key={idx} className="whitespace-pre-wrap break-words">
+            {renderInline(line)}
+          </div>
+        );
+      });
+    }, [safeValue]);
+
+    const isEmpty = safeValue.trim().length === 0;
 
     return (
       <div className={cn("rounded-lg border border-slate-200 shadow-sm", className)}>
@@ -155,37 +253,33 @@ export const RichTextEditor = forwardRef<HTMLTextAreaElement | null, RichTextEdi
             Lista pocinje sa &quot;- &quot; + Enter
           </p>
         </div>
-        <Textarea
-          ref={textareaRef}
-          value={safeValue}
-          name={name}
-          maxLength={maxLength}
-          autoResize
-          rows={3}
-          placeholder={placeholder ?? "Upisi opis, koristi **bold**, _italic_ i - liste"}
-          onChange={(event) => onChange(event.target.value)}
-          onBlur={onBlur}
-          onKeyDown={handleKeyDown}
-          className="min-h-[140px] rounded-none border-0 px-3 py-3 text-sm shadow-none focus-visible:ring-0"
-        />
+        <div className="relative">
+          <div
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-0 whitespace-pre-wrap break-words px-3 py-3 text-sm text-slate-800",
+            )}
+          >
+            {isEmpty ? <span className="text-slate-400">{placeholderText}</span> : overlayContent}
+          </div>
+          <Textarea
+            ref={textareaRef}
+            value={safeValue}
+            name={name}
+            maxLength={maxLength}
+            autoResize
+            rows={3}
+            onChange={(event) => onChange(event.target.value)}
+            onBlur={onBlur}
+            onKeyDown={handleKeyDown}
+            className="relative min-h-[140px] rounded-none border-0 bg-transparent px-3 py-3 text-sm text-transparent caret-slate-900 shadow-none selection:bg-blue-200 focus-visible:ring-0"
+          />
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-3 py-2 text-xs text-slate-600">
           <span className="font-medium text-slate-700">Formatiraj</span>
           <span className="text-slate-500">
             Koristi **tekst** za bold, _tekst_ za italic. &quot;- &quot; + Enter pravi novu stavku.
           </span>
-        </div>
-        <div className="border-t bg-white px-3 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Preview</p>
-          <div
-            className={cn(
-              richTextOutputClassNames,
-              "mt-1 min-h-[32px] rounded-md bg-slate-50/70 px-3 py-2 text-slate-700",
-              isEmpty && "text-slate-400",
-            )}
-            dangerouslySetInnerHTML={{
-              __html: isEmpty ? "Dodaj opis ili listu sa &quot;- &quot;" : previewHtml,
-            }}
-          />
         </div>
       </div>
     );

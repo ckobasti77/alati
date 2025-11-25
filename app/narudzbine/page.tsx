@@ -178,8 +178,9 @@ function OrdersContent() {
     if (!needle) return list;
     return list.filter((product) => {
       if (product.name.toLowerCase().includes(needle)) return true;
-      const opis = product.opis?.toLowerCase() ?? "";
-      if (opis.includes(needle)) return true;
+      const opisPrimary = product.opisFbInsta?.toLowerCase() ?? product.opis?.toLowerCase() ?? "";
+      const opisKp = product.opisKp?.toLowerCase() ?? "";
+      if (opisPrimary.includes(needle) || opisKp.includes(needle)) return true;
       return (product.variants ?? []).some((variant) => {
         if (variant.label.toLowerCase().includes(needle)) return true;
         const variantOpis = variant.opis?.toLowerCase() ?? "";
@@ -480,7 +481,7 @@ function OrdersContent() {
                                     {hasVariants ? (
                                       <p className="text-xs text-slate-500">{variants.length} tip{variants.length === 1 ? "" : "a"} dostupno</p>
                                     ) : (
-                                      <RichTextSnippet text={product.opis} />
+                                      <RichTextSnippet text={product.opisFbInsta || product.opisKp || product.opis} />
                                     )}
                                   </div>
                                   {hasVariants && (
@@ -513,7 +514,10 @@ function OrdersContent() {
                                         {variant.opis ? (
                                           <RichTextSnippet text={variant.opis} className="text-[11px]" />
                                         ) : (
-                                          <RichTextSnippet text={product.opis} className="text-[11px]" />
+                                          <RichTextSnippet
+                                            text={product.opisFbInsta || product.opisKp || product.opis}
+                                            className="text-[11px]"
+                                          />
                                         )}
                                         {variant.isDefault && (
                                           <span className="text-[11px] font-semibold text-emerald-600">Podrazumevani tip</span>
@@ -598,7 +602,9 @@ function OrdersContent() {
                           <span className="text-xs text-slate-500">
                             Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
                           </span>
-                          <RichTextSnippet text={variant.opis} />
+                          <RichTextSnippet
+                            text={variant.opis || product?.opisFbInsta || product?.opisKp || product?.opis}
+                          />
                           {variant.isDefault && <span className="text-[11px] font-medium text-emerald-600">Podrazumevano</span>}
                         </button>
                       ))}

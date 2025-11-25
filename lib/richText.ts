@@ -50,4 +50,4 @@ export const formatRichTextToHtml = (value?: string | null) => {
 };
 
 export const richTextOutputClassNames =
-  "space-y-2 text-sm text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:leading-relaxed [&_p]:leading-relaxed [&_strong]:font-semibold [&_em]:italic";
+  "space-y-2 text-sm text-slate-700 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:leading-relaxed [&_li::marker]:text-black [&_p]:leading-relaxed [&_strong]:font-semibold [&_em]:italic";

@@ -8,13 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { RichTextEditor } from "@/components/RichTextEditor";
+import { Textarea } from "@/components/ui/textarea";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
-import { cn } from "@/lib/utils";
 import type { Product, ProductImage, ProductVariant } from "@/types/order";
 
 type ProductWithUrls = Product & {
@@ -43,19 +41,17 @@ type InlineFieldProps = {
   label: string;
   value?: string | number | null;
   multiline?: boolean;
-  richText?: boolean;
   formatter?: (value?: string | number | null) => string;
   onSave: (nextValue: string) => Promise<void>;
 };
 
-function InlineField({ label, value, multiline = false, richText = false, formatter, onSave }: InlineFieldProps) {
+function InlineField({ label, value, multiline = false, formatter, onSave }: InlineFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [draft, setDraft] = useState<string>(value ? String(value) : "");
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const valueAsString = value === null || value === undefined ? "" : String(value);
-  const previewHtml = richText ? formatRichTextToHtml(valueAsString) : "";
 
   useEffect(() => {
     if (isEditing) {
@@ -71,7 +67,7 @@ function InlineField({ label, value, multiline = false, richText = false, format
         });
       }
     }
-  }, [isEditing, multiline, richText]);
+  }, [isEditing, multiline]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -115,12 +111,13 @@ function InlineField({ label, value, multiline = false, richText = false, format
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
           {isEditing ? (
             multiline ? (
-              <RichTextEditor
+              <Textarea
                 ref={textareaRef}
+                autoResize
+                rows={3}
                 value={draft}
-                onChange={setDraft}
-                placeholder="Dodaj opis"
-                className="mt-1"
+                onChange={(event) => setDraft(event.target.value)}
+                className="text-sm w-full"
               />
             ) : (
               <Input
@@ -129,18 +126,6 @@ function InlineField({ label, value, multiline = false, richText = false, format
                 onChange={(event) => setDraft(event.target.value)}
                 className="text-sm"
               />
-            )
-          ) : richText ? (
-            previewHtml ? (
-              <div
-                className={cn(
-                  richTextOutputClassNames,
-                  "text-base text-slate-900 [&_p]:mb-1 [&_ul]:mb-1",
-                )}
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
-            ) : (
-              <p className="text-sm text-slate-400">-</p>
             )
           ) : (
             <p className="text-base font-semibold text-slate-900">{displayValue}</p>
@@ -244,13 +229,19 @@ function ProductDetailsContent() {
       })),
     }));
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
+    const resolvedOpisFb = current.opisFbInsta ?? current.opis;
     return {
       token: sessionToken,
       id: current._id,
       name: current.name,
       nabavnaCena: defaultVariant?.nabavnaCena ?? current.nabavnaCena,
       prodajnaCena: defaultVariant?.prodajnaCena ?? current.prodajnaCena,
-      opis: current.opis,
+      opis: resolvedOpisFb,
+      opisKp: current.opisKp,
+      opisFbInsta: resolvedOpisFb,
+      publishKp: current.publishKp,
+      publishFb: current.publishFb,
+      publishIg: current.publishIg,
       variants,
       images: (current.images ?? []).map((image) => ({
         storageId: image.storageId,
@@ -286,7 +277,10 @@ function ProductDetailsContent() {
     return [{ ...first, isMain: true }, ...rest];
   };
 
-  const handleBaseFieldSave = async (field: "name" | "opis" | "nabavnaCena" | "prodajnaCena", value: string) => {
+  const handleBaseFieldSave = async (
+    field: "name" | "opisKp" | "opisFbInsta" | "nabavnaCena" | "prodajnaCena",
+    value: string,
+  ) => {
     const trimmed = value.trim();
     if (!product) return;
     if (field === "name" && trimmed.length < 2) {
@@ -323,6 +317,16 @@ function ProductDetailsContent() {
       (current) => ({
         ...current,
         [field]: trimmed.length === 0 ? undefined : trimmed,
+      }),
+      "Sacuvano.",
+    );
+  };
+
+  const handlePublishToggle = async (field: "publishKp" | "publishFb" | "publishIg", value: boolean) => {
+    await applyUpdate(
+      (current) => ({
+        ...current,
+        [field]: value,
       }),
       "Sacuvano.",
     );
@@ -609,12 +613,37 @@ function ProductDetailsContent() {
                 onSave={(val) => handleBaseFieldSave("nabavnaCena", val)}
               />
               <InlineField
-                label="Opis"
-                value={product.opis ?? ""}
+                label="KupujemProdajem opis"
+                value={product.opisKp ?? ""}
                 multiline
-                richText
-                onSave={(val) => handleBaseFieldSave("opis", val)}
+                onSave={(val) => handleBaseFieldSave("opisKp", val)}
               />
+              <InlineField
+                label="FB / Insta opis"
+                value={product.opisFbInsta ?? product.opis ?? ""}
+                multiline
+                onSave={(val) => handleBaseFieldSave("opisFbInsta", val)}
+              />
+              <div className="grid gap-2 sm:grid-cols-3">
+                {([
+                  { key: "publishKp" as const, label: "Objava KP", checked: product.publishKp },
+                  { key: "publishFb" as const, label: "Objava Facebook", checked: product.publishFb },
+                  { key: "publishIg" as const, label: "Objava Instagram", checked: product.publishIg },
+                ]).map((item) => (
+                  <label
+                    key={item.key}
+                    className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(item.checked)}
+                      onChange={(event) => handlePublishToggle(item.key, event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    {item.label}
+                  </label>
+                ))}
+              </div>
               <div className="grid gap-2 sm:grid-cols-2 text-sm text-slate-600">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-400">Kreirano</p>
@@ -676,7 +705,6 @@ function ProductDetailsContent() {
                           label="Opis tipa"
                           value={variant.opis ?? ""}
                           multiline
-                          richText
                           onSave={(val) => handleVariantFieldSave(variant.id, "opis", val)}
                         />
                       </div>

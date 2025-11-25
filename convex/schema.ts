@@ -56,6 +56,11 @@ export default defineSchema({
       ),
     ),
     opis: v.optional(v.string()),
+    opisKp: v.optional(v.string()),
+    opisFbInsta: v.optional(v.string()),
+    publishKp: v.optional(v.boolean()),
+    publishFb: v.optional(v.boolean()),
+    publishIg: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

@@ -37,11 +37,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { RichTextEditor } from "@/components/RichTextEditor";
+import { Textarea } from "@/components/ui/textarea";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
-import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
-import { cn } from "@/lib/utils";
 import type { Product } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -77,7 +75,11 @@ const productSchema = z
     name: z.string().min(2, "Naziv je obavezan."),
     nabavnaCena: priceField("Nabavna cena"),
     prodajnaCena: priceField("Prodajna cena"),
-    opis: z.string().optional(),
+    opisKp: z.string().optional(),
+    opisFbInsta: z.string().optional(),
+    publishKp: z.boolean().optional(),
+    publishFb: z.boolean().optional(),
+    publishIg: z.boolean().optional(),
     variants: z.array(variantSchema).optional(),
   })
   .superRefine((data, ctx) => {
@@ -136,7 +138,11 @@ const emptyProductForm = (): ProductFormValues => ({
   name: "",
   nabavnaCena: "",
   prodajnaCena: "",
-  opis: "",
+  opisKp: "",
+  opisFbInsta: "",
+  publishKp: false,
+  publishFb: false,
+  publishIg: false,
   variants: [],
 });
 
@@ -265,7 +271,11 @@ function ProductsContent() {
       name: values.name.trim(),
       nabavnaCena: defaultVariant?.nabavnaCena ?? baseNabavna,
       prodajnaCena: defaultVariant?.prodajnaCena ?? baseProdajna,
-      opis: values.opis?.trim() ? values.opis.trim() : undefined,
+      opisKp: values.opisKp?.trim() ? values.opisKp.trim() : undefined,
+      opisFbInsta: values.opisFbInsta?.trim() ? values.opisFbInsta.trim() : undefined,
+      publishKp: Boolean(values.publishKp),
+      publishFb: Boolean(values.publishFb),
+      publishIg: Boolean(values.publishIg),
       images: buildImagePayload(images),
       variants,
     };
@@ -686,7 +696,11 @@ function ProductsContent() {
       name: product.name,
       nabavnaCena: product.nabavnaCena.toString(),
       prodajnaCena: product.prodajnaCena.toString(),
-      opis: product.opis ?? "",
+      opisKp: product.opisKp ?? "",
+      opisFbInsta: product.opisFbInsta ?? product.opis ?? "",
+      publishKp: product.publishKp ?? false,
+      publishFb: product.publishFb ?? false,
+      publishIg: product.publishIg ?? false,
       variants: mappedVariants,
     });
     setImages((prev) => {
@@ -790,7 +804,7 @@ function ProductsContent() {
                 </Button>
               </div>
               <p className="text-sm text-slate-500">
-                Obican ima jednu cenu i opis, tipski moze da ima vise tipova sa sopstvenim cenama i opisima.
+                Obican ima jednu cenu i KP / FB opis, tipski moze da ima vise tipova sa sopstvenim cenama i opisima.
               </p>
             </div>
 
@@ -816,22 +830,81 @@ function ProductsContent() {
                 </FormItem>
               )}
             />
-            <FormField
-              name="opis"
-              render={({ field, fieldState }) => (
-                <FormItem>
-                  <FormLabel>Opis</FormLabel>
-                  <RichTextEditor
-                    name={field.name}
-                    value={field.value ?? ""}
-                    onChange={field.onChange}
-                    onBlur={field.onBlur}
-                    placeholder="npr. Crna boja, 1m duzina"
-                  />
-                  <FormMessage>{fieldState.error?.message}</FormMessage>
-                </FormItem>
-              )}
-            />
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField
+                name="opisKp"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>KupujemProdajem opis</FormLabel>
+                    <Textarea rows={3} placeholder="Opis za KP" autoResize {...field} />
+                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                name="opisFbInsta"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>FB / Insta opis</FormLabel>
+                    <Textarea rows={3} placeholder="Opis za drustvene mreze" autoResize {...field} />
+                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                  </FormItem>
+                )}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <FormField
+                name="publishKp"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
+                    <input
+                      id="publish-kp"
+                      type="checkbox"
+                      checked={!!field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <FormLabel htmlFor="publish-kp" className="m-0 cursor-pointer">
+                      Objavi na KP
+                    </FormLabel>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                name="publishFb"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
+                    <input
+                      id="publish-fb"
+                      type="checkbox"
+                      checked={!!field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <FormLabel htmlFor="publish-fb" className="m-0 cursor-pointer">
+                      Objavi na Facebook
+                    </FormLabel>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                name="publishIg"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
+                    <input
+                      id="publish-ig"
+                      type="checkbox"
+                      checked={!!field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <FormLabel htmlFor="publish-ig" className="m-0 cursor-pointer">
+                      Objavi na Instagram
+                    </FormLabel>
+                  </FormItem>
+                )}
+              />
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 name="nabavnaCena"
@@ -928,13 +1001,7 @@ function ProductsContent() {
                           render={({ field, fieldState }) => (
                             <FormItem>
                               <FormLabel>Opis tipa (opciono)</FormLabel>
-                              <RichTextEditor
-                                name={field.name}
-                                value={field.value ?? ""}
-                                onChange={field.onChange}
-                                onBlur={field.onBlur}
-                                placeholder="npr. Bela boja, velicina M"
-                              />
+                              <Textarea rows={2} placeholder="npr. Bela boja, velicina M" autoResize {...field} />
                               <FormMessage>{fieldState.error?.message}</FormMessage>
                             </FormItem>
                           )}
@@ -1332,17 +1399,9 @@ function ProductsContent() {
                         </TableCell>
                         <TableCell className="max-w-md align-top text-sm text-slate-600">
                           {(() => {
-                            const opisHtml = formatRichTextToHtml(product.opis ?? "");
-                            if (!opisHtml) return <span className="text-slate-400">-</span>;
-                            return (
-                              <div
-                                className={cn(
-                                  richTextOutputClassNames,
-                                  "max-h-32 overflow-auto rounded-md bg-slate-50/70 px-2 py-1.5",
-                                )}
-                                dangerouslySetInnerHTML={{ __html: opisHtml }}
-                              />
-                            );
+                            const preview = product.opisKp || product.opisFbInsta || product.opis || "";
+                            if (!preview.trim()) return <span className="text-slate-400">-</span>;
+                            return <span className="line-clamp-3 block whitespace-pre-wrap">{preview}</span>;
                           })()}
                         </TableCell>
                         <TableCell className="text-right">

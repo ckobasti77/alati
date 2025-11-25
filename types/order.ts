@@ -24,6 +24,11 @@ export interface Product {
   prodajnaCena: number;
   variants?: ProductVariant[];
   opis?: string;
+  opisKp?: string;
+  opisFbInsta?: string;
+  publishKp?: boolean;
+  publishFb?: boolean;
+  publishIg?: boolean;
   images?: ProductImage[];
   createdAt: number;
   updatedAt: number;
