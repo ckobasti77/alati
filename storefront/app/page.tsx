@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { ArrowUpRight, Home, Loader2, Search, Shield, Sparkles, Tractor, Truck, Wrench } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import type { PublicCategory, PublicProduct } from "../lib/types";
@@ -12,7 +12,7 @@ type CategoryOption = {
   id: string;
   label: string;
   iconUrl?: string | null;
-  icon?: JSX.Element;
+  icon?: ReactElement;
   keywords: string[];
 };
 
