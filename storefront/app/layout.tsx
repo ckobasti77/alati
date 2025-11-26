@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, DM_Mono } from "next/font/google";
 import "./globals.css";
-import { Providers } from "@/components/Providers";
-import { Navbar } from "@/components/Navbar";
+import { Providers } from "../components/Providers";
+import { Navbar } from "../components/Navbar";
+
 
 const grotesk = Space_Grotesk({
   subsets: ["latin"],
