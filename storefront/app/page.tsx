@@ -8,6 +8,14 @@ import type { PublicCategory, PublicProduct } from "../lib/types";
 import { formatCurrency } from "../lib/format";
 import { useConvexQuery } from "../lib/convex";
 
+type CategoryOption = {
+  id: string;
+  label: string;
+  iconUrl?: string | null;
+  icon?: JSX.Element;
+  keywords: string[];
+};
+
 const highlights = [
   { icon: <Sparkles size={16} />, title: "Top izbor", desc: "Provereni modeli koje kupuju majstori i domaćinstva." },
   { icon: <Truck size={16} />, title: "Brza isporuka", desc: "Šaljemo odmah po dogovoru, na vašu adresu." },
@@ -15,11 +23,11 @@ const highlights = [
   { icon: <Wrench size={16} />, title: "Saveti uz kupovinu", desc: "Pomažemo da izabereš alat koji ti stvarno treba." },
 ];
 
-const fallbackCategories = [
-  { id: "kuca", label: "Kuća i radionica", icon: <Home size={15} />, keywords: ["alat", "šraf", "šrafc", "busil", "bušil", "čekić"] },
-  { id: "vrt", label: "Dvorište i vrt", icon: <Truck size={15} />, keywords: ["trimer", "motor", "pumpa", "prska", "kosa", "vrt", "vrtni"] },
-  { id: "struja", label: "Elektrika / baterija", icon: <Sparkles size={15} />, keywords: ["akku", "bater", "elekt", "struj"] },
-  { id: "poljo", label: "Poljoprivreda", icon: <Tractor size={15} />, keywords: ["poljo", "kultiv", "pumpa", "prska", "rasprs"] },
+const fallbackCategories: CategoryOption[] = [
+  { id: "kuca", label: "Kuća i radionica", icon: <Home size={15} />, iconUrl: null, keywords: ["alat", "šraf", "šrafc", "busil", "bušil", "čekić"] },
+  { id: "vrt", label: "Dvorište i vrt", icon: <Truck size={15} />, iconUrl: null, keywords: ["trimer", "motor", "pumpa", "prska", "kosa", "vrt", "vrtni"] },
+  { id: "struja", label: "Elektrika / baterija", icon: <Sparkles size={15} />, iconUrl: null, keywords: ["akku", "bater", "elekt", "struj"] },
+  { id: "poljo", label: "Poljoprivreda", icon: <Tractor size={15} />, iconUrl: null, keywords: ["poljo", "kultiv", "pumpa", "prska", "rasprs"] },
 ];
 
 const slideIntervalMs = 4200;
@@ -33,7 +41,7 @@ export default function StorefrontPage() {
   const categories = useConvexQuery<PublicCategory[]>("categories:listPublic", {});
   const isLoading = products === undefined;
   const items = products ?? [];
-  const categoryOptions = useMemo(() => {
+  const categoryOptions: CategoryOption[] = useMemo(() => {
     const apiCategories =
       categories?.map((category) => ({
         id: category.id ?? (category as any)._id,
@@ -96,9 +104,9 @@ export default function StorefrontPage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={cat.iconUrl} alt={cat.label} className="h-4 w-4 rounded-full object-cover" />
               ) : (
-                (cat as any).icon ?? <Sparkles size={15} />
+                cat.icon ?? <Sparkles size={15} />
               )}
-              {cat.label ?? (cat as any).name}
+              {cat.label}
             </button>
           ))}
         </div>
