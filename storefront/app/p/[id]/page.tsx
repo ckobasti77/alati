@@ -4,9 +4,9 @@ import { useMemo, useState, FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { ArrowLeft, Loader2, MoveRight, Shield, Sparkles, Truck } from "lucide-react";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { formatCurrency } from "@/lib/format";
-import type { PublicProduct } from "@/lib/types";
+import { ThemeToggle } from "../../../components/ThemeToggle";
+import { formatCurrency } from "../../..//lib/format";
+import type { PublicProduct } from "../../..//lib/types";
 
 export default function ProductPage() {
   const params = useParams();

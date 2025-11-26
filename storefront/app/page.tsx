@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { ArrowUpRight, Home, Loader2, Search, Shield, Sparkles, Tractor, Truck, Wrench } from "lucide-react";
-import { ProductCard } from "@/components/ProductCard";
-import type { PublicCategory, PublicProduct } from "@/lib/types";
-import { formatCurrency } from "@/lib/format";
+import { ProductCard } from "../components/ProductCard";
+import type { PublicCategory, PublicProduct } from "../lib/types";
+import { formatCurrency } from "../lib/format";
 
 const highlights = [
   { icon: <Sparkles size={16} />, title: "Top izbor", desc: "Provereni modeli koje kupuju majstori i domaćinstva." },

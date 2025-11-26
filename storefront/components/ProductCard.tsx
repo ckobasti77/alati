@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { MoveRight } from "lucide-react";
-import { clampText, formatCurrency } from "@/lib/format";
-import type { PublicProduct } from "@/lib/types";
+import { clampText, formatCurrency } from "../lib/format";
+import type { PublicProduct } from "../lib/types";
 
 export function ProductCard({ product }: { product: PublicProduct }) {
   const mainImage = product.images?.find((image) => image.isMain) ?? product.images?.[0];
