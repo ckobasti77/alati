@@ -2,18 +2,18 @@
 
 import { useMemo, useState, FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
 import { ArrowLeft, Loader2, MoveRight, Shield, Sparkles, Truck } from "lucide-react";
 import { ThemeToggle } from "../../../components/ThemeToggle";
-import { formatCurrency } from "../../..//lib/format";
-import type { PublicProduct } from "../../..//lib/types";
+import { formatCurrency } from "../../../lib/format";
+import type { PublicProduct } from "../../../lib/types";
+import { useConvexQuery } from "../../../lib/convex";
 
 export default function ProductPage() {
   const params = useParams();
   const router = useRouter();
   const productId = params?.id as string;
 
-  const product = useQuery("products:getPublic", { id: productId }) as PublicProduct | null | undefined;
+  const product = useConvexQuery<PublicProduct | null>("products:getPublic", { id: productId });
   const isLoading = product === undefined;
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [orderData, setOrderData] = useState({

@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "convex/react";
 import { ArrowUpRight, Home, Loader2, Search, Shield, Sparkles, Tractor, Truck, Wrench } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import type { PublicCategory, PublicProduct } from "../lib/types";
 import { formatCurrency } from "../lib/format";
+import { useConvexQuery } from "../lib/convex";
 
 const highlights = [
   { icon: <Sparkles size={16} />, title: "Top izbor", desc: "Provereni modeli koje kupuju majstori i domaćinstva." },
@@ -29,10 +29,8 @@ export default function StorefrontPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [slideIndex, setSlideIndex] = useState(0);
 
-  const products = useQuery("products:listPublic", { search: search.trim() || undefined }) as
-    | PublicProduct[]
-    | undefined;
-  const categories = useQuery("categories:listPublic", {}) as PublicCategory[] | undefined;
+  const products = useConvexQuery<PublicProduct[]>("products:listPublic", { search: search.trim() || undefined });
+  const categories = useConvexQuery<PublicCategory[]>("categories:listPublic", {});
   const isLoading = products === undefined;
   const items = products ?? [];
   const categoryOptions = useMemo(() => {
