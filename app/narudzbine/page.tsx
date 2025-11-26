@@ -219,14 +219,19 @@ function OrdersContent() {
   useEffect(() => {
     if (!productIdValue || !selectedProduct || selectedVariants.length === 0) {
       if (variantIdValue) {
-        form.setValue("variantId", "", { shouldDirty: true, shouldValidate: true });
+        form.setValue("variantId", "", { shouldDirty: false, shouldValidate: true });
       }
       return;
     }
-    if (!selectedVariants.some((variant) => variant.id === variantIdValue)) {
-      form.setValue("variantId", "", { shouldDirty: true, shouldValidate: true });
+    const selectedExists = selectedVariants.some((variant) => variant.id === variantIdValue);
+    if (!selectedExists) {
+      const fallbackVariant = selectedVariants.find((variant) => variant.isDefault) ?? selectedVariants[0];
+      if (fallbackVariant) {
+        form.setValue("variantId", fallbackVariant.id, { shouldDirty: false, shouldValidate: true });
+        setProductInput(composeVariantLabel(selectedProduct, fallbackVariant));
+      }
     }
-  }, [form, productIdValue, selectedProduct, selectedVariants, variantIdValue]);
+  }, [form, productIdValue, selectedProduct, selectedVariants, setProductInput, variantIdValue]);
 
   const resetOrderForm = (options?: { closeModal?: boolean }) => {
     form.reset(defaultFormValues);
@@ -584,33 +589,46 @@ function OrdersContent() {
                 render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel>Tip / varijanta</FormLabel>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {selectedVariants.map((variant) => (
-                        <button
-                          key={variant.id}
-                          type="button"
-                          className={`flex flex-col gap-1 rounded-md border px-3 py-2 text-left text-sm transition ${
-                            field.value === variant.id
-                              ? "border-blue-500 bg-blue-50 text-blue-700"
-                              : "border-slate-200 hover:border-slate-300"
-                          }`}
-                          onClick={() => {
-                            field.onChange(variant.id);
-                            if (selectedProduct) {
-                              setProductInput(composeVariantLabel(selectedProduct, variant));
-                            }
-                          }}
-                        >
-                          <span className="font-medium text-slate-800">
-                            {selectedProduct ? composeVariantLabel(selectedProduct, variant) : variant.label}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
-                          </span>
-                          <RichTextSnippet text={variant.opis || selectedProduct?.opisFbInsta || selectedProduct?.opisKp || selectedProduct?.opis} />
-                          {variant.isDefault && <span className="text-[11px] font-medium text-emerald-600">Podrazumevano</span>}
-                        </button>
-                      ))}
+                    <p className="text-xs text-slate-500">
+                      Odaberi tacno koji tip proizvoda je prodat. Podrazumevani tip se popunjava automatski, ali mozes da ga promenis.
+                    </p>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {selectedVariants.map((variant) => {
+                        const isActive = field.value === variant.id;
+                        const composedLabel = selectedProduct ? composeVariantLabel(selectedProduct, variant) : variant.label;
+                        return (
+                          <label
+                            key={variant.id}
+                            className={`cursor-pointer rounded-md border px-3 py-2 text-sm transition ${
+                              isActive ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" : "border-slate-200 hover:border-slate-300"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="variantId"
+                              value={variant.id}
+                              checked={isActive}
+                              onChange={() => {
+                                field.onChange(variant.id);
+                                if (selectedProduct) {
+                                  setProductInput(composedLabel);
+                                }
+                                setProductMenuOpen(false);
+                                setExpandedProductId(null);
+                              }}
+                              className="sr-only"
+                            />
+                            <span className="font-medium text-slate-800">{composedLabel}</span>
+                            <span className="text-xs text-slate-500">
+                              Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
+                            </span>
+                            <RichTextSnippet text={variant.opis || selectedProduct?.opisFbInsta || selectedProduct?.opisKp || selectedProduct?.opis} />
+                            {variant.isDefault ? (
+                              <span className="text-[11px] font-semibold text-emerald-600">Podrazumevano</span>
+                            ) : null}
+                          </label>
+                        );
+                      })}
                     </div>
                     <FormMessage>{fieldState.error?.message}</FormMessage>
                   </FormItem>

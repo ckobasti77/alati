@@ -45,6 +45,7 @@ export interface Product {
   publishKp?: boolean;
   publishFb?: boolean;
   publishIg?: boolean;
+  pickupAvailable?: boolean;
   images?: ProductImage[];
   createdAt: number;
   updatedAt: number;

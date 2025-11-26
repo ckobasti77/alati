@@ -544,6 +544,35 @@ button {
   font-weight: 700;
 }
 
+.pill.pickup-pill {
+  background: rgba(46, 196, 138, 0.15);
+  border-color: rgba(46, 196, 138, 0.45);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pickup-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(46, 196, 138, 0.45);
+  background: rgba(46, 196, 138, 0.15);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  width: fit-content;
+}
+
+.pickup-indicator input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  pointer-events: none;
+}
+
 .grid-meta {
   display: flex;
   gap: 10px;

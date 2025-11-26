@@ -7,7 +7,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, Check, CloudUpload, Images, LayoutGrid, List, Loader2, Plus, Tag, X } from "lucide-react";
+import { ArrowUpRight, Check, CloudUpload, Images, LayoutGrid, List, Loader2, Plus, Search, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -82,6 +82,7 @@ const productSchema = z
     publishKp: z.boolean().optional(),
     publishFb: z.boolean().optional(),
     publishIg: z.boolean().optional(),
+    pickupAvailable: z.boolean().optional(),
     variants: z.array(variantSchema).optional(),
   })
   .superRefine((data, ctx) => {
@@ -154,6 +155,7 @@ const emptyProductForm = (): ProductFormValues => ({
   publishKp: false,
   publishFb: false,
   publishIg: false,
+  pickupAvailable: false,
   variants: [],
 });
 
@@ -177,6 +179,7 @@ function ProductsContent() {
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
+  const [productSearch, setProductSearch] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
@@ -331,6 +334,7 @@ function ProductsContent() {
       publishKp: Boolean(values.publishKp),
       publishFb: Boolean(values.publishFb),
       publishIg: Boolean(values.publishIg),
+      pickupAvailable: Boolean(values.pickupAvailable),
       categoryIds: (values.categoryIds ?? []).filter(Boolean),
       images: buildImagePayload(images),
       variants,
@@ -478,17 +482,6 @@ function ProductsContent() {
   };
 
   const items = useMemo(() => products ?? [], [products]);
-  const filteredCategories = useMemo(() => {
-    const list = categories ?? [];
-    const needle = categorySearch.trim().toLowerCase();
-    if (!needle) return list;
-    return list.filter((category) => category.name.toLowerCase().includes(needle));
-  }, [categories, categorySearch]);
-  const selectedCategories = useMemo(() => {
-    if (!categories) return [];
-    const map = new Map(categories.map((category) => [category._id, category]));
-    return categoryIds.map((id) => map.get(id)).filter(Boolean) as Category[];
-  }, [categories, categoryIds]);
   const categoryMap = useMemo(() => {
     const map = new Map<string, Category>();
     (categories ?? []).forEach((category) => {
@@ -496,6 +489,35 @@ function ProductsContent() {
     });
     return map;
   }, [categories]);
+  const filteredProducts = useMemo(() => {
+    const list = items;
+    const needle = productSearch.trim().toLowerCase();
+    if (!needle) return list;
+    return list.filter((product) => {
+      const baseText = `${product.kpName ?? ""} ${product.name ?? ""} ${product.opisKp ?? ""} ${product.opisFbInsta ?? ""} ${product.opis ?? ""}`.toLowerCase();
+      if (baseText.includes(needle)) return true;
+      if ((product.variants ?? []).some((variant) => variant.label.toLowerCase().includes(needle))) {
+        return true;
+      }
+      const hasCategoryHit = (product.categoryIds ?? []).some((id) => {
+        const category = categoryMap.get(id);
+        return category ? category.name.toLowerCase().includes(needle) : false;
+      });
+      return hasCategoryHit;
+    });
+  }, [categoryMap, items, productSearch]);
+  const filteredCategories = useMemo(() => {
+    const list = categories ?? [];
+    const needle = categorySearch.trim().toLowerCase();
+    if (!needle) return list;
+    return list.filter((category) => category.name.toLowerCase().includes(needle));
+  }, [categories, categorySearch]);
+  const hasProductSearch = productSearch.trim().length > 0;
+  const selectedCategories = useMemo(() => {
+    if (!categories) return [];
+    const map = new Map(categories.map((category) => [category._id, category]));
+    return categoryIds.map((id) => map.get(id)).filter(Boolean) as Category[];
+  }, [categories, categoryIds]);
   const variantsFieldError = form.formState.errors.variants;
   const variantsError =
     variantsFieldError && !Array.isArray(variantsFieldError) ? (variantsFieldError.message as string | undefined) : undefined;
@@ -890,6 +912,7 @@ function ProductsContent() {
       publishKp: product.publishKp ?? false,
       publishFb: product.publishFb ?? false,
       publishIg: product.publishIg ?? false,
+      pickupAvailable: product.pickupAvailable ?? false,
       variants: mappedVariants,
     });
     setImages((prev) => {
@@ -1240,7 +1263,7 @@ function ProductsContent() {
                 )}
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               <FormField
                 name="publishKp"
                 render={({ field }) => (
@@ -1288,6 +1311,23 @@ function ProductsContent() {
                     />
                     <FormLabel htmlFor="publish-ig" className="m-0 cursor-pointer">
                       Objavi na Instagram
+                    </FormLabel>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                name="pickupAvailable"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
+                    <input
+                      id="pickup-available"
+                      type="checkbox"
+                      checked={!!field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <FormLabel htmlFor="pickup-available" className="m-0 cursor-pointer">
+                      Lično preuzimanje
                     </FormLabel>
                   </FormItem>
                 )}
@@ -1678,34 +1718,50 @@ function ProductsContent() {
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle>Lista proizvoda ({items.length})</CardTitle>
+            <CardTitle>
+              Lista proizvoda ({hasProductSearch ? `${filteredProducts.length} od ${items.length}` : items.length})
+            </CardTitle>
             <p className="text-sm text-slate-500">
               {viewMode === "list"
                 ? "Klikni na red da otvoris pregled proizvoda."
                 : "Klikni na sliku da otvoris pregled proizvoda."}
             </p>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
-            <Button
-              type="button"
-              variant={viewMode === "grid" ? "default" : "ghost"}
-              size="sm"
-              className="gap-2 rounded-full"
-              onClick={() => setViewMode("grid")}
-            >
-              <LayoutGrid className="h-4 w-4" />
-              Grid
-            </Button>
-            <Button
-              type="button"
-              variant={viewMode === "list" ? "default" : "ghost"}
-              size="sm"
-              className="gap-2 rounded-full"
-              onClick={() => setViewMode("list")}
-            >
-              <List className="h-4 w-4" />
-              Lista
-            </Button>
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+            <div className="relative w-full md:w-64">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={productSearch}
+                onChange={(event) => {
+                  setProductSearch(event.target.value);
+                }}
+                placeholder="Pretrazi proizvode"
+                className="pl-9"
+                aria-label="Pretraga proizvoda"
+              />
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
+              <Button
+                type="button"
+                variant={viewMode === "grid" ? "default" : "ghost"}
+                size="sm"
+                className="gap-2 rounded-full"
+                onClick={() => setViewMode("grid")}
+              >
+                <LayoutGrid className="h-4 w-4" />
+                Grid
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === "list" ? "default" : "ghost"}
+                size="sm"
+                className="gap-2 rounded-full"
+                onClick={() => setViewMode("list")}
+              >
+                <List className="h-4 w-4" />
+                Lista
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className={viewMode === "list" ? "overflow-x-auto" : "pb-6"}>
@@ -1723,14 +1779,14 @@ function ProductsContent() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.length === 0 ? (
+                {filteredProducts.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-sm text-slate-500">
-                      Dodaj prvi proizvod.
+                      {items.length === 0 ? "Dodaj prvi proizvod." : "Nema proizvoda koji odgovaraju pretrazi."}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  items.map((product) => {
+                  filteredProducts.map((product) => {
                     const variantsList = product.variants ?? [];
                     const defaultVariant = variantsList.find((variant) => variant.isDefault) ?? variantsList[0];
                     const productCategories = (product.categoryIds ?? [])
@@ -1849,13 +1905,13 @@ function ProductsContent() {
             </Table>
           ) : (
             <>
-              {items.length === 0 ? (
+              {filteredProducts.length === 0 ? (
                 <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
-                  Dodaj prvi proizvod.
+                  {items.length === 0 ? "Dodaj prvi proizvod." : "Nema proizvoda koji odgovaraju pretrazi."}
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {items.map((product) => {
+                  {filteredProducts.map((product) => {
                     const images = product.images ?? [];
                     const mainImage = images.find((image) => image.isMain) ?? images[0];
                     const mainUrl = mainImage?.url;

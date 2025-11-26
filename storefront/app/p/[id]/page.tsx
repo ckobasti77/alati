@@ -105,6 +105,12 @@ export default function ProductPage() {
               Naruči <MoveRight size={16} />
             </button>
           </div>
+          {product.pickupAvailable ? (
+            <label className="pickup-indicator">
+              <input type="checkbox" checked readOnly aria-label="Lično preuzimanje dostupno" />
+              Lično preuzimanje dostupno
+            </label>
+          ) : null}
 
           {variants.length > 0 && (
             <div className="variant-switch">

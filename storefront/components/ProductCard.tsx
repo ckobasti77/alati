@@ -18,6 +18,7 @@ export function ProductCard({ product }: { product: PublicProduct }) {
         <div className="product-card__glow" />
         <div className="product-card__meta">
           <span className="pill strong">{formatCurrency(product.prodajnaCena)}</span>
+          {product.pickupAvailable ? <span className="pill pickup-pill">Lično preuzimanje</span> : null}
         </div>
       </div>
       <div className="product-card__body">

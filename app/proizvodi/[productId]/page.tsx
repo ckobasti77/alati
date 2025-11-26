@@ -302,6 +302,7 @@ function ProductDetailsContent() {
       publishKp: current.publishKp,
       publishFb: current.publishFb,
       publishIg: current.publishIg,
+      pickupAvailable: current.pickupAvailable ?? false,
       categoryIds: current.categoryIds ?? [],
       variants,
       images: (current.images ?? []).map((image) => ({
@@ -500,7 +501,10 @@ function ProductDetailsContent() {
     );
   };
 
-  const handlePublishToggle = async (field: "publishKp" | "publishFb" | "publishIg", value: boolean) => {
+  const handlePublishToggle = async (
+    field: "publishKp" | "publishFb" | "publishIg" | "pickupAvailable",
+    value: boolean,
+  ) => {
     await applyUpdate(
       (current) => ({
         ...current,
@@ -1102,12 +1106,13 @@ function ProductDetailsContent() {
                 multiline
                 onSave={(val) => handleBaseFieldSave("opisFbInsta", val)}
               />
-              <div className="grid gap-2 sm:grid-cols-3">
-                {([
-                  { key: "publishKp" as const, label: "Objava KP", checked: product.publishKp },
-                  { key: "publishFb" as const, label: "Objava Facebook", checked: product.publishFb },
-                  { key: "publishIg" as const, label: "Objava Instagram", checked: product.publishIg },
-                ]).map((item) => (
+          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            {([
+              { key: "publishKp" as const, label: "Objava KP", checked: product.publishKp },
+              { key: "publishFb" as const, label: "Objava Facebook", checked: product.publishFb },
+              { key: "publishIg" as const, label: "Objava Instagram", checked: product.publishIg },
+              { key: "pickupAvailable" as const, label: "Lično preuzimanje", checked: product.pickupAvailable },
+            ]).map((item) => (
                   <label
                     key={item.key}
                     className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300"

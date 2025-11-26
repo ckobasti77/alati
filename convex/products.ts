@@ -252,6 +252,7 @@ async function toPublicProduct(ctx: { storage: any }, product: Doc<"products">) 
     publishKp: product.publishKp,
     publishFb: product.publishFb,
     publishIg: product.publishIg,
+    pickupAvailable: Boolean(product.pickupAvailable),
     categoryIds: product.categoryIds,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
@@ -300,6 +301,7 @@ export const create = mutation({
     publishKp: v.optional(v.boolean()),
     publishFb: v.optional(v.boolean()),
     publishIg: v.optional(v.boolean()),
+    pickupAvailable: v.optional(v.boolean()),
     variants: v.optional(v.array(productVariantArg)),
     images: v.optional(v.array(productImageArg)),
   },
@@ -313,6 +315,7 @@ export const create = mutation({
     const publishKp = Boolean(args.publishKp);
     const publishFb = Boolean(args.publishFb);
     const publishIg = Boolean(args.publishIg);
+    const pickupAvailable = Boolean(args.pickupAvailable);
     const images = normalizeImages(undefined, args.images);
     const variants = normalizeVariants(args.variants);
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
@@ -332,6 +335,7 @@ export const create = mutation({
       publishKp,
       publishFb,
       publishIg,
+      pickupAvailable,
       createdAt: now,
       updatedAt: now,
     });
@@ -353,6 +357,7 @@ export const update = mutation({
     publishKp: v.optional(v.boolean()),
     publishFb: v.optional(v.boolean()),
     publishIg: v.optional(v.boolean()),
+    pickupAvailable: v.optional(v.boolean()),
     variants: v.optional(v.array(productVariantArg)),
     images: v.optional(v.array(productImageArg)),
   },
@@ -377,6 +382,7 @@ export const update = mutation({
     const publishKp = args.publishKp ?? product.publishKp ?? false;
     const publishFb = args.publishFb ?? product.publishFb ?? false;
     const publishIg = args.publishIg ?? product.publishIg ?? false;
+    const pickupAvailable = args.pickupAvailable ?? product.pickupAvailable ?? false;
     const images = normalizeImages(product.images, args.images);
     const variants = normalizeVariants(args.variants, product.variants);
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
@@ -411,6 +417,7 @@ export const update = mutation({
       publishKp,
       publishFb,
       publishIg,
+      pickupAvailable,
       updatedAt: Date.now(),
     });
     await Promise.all(
