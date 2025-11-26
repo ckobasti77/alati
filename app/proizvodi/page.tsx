@@ -7,7 +7,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, CloudUpload, Images, LayoutGrid, List, Plus } from "lucide-react";
+import { ArrowUpRight, Check, CloudUpload, Images, LayoutGrid, List, Loader2, Plus, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,7 +40,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
-import type { Product } from "@/types/order";
+import type { Category, Product } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 
@@ -72,9 +72,11 @@ const variantSchema = z.object({
 const productSchema = z
   .object({
     productType: z.enum(["single", "variant"]),
-    name: z.string().min(2, "Naziv je obavezan."),
+    kpName: z.string().min(2, "KP naziv je obavezan."),
+    name: z.string().min(2, "FB / Insta naziv je obavezan."),
     nabavnaCena: priceField("Nabavna cena"),
     prodajnaCena: priceField("Prodajna cena"),
+    categoryIds: z.array(z.string()).optional(),
     opisKp: z.string().optional(),
     opisFbInsta: z.string().optional(),
     publishKp: z.boolean().optional(),
@@ -115,6 +117,13 @@ type DraftImage = {
   isMain: boolean;
 };
 
+type DraftCategoryIcon = {
+  storageId: string;
+  previewUrl?: string;
+  fileName?: string;
+  contentType?: string;
+};
+
 const generateId = () => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -135,9 +144,11 @@ const createVariantFormEntry = (
 
 const emptyProductForm = (): ProductFormValues => ({
   productType: "single",
+  kpName: "",
   name: "",
   nabavnaCena: "",
   prodajnaCena: "",
+  categoryIds: [],
   opisKp: "",
   opisFbInsta: "",
   publishKp: false,
@@ -165,9 +176,19 @@ function ProductsContent() {
   const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
+  const [categorySearch, setCategorySearch] = useState("");
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIcon, setNewCategoryIcon] = useState<DraftCategoryIcon | null>(null);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [isUploadingCategoryIcon, setIsUploadingCategoryIcon] = useState(false);
+  const [hasSeededCategories, setHasSeededCategories] = useState(false);
   const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
   const productUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
+  const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
   const dialogScrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputId = useMemo(() => `product-images-${generateId()}`, []);
   const hiddenFileInputStyle = useMemo<CSSProperties>(
@@ -178,6 +199,16 @@ function ProductsContent() {
   const createProduct = useConvexMutation("products:create");
   const updateProduct = useConvexMutation("products:update");
   const removeProduct = useConvexMutation<{ id: string; token: string }>("products:remove");
+  const categories = useConvexQuery<Category[]>("categories:list", { token: sessionToken });
+  const createCategory = useConvexMutation<
+    {
+      token: string;
+      name: string;
+      icon?: { storageId: string; fileName?: string; contentType?: string };
+    },
+    string
+  >("categories:create");
+  const ensureDefaultCategories = useConvexMutation<{ token: string }, { created: number }>("categories:ensureDefaults");
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
 
   const form = useForm<ProductFormValues>({
@@ -190,8 +221,20 @@ function ProductsContent() {
   }, [form]);
   const productType = useWatch({ control: form.control, name: "productType" }) as ProductFormValues["productType"];
   const variants = (useWatch({ control: form.control, name: "variants" }) ?? []) as VariantFormEntry[];
+  const categoryIds = (useWatch({ control: form.control, name: "categoryIds" }) ?? []) as string[];
   const resolvedProductType = productType ?? "single";
   const normalizedVariants = resolvedProductType === "variant" && Array.isArray(variants) ? variants : [];
+
+  useEffect(() => {
+    if (hasSeededCategories) return;
+    if (categories === undefined) return;
+    if (categories.length > 0) return;
+    setHasSeededCategories(true);
+    ensureDefaultCategories({ token: sessionToken }).catch((error) => {
+      console.error(error);
+      setHasSeededCategories(false);
+    });
+  }, [categories, ensureDefaultCategories, hasSeededCategories, sessionToken]);
 
   const resetForm = () => {
     form.reset(emptyProductForm());
@@ -216,6 +259,15 @@ function ProductsContent() {
     variantUploadInputsRef.current = {};
     setEditingProduct(null);
     setIsDraggingFiles(false);
+    setCategorySearch("");
+    setCategoryMenuOpen(false);
+    setIsAddingCategory(false);
+    setNewCategoryName("");
+    if (newCategoryIcon?.previewUrl) {
+      URL.revokeObjectURL(newCategoryIcon.previewUrl);
+    }
+    setNewCategoryIcon(null);
+    setIsUploadingCategoryIcon(false);
   };
 
   const closeModal = () => {
@@ -266,9 +318,12 @@ function ProductsContent() {
           })
         : undefined;
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
+    const fbName = values.name.trim();
+    const kpName = values.kpName.trim() || fbName;
     const payload = {
       token: sessionToken,
-      name: values.name.trim(),
+      name: fbName,
+      kpName,
       nabavnaCena: defaultVariant?.nabavnaCena ?? baseNabavna,
       prodajnaCena: defaultVariant?.prodajnaCena ?? baseProdajna,
       opisKp: values.opisKp?.trim() ? values.opisKp.trim() : undefined,
@@ -276,6 +331,7 @@ function ProductsContent() {
       publishKp: Boolean(values.publishKp),
       publishFb: Boolean(values.publishFb),
       publishIg: Boolean(values.publishIg),
+      categoryIds: (values.categoryIds ?? []).filter(Boolean),
       images: buildImagePayload(images),
       variants,
     };
@@ -308,7 +364,138 @@ function ProductsContent() {
     }
   };
 
+  const resetNewCategoryState = () => {
+    setIsAddingCategory(false);
+    setNewCategoryName("");
+    if (newCategoryIcon?.previewUrl) {
+      URL.revokeObjectURL(newCategoryIcon.previewUrl);
+    }
+    setNewCategoryIcon(null);
+    setIsUploadingCategoryIcon(false);
+  };
+
+  const handleSelectCategory = (categoryId: string) => {
+    const current = (form.getValues("categoryIds") ?? []) as string[];
+    if (current.includes(categoryId)) {
+      setCategorySearch("");
+      setCategoryMenuOpen(false);
+      return;
+    }
+    const next = [...current, categoryId];
+    form.setValue("categoryIds", next, { shouldDirty: true, shouldValidate: true });
+    setCategorySearch("");
+    setCategoryMenuOpen(false);
+  };
+
+  const handleRemoveCategory = (categoryId: string) => {
+    const current = (form.getValues("categoryIds") ?? []) as string[];
+    const next = current.filter((id) => id !== categoryId);
+    form.setValue("categoryIds", next, { shouldDirty: true, shouldValidate: true });
+  };
+
+  const handleUploadCategoryIcon = async (file: File) => {
+    if (isUploadingCategoryIcon) return;
+    const isImage = file.type?.startsWith("image/") || /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name);
+    if (!isImage) {
+      toast.error("Prevuci ili izaberi fajl tipa slike za ikonicu.");
+      return;
+    }
+    setIsUploadingCategoryIcon(true);
+    try {
+      const uploadUrl = await generateUploadUrl({ token: sessionToken });
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!response.ok) {
+        throw new Error("Upload ikonice nije uspeo.");
+      }
+      const { storageId } = await response.json();
+      if (newCategoryIcon?.previewUrl) {
+        URL.revokeObjectURL(newCategoryIcon.previewUrl);
+      }
+      setNewCategoryIcon({
+        storageId,
+        previewUrl: URL.createObjectURL(file),
+        fileName: file.name,
+        contentType: file.type,
+      });
+      toast.success("Ikonica je spremna.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Upload ikonice nije uspeo.");
+    } finally {
+      setIsUploadingCategoryIcon(false);
+    }
+  };
+
+  const handleCategoryIconChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await handleUploadCategoryIcon(file);
+    }
+    event.target.value = "";
+  };
+
+  const handleCategoryIconDrop = async (event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const file = event.dataTransfer?.files?.[0];
+    if (file) {
+      await handleUploadCategoryIcon(file);
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) {
+      toast.error("Upisi naziv kategorije.");
+      return;
+    }
+    setIsCreatingCategory(true);
+    try {
+      const id = await createCategory({
+        token: sessionToken,
+        name,
+        icon: newCategoryIcon
+          ? {
+              storageId: newCategoryIcon.storageId,
+              fileName: newCategoryIcon.fileName,
+              contentType: newCategoryIcon.contentType,
+            }
+          : undefined,
+      });
+      handleSelectCategory(id);
+      toast.success("Kategorija dodata.");
+      resetNewCategoryState();
+    } catch (error) {
+      console.error(error);
+      toast.error("Kreiranje kategorije nije uspelo.");
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  };
+
   const items = useMemo(() => products ?? [], [products]);
+  const filteredCategories = useMemo(() => {
+    const list = categories ?? [];
+    const needle = categorySearch.trim().toLowerCase();
+    if (!needle) return list;
+    return list.filter((category) => category.name.toLowerCase().includes(needle));
+  }, [categories, categorySearch]);
+  const selectedCategories = useMemo(() => {
+    if (!categories) return [];
+    const map = new Map(categories.map((category) => [category._id, category]));
+    return categoryIds.map((id) => map.get(id)).filter(Boolean) as Category[];
+  }, [categories, categoryIds]);
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, Category>();
+    (categories ?? []).forEach((category) => {
+      map.set(category._id, category);
+    });
+    return map;
+  }, [categories]);
   const variantsFieldError = form.formState.errors.variants;
   const variantsError =
     variantsFieldError && !Array.isArray(variantsFieldError) ? (variantsFieldError.message as string | undefined) : undefined;
@@ -693,9 +880,11 @@ function ProductsContent() {
     });
     form.reset({
       productType: (product.variants ?? []).length > 0 ? "variant" : "single",
+      kpName: product.kpName ?? product.name,
       name: product.name,
       nabavnaCena: product.nabavnaCena.toString(),
       prodajnaCena: product.prodajnaCena.toString(),
+      categoryIds: product.categoryIds ?? [],
       opisKp: product.opisKp ?? "",
       opisFbInsta: product.opisFbInsta ?? product.opis ?? "",
       publishKp: product.publishKp ?? false,
@@ -731,8 +920,21 @@ function ProductsContent() {
       });
       return map;
     });
+    resetNewCategoryState();
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!categoryMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!categoryDropdownRef.current) return;
+      if (categoryDropdownRef.current.contains(event.target as Node)) return;
+      setCategoryMenuOpen(false);
+      resetNewCategoryState();
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [categoryMenuOpen]);
 
   const handleRowClick = (id: string) => {
     router.push(`/proizvodi/${id}`);
@@ -779,7 +981,7 @@ function ProductsContent() {
               <DialogTitle>{editingProduct ? "Izmeni proizvod" : "Novi proizvod"}</DialogTitle>
               <p className="text-sm text-slate-500">
                 {editingProduct
-                  ? `Trenutno menjas: ${editingProduct.name}`
+                  ? `Trenutno menjas: ${editingProduct.kpName ?? editingProduct.name}`
                   : "Sacuvaj nabavnu i prodajnu cenu u evrima."}
               </p>
             </DialogHeader>
@@ -814,22 +1016,208 @@ function ProductsContent() {
           <CardTitle>{editingProduct ? "Izmeni proizvod" : "Novi proizvod"}</CardTitle>
           {editingProduct && (
             <p className="text-sm text-slate-500">
-              Trenutno menjas: <span className="font-medium text-slate-700">{editingProduct.name}</span>
+              Trenutno menjas:{" "}
+              <span className="font-medium text-slate-700">{editingProduct.kpName ?? editingProduct.name}</span>
             </p>
           )}
         </CardHeader>
         <CardContent>
           <Form form={form} onSubmit={handleSubmit} className="space-y-4">
-            <FormField
-              name="name"
-              render={({ field, fieldState }) => (
-                <FormItem>
-                  <FormLabel>Naziv</FormLabel>
-                  <Input placeholder="npr. USB kabl" {...field} />
-                  <FormMessage>{fieldState.error?.message}</FormMessage>
-                </FormItem>
-              )}
-            />
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField
+                name="kpName"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>KP naziv (glavni na sajtu)</FormLabel>
+                    <Input placeholder="npr. Samohodni trimer" {...field} />
+                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                name="name"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>FB / Insta naziv</FormLabel>
+                    <Input placeholder="npr. Trimer za FB/IG objavu" {...field} />
+                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                  </FormItem>
+                )}
+              />
+            </div>
+              <div className="space-y-2" ref={categoryDropdownRef}>
+                <FormLabel>Kategorije</FormLabel>
+                <p className="text-sm text-slate-500">Biraj postojecu ili napravi novu na licu mesta.</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedCategories.length === 0 ? (
+                    <span className="text-xs text-slate-500">Nema izabranih kategorija.</span>
+                ) : (
+                  selectedCategories.map((category) => (
+                    <span
+                      key={category._id}
+                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700"
+                    >
+                      <Tag className="h-4 w-4 text-slate-500" />
+                      {category.name}
+                      <button
+                        type="button"
+                        className="rounded-full p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+                        onClick={() => handleRemoveCategory(category._id)}
+                        title="Ukloni kategoriju"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+              <div className="relative">
+                <Input
+                  value={categorySearch}
+                  placeholder={categories === undefined ? "Ucitavanje kategorija..." : "Pretrazi ili dodaj kategoriju"}
+                  disabled={categories === undefined}
+                  onChange={(event) => {
+                    setCategorySearch(event.target.value);
+                    setCategoryMenuOpen(true);
+                  }}
+                  onFocus={() => {
+                    setCategoryMenuOpen(true);
+                  }}
+                  onClick={() => setCategoryMenuOpen(true)}
+                />
+                <input
+                  ref={categoryIconInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handleCategoryIconChange}
+                />
+                  {categoryMenuOpen && (
+                    <div
+                      className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg"
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                    <div className="border-b border-slate-100 bg-slate-50/60">
+                      {isAddingCategory ? (
+                        <div className="flex items-center gap-2 px-3 py-2">
+                          <div
+                            className="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-white text-slate-500 hover:border-blue-400"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              categoryIconInputRef.current?.click();
+                            }}
+                            onDragOver={(event) => event.preventDefault()}
+                            onDrop={handleCategoryIconDrop}
+                            title="Prevuci ili izaberi ikonicu"
+                          >
+                            {isUploadingCategoryIcon ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : newCategoryIcon?.previewUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={newCategoryIcon.previewUrl} alt="Ikonica" className="h-full w-full object-cover" />
+                            ) : (
+                              <Tag className="h-4 w-4" />
+                            )}
+                          </div>
+                          <Input
+                            value={newCategoryName}
+                            placeholder="Naziv kategorije"
+                            onChange={(event) => setNewCategoryName(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                handleCreateCategory();
+                              }
+                            }}
+                          />
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                handleCreateCategory();
+                              }}
+                              disabled={isCreatingCategory}
+                              className="gap-1"
+                            >
+                              {isCreatingCategory ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Check className="h-4 w-4" />
+                              )}
+                              Sacuvaj
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                resetNewCategoryState();
+                              }}
+                            >
+                              Odustani
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setIsAddingCategory(true);
+                            setCategoryMenuOpen(true);
+                          }}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Dodaj novu kategoriju
+                        </button>
+                      )}
+                    </div>
+                    {categories === undefined ? (
+                      <div className="px-3 py-2 text-sm text-slate-500">Ucitavanje...</div>
+                    ) : filteredCategories.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-slate-500">Nema rezultata</div>
+                    ) : (
+                      filteredCategories.map((category, idx) => {
+                        const isSelected = categoryIds.includes(category._id);
+                        return (
+                          <button
+                            key={category._id}
+                            type="button"
+                            className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition ${
+                              idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                            } ${isSelected ? "text-blue-700" : "text-slate-800"} hover:bg-blue-50`}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleSelectCategory(category._id);
+                            }}
+                          >
+                            {category.iconUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={category.iconUrl} alt={category.name} className="h-8 w-8 rounded-md object-cover" />
+                            ) : (
+                              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-500">
+                                <Tag className="h-4 w-4" />
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              <p className="font-semibold">{category.name}</p>
+                              {isSelected ? <p className="text-[11px] text-emerald-600">Izabrana</p> : null}
+                            </div>
+                            {isSelected ? <Check className="h-4 w-4 text-emerald-600" /> : null}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 name="opisKp"
@@ -1300,16 +1688,6 @@ function ProductsContent() {
           <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
             <Button
               type="button"
-              variant={viewMode === "list" ? "default" : "ghost"}
-              size="sm"
-              className="gap-2 rounded-full"
-              onClick={() => setViewMode("list")}
-            >
-              <List className="h-4 w-4" />
-              Lista
-            </Button>
-            <Button
-              type="button"
               variant={viewMode === "grid" ? "default" : "ghost"}
               size="sm"
               className="gap-2 rounded-full"
@@ -1317,6 +1695,16 @@ function ProductsContent() {
             >
               <LayoutGrid className="h-4 w-4" />
               Grid
+            </Button>
+            <Button
+              type="button"
+              variant={viewMode === "list" ? "default" : "ghost"}
+              size="sm"
+              className="gap-2 rounded-full"
+              onClick={() => setViewMode("list")}
+            >
+              <List className="h-4 w-4" />
+              Lista
             </Button>
           </div>
         </CardHeader>
@@ -1345,6 +1733,9 @@ function ProductsContent() {
                   items.map((product) => {
                     const variantsList = product.variants ?? [];
                     const defaultVariant = variantsList.find((variant) => variant.isDefault) ?? variantsList[0];
+                    const productCategories = (product.categoryIds ?? [])
+                      .map((id) => categoryMap.get(id))
+                      .filter(Boolean) as Category[];
                     return (
                       <TableRow
                         key={product._id}
@@ -1359,7 +1750,7 @@ function ProductsContent() {
                               return (
                                 <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={mainImage.url} alt={product.name} className="h-full w-full object-cover" />
+                                  <img src={mainImage.url} alt={product.kpName ?? product.name} className="h-full w-full object-cover" />
                                 </div>
                               );
                             }
@@ -1371,10 +1762,26 @@ function ProductsContent() {
                           })()}
                         </TableCell>
                         <TableCell className="font-medium text-slate-700">
-                          <span className="inline-flex items-center gap-1">
-                            {product.name}
-                            <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                          </span>
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1 text-slate-900">
+                              {product.kpName ?? product.name}
+                              <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                            </span>
+                            <p className="text-xs text-slate-500">FB/IG: {product.name}</p>
+                            {productCategories.length ? (
+                              <div className="flex flex-wrap gap-1">
+                                {productCategories.map((category) => (
+                                  <span
+                                    key={category._id}
+                                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
+                                  >
+                                    <Tag className="h-3 w-3 text-slate-500" />
+                                    {category.name}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell className="max-w-sm text-sm text-slate-600">
                           {variantsList.length === 0 ? (
@@ -1452,6 +1859,9 @@ function ProductsContent() {
                     const images = product.images ?? [];
                     const mainImage = images.find((image) => image.isMain) ?? images[0];
                     const mainUrl = mainImage?.url;
+                    const productCategories = (product.categoryIds ?? [])
+                      .map((id) => categoryMap.get(id))
+                      .filter(Boolean) as Category[];
                     return (
                       <button
                         key={product._id}
@@ -1461,16 +1871,28 @@ function ProductsContent() {
                       >
                         {mainUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={mainUrl} alt={product.name} className="h-full w-full object-cover" />
+                          <img src={mainUrl} alt={product.kpName ?? product.name} className="h-full w-full object-cover" />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-400">
                             Bez slike
                           </div>
                         )}
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent opacity-0 transition group-hover:opacity-100" />
-                        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/60 to-transparent px-3 pb-3 pt-6 text-white">
-                          <p className="w-full truncate text-sm font-semibold">{product.name}</p>
-                          <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
+                        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/60 to-transparent px-3 pb-3 pt-6 text-white">
+                          {productCategories.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 text-[11px] font-semibold text-slate-200">
+                              {productCategories.slice(0, 2).map((category) => (
+                                <span key={category._id} className="rounded-full bg-white/15 px-2 py-0.5 backdrop-blur">
+                                  {category.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="flex items-center gap-2">
+                            <p className="w-full truncate text-sm font-semibold">{product.kpName ?? product.name}</p>
+                            <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
+                          </div>
+                          <p className="truncate text-[11px] text-slate-200">FB/IG: {product.name}</p>
                         </div>
                       </button>
                     );

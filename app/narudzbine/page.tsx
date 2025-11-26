@@ -61,6 +61,7 @@ const orderSchema = z.object({
     },
     z.enum(transportModes).optional(),
   ),
+  pickup: z.boolean().optional(),
   myProfitPercent: z.preprocess(
     (value) => {
       if (value === "" || value === undefined || value === null) return undefined;
@@ -83,6 +84,7 @@ const defaultFormValues: OrderFormValues = {
   phone: "",
   transportCost: undefined,
   transportMode: undefined,
+  pickup: false,
   myProfitPercent: undefined,
   note: "",
 };
@@ -261,6 +263,7 @@ function OrdersContent() {
         variant = variantsList.find((item) => item.isDefault) ?? variantsList[0];
       }
       const resolvedTitle = composeVariantLabel(product, variant);
+      const pickup = Boolean(values.pickup);
       const payload = {
         stage: values.stage,
         productId: product._id,
@@ -270,11 +273,12 @@ function OrdersContent() {
         kolicina: 1,
         nabavnaCena: variant?.nabavnaCena ?? product.nabavnaCena,
         prodajnaCena: variant?.prodajnaCena ?? product.prodajnaCena,
-        transportCost: values.transportCost,
-        transportMode: values.transportMode,
+        transportCost: pickup ? 0 : values.transportCost,
+        transportMode: pickup ? undefined : values.transportMode,
         customerName: values.customerName.trim(),
         address: values.address.trim(),
         phone: values.phone.trim(),
+        pickup,
         myProfitPercent: values.myProfitPercent,
         napomena: values.note?.trim() || undefined,
         token: sessionToken,
@@ -330,6 +334,7 @@ function OrdersContent() {
         transportCost: order.transportCost,
         transportMode: order.transportMode,
         myProfitPercent: order.myProfitPercent,
+        pickup: order.pickup,
         napomena: order.napomena,
       });
       toast.success("Status narudzbine promenjen.");
@@ -716,6 +721,26 @@ function OrdersContent() {
                     </select>
                     <p className="text-xs text-slate-500">Odaberi kurira ili dostavu.</p>
                     <FormMessage>{fieldState.error?.message}</FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                name="pickup"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-3">
+                    <input
+                      id="pickup"
+                      type="checkbox"
+                      checked={!!field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="space-y-0.5">
+                      <FormLabel htmlFor="pickup" className="m-0 cursor-pointer">
+                        Lično preuzimanje
+                      </FormLabel>
+                      <p className="text-xs text-slate-500">Oznaci ako kupac preuzima bez kurira.</p>
+                    </div>
                   </FormItem>
                 )}
               />

@@ -197,6 +197,7 @@ export const create = mutation({
     address: v.string(),
     phone: v.string(),
     myProfitPercent: v.optional(v.number()),
+    pickup: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
@@ -214,6 +215,7 @@ export const create = mutation({
     const myProfitPercent = clampPercent(args.myProfitPercent);
     const transportCost = normalizeTransportCost(args.transportCost);
     const transportMode = normalizeTransportMode(args.transportMode);
+    const pickup = Boolean(args.pickup);
 
     if (productId) {
       const product = await ctx.db.get(productId);
@@ -263,6 +265,7 @@ export const create = mutation({
       address,
       phone,
       myProfitPercent,
+      pickup,
       kreiranoAt: now,
     });
   },
@@ -287,6 +290,7 @@ export const update = mutation({
     address: v.string(),
     phone: v.string(),
     myProfitPercent: v.optional(v.number()),
+    pickup: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
@@ -308,6 +312,7 @@ export const update = mutation({
     const stage = normalizeStage(args.stage);
     const myProfitPercent = clampPercent(args.myProfitPercent);
     const transportCost = normalizeTransportCost(args.transportCost);
+    const pickup = args.pickup ?? existing.pickup ?? false;
 
     if (productId) {
       const product = await ctx.db.get(productId);
@@ -357,6 +362,7 @@ export const update = mutation({
       address,
       phone,
       myProfitPercent,
+      pickup,
     });
   },
 });

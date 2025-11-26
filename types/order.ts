@@ -16,13 +16,29 @@ export interface ProductVariant {
   images?: ProductImage[];
 }
 
+export interface Category {
+  _id: string;
+  name: string;
+  slug?: string;
+  iconStorageId?: string;
+  iconUrl?: string | null;
+  iconFileName?: string;
+  iconContentType?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Product {
   _id: string;
   userId: string;
   name: string;
+  kpName?: string;
+  fbName?: string;
   nabavnaCena: number;
   prodajnaCena: number;
   variants?: ProductVariant[];
+  categoryIds?: string[];
+  categories?: Category[];
   opis?: string;
   opisKp?: string;
   opisFbInsta?: string;
@@ -55,6 +71,7 @@ export interface Order {
   address: string;
   phone: string;
   myProfitPercent?: number;
+  pickup?: boolean;
   kreiranoAt: number;
 }
 

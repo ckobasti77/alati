@@ -131,6 +131,21 @@ function normalizeVariants(
   });
 }
 
+function normalizeCategoryIds(incoming?: Id<"categories">[]) {
+  if (incoming === undefined) {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  const normalized: Id<"categories">[] = [];
+  incoming.forEach((id) => {
+    const key = String(id);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    normalized.push(id);
+  });
+  return normalized;
+}
+
 export const get = query({
   args: { token: v.string(), id: v.id("products") },
   handler: async (ctx, args) => {
@@ -197,12 +212,88 @@ export const list = query({
   },
 });
 
+async function toPublicProduct(ctx: { storage: any }, product: Doc<"products">) {
+  const images = await Promise.all(
+    (product.images ?? []).map(async (image) => ({
+      ...image,
+      url: await ctx.storage.getUrl(image.storageId),
+    })),
+  );
+  const variants = await Promise.all(
+    (product.variants ?? []).map(async (variant) => {
+      const variantImages = await Promise.all(
+        (variant.images ?? []).map(async (image) => ({
+          ...image,
+          url: await ctx.storage.getUrl(image.storageId),
+        })),
+      );
+      return {
+        id: variant.id,
+        label: variant.label,
+        prodajnaCena: variant.prodajnaCena,
+        isDefault: variant.isDefault,
+        opis: variant.opis,
+        images: variantImages,
+      };
+    }),
+  );
+  const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
+  return {
+    id: product._id,
+    name: product.kpName ?? product.name,
+    kpName: product.kpName ?? product.name,
+    fbName: product.name,
+    prodajnaCena: defaultVariant?.prodajnaCena ?? product.prodajnaCena,
+    opis: product.opisFbInsta ?? product.opisKp ?? product.opis,
+    opisKp: product.opisKp,
+    opisFbInsta: product.opisFbInsta,
+    images,
+    variants: variants.length ? variants : undefined,
+    publishKp: product.publishKp,
+    publishFb: product.publishFb,
+    publishIg: product.publishIg,
+    categoryIds: product.categoryIds,
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+  };
+}
+
+export const listPublic = query({
+  args: { search: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const items = await ctx.db.query("products").withIndex("by_createdAt").collect();
+    const search = args.search?.trim().toLowerCase();
+    const narrowed = search
+      ? items.filter((item) => {
+          const name = (item.kpName ?? item.name).toLowerCase();
+          const fbName = item.name.toLowerCase();
+          return name.includes(search) || fbName.includes(search);
+        })
+      : items;
+    const withUrls = await Promise.all(narrowed.map((item) => toPublicProduct(ctx, item)));
+    return withUrls.sort((a, b) => b.createdAt - a.createdAt);
+  },
+});
+
+export const getPublic = query({
+  args: { id: v.id("products") },
+  handler: async (ctx, args) => {
+    const product = await ctx.db.get(args.id);
+    if (!product) {
+      return null;
+    }
+    return await toPublicProduct(ctx, product);
+  },
+});
+
 export const create = mutation({
   args: {
     token: v.string(),
     name: v.string(),
+    kpName: v.optional(v.string()),
     nabavnaCena: v.number(),
     prodajnaCena: v.number(),
+    categoryIds: v.optional(v.array(v.id("categories"))),
     opis: v.optional(v.string()),
     opisKp: v.optional(v.string()),
     opisFbInsta: v.optional(v.string()),
@@ -215,6 +306,8 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const now = Date.now();
+    const fbName = args.name.trim();
+    const kpName = args.kpName?.trim() || fbName;
     const opisKp = args.opisKp?.trim();
     const opisFbInsta = args.opisFbInsta?.trim() ?? args.opis?.trim();
     const publishKp = Boolean(args.publishKp);
@@ -223,9 +316,11 @@ export const create = mutation({
     const images = normalizeImages(undefined, args.images);
     const variants = normalizeVariants(args.variants);
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
+    const categoryIds = normalizeCategoryIds(args.categoryIds);
     await ctx.db.insert("products", {
       userId: user._id,
-      name: args.name,
+      name: fbName,
+      kpName,
       nabavnaCena: defaultVariant?.nabavnaCena ?? args.nabavnaCena,
       prodajnaCena: defaultVariant?.prodajnaCena ?? args.prodajnaCena,
       variants,
@@ -233,6 +328,7 @@ export const create = mutation({
       opis: opisFbInsta ? opisFbInsta : undefined,
       opisFbInsta: opisFbInsta || undefined,
       opisKp: opisKp || undefined,
+      categoryIds,
       publishKp,
       publishFb,
       publishIg,
@@ -247,8 +343,10 @@ export const update = mutation({
     token: v.string(),
     id: v.id("products"),
     name: v.string(),
+    kpName: v.optional(v.string()),
     nabavnaCena: v.number(),
     prodajnaCena: v.number(),
+    categoryIds: v.optional(v.array(v.id("categories"))),
     opis: v.optional(v.string()),
     opisKp: v.optional(v.string()),
     opisFbInsta: v.optional(v.string()),
@@ -267,9 +365,12 @@ export const update = mutation({
     if (product.userId !== user._id) {
       throw new Error("Neautorizovan pristup proizvodu.");
     }
+    const fbName = args.name.trim();
+    const kpName = args.kpName?.trim();
     const opis = args.opis?.trim();
     const opisKp = args.opisKp?.trim();
     const opisFbInsta = args.opisFbInsta?.trim();
+    const resolvedKpName = kpName === undefined ? product.kpName ?? product.name : kpName || fbName;
     const resolvedOpisFb = opisFbInsta === undefined ? product.opisFbInsta ?? product.opis : opisFbInsta || undefined;
     const resolvedOpisKp = opisKp === undefined ? product.opisKp : opisKp || undefined;
     const resolvedOpisLegacy = opis === undefined ? resolvedOpisFb ?? product.opis : opis || undefined;
@@ -279,6 +380,8 @@ export const update = mutation({
     const images = normalizeImages(product.images, args.images);
     const variants = normalizeVariants(args.variants, product.variants);
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
+    const categoryIds =
+      args.categoryIds === undefined ? product.categoryIds : normalizeCategoryIds(args.categoryIds) ?? [];
     const removedImages = (product.images ?? []).filter(
       (existing) => !images.find((image) => image.storageId === existing.storageId),
     );
@@ -295,7 +398,8 @@ export const update = mutation({
       }
     });
     await ctx.db.patch(args.id, {
-      name: args.name,
+      name: fbName,
+      kpName: resolvedKpName,
       nabavnaCena: defaultVariant?.nabavnaCena ?? args.nabavnaCena,
       prodajnaCena: defaultVariant?.prodajnaCena ?? args.prodajnaCena,
       variants,
@@ -303,6 +407,7 @@ export const update = mutation({
       opis: resolvedOpisLegacy,
       opisFbInsta: resolvedOpisFb,
       opisKp: resolvedOpisKp,
+      categoryIds,
       publishKp,
       publishFb,
       publishIg,

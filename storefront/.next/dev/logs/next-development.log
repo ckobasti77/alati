@@ -1,0 +1,74 @@
+[00:00:02.699] Server  LOG     
+[00:00:02.700] Server  LOG        We detected TypeScript in your project and reconfigured your tsconfig.json file for you.
+[00:00:02.700] Server  LOG        The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+[00:00:02.702] Server  LOG        	- incremental was set to true
+[00:00:02.702] Server  LOG        	- include was updated to add '.next/dev/types/**/*.ts'
+[00:00:02.703] Server  LOG        	- plugins was updated to add { name: 'next' }
+[00:00:02.703] Server  LOG     
+[00:00:02.703] Server  LOG        The following mandatory changes were made to your tsconfig.json:
+
+[00:00:02.704] Server  LOG        	- jsx was set to react-jsx (next.js uses the React automatic runtime)
+[00:00:02.704] Server  LOG     
+[00:00:03.003] Server  LOG      ✓ Ready in 2.2s
+[00:00:09.015] Server  LOG      ○ Compiling / ...
+[00:00:14.396] Server  INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[00:00:15.299] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:00:16.175] Browser INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[00:00:17.165] Browser ERROR   uncaughtError: Error: [CONVEX Q(products:listPublic)] [Request ID: 96d13064bc544ce1] Server Error
+Could not find public function for 'products:listPublic'. Did you forget to run `npx convex dev` or `npx convex deploy`?
+
+  Called by client
+[00:03:46.436] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:03:46.437] Browser INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[00:04:26.550] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:04:26.550] Browser INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[00:05:01.989] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:05:01.989] Browser INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[00:52:29.223] Server  LOG      ✓ Compiled in 222ms
+[00:52:41.920] Server  LOG      ✓ Compiled in 67ms
+[00:53:26.395] Server  LOG      ✓ Compiled in 136ms
+[00:53:57.353] Server  LOG      ✓ Compiled in 109ms
+[02:10:22.132] Server  LOG      ✓ Compiled in 280ms
+[02:10:22.243] Server  INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[02:10:22.937] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[02:10:24.181] Browser INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[02:10:40.870] Server  LOG      ✓ Compiled in 10ms
+[02:11:32.295] Server  LOG      ✓ Compiled in 88ms
+[02:12:32.793] Server  LOG      ✓ Compiled in 64ms
+[02:12:59.177] Browser LOG     WebSocket closed with code 1011: InternalServerError
+[02:12:59.177] Browser LOG     Attempting reconnect in 827ms
+[02:13:01.168] Browser LOG     WebSocket reconnected at t=158.5s after disconnect due to InternalServerError
+[02:13:47.242] Server  LOG      ✓ Compiled in 51ms
+[02:13:53.001] Server  LOG      ✓ Compiled in 30ms
+[02:14:12.211] Server  LOG      ✓ Compiled in 54ms
+[03:07:22.014] Server  LOG      ✓ Compiled in 105ms
+[03:07:52.183] Server  LOG      ✓ Compiled in 100ms
+[03:07:53.182] Browser ERROR   uncaughtError: ReferenceError: categories is not defined
+[03:08:11.344] Server  WARN     ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[03:08:11.345] Server  LOG      ✓ Compiled in 76ms
+[03:08:11.875] Server  INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[03:08:11.982] Server  ERROR    ⨯ TypeError: Cannot read properties of undefined (reading 'map')
+[03:08:13.355] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[03:08:14.174] Browser INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[03:08:14.174] Browser ERROR   uncaughtError: TypeError: Cannot read properties of undefined (reading 'map')
+[03:08:40.612] Server  LOG      ✓ Compiled in 59ms
+[03:08:40.647] Server  WARN     ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[03:08:40.763] Server  INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[03:08:40.794] Server  ERROR    ⨯ TypeError: Cannot read properties of undefined (reading 'map')
+[03:08:41.113] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[03:08:42.171] Browser INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[03:08:42.171] Browser ERROR   uncaughtError: TypeError: Cannot read properties of undefined (reading 'map')
+[03:08:55.290] Server  LOG      ✓ Compiled in 109ms
+[03:08:55.303] Server  WARN     ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[03:08:55.648] Server  INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[03:08:55.761] Server  ERROR    ⨯ TypeError: Cannot read properties of undefined (reading 'map')
+[03:08:57.799] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[03:08:59.199] Browser INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[03:08:59.199] Browser ERROR   uncaughtError: TypeError: Cannot read properties of undefined (reading 'map')
+[03:09:10.480] Server  LOG      ✓ Compiled in 191ms
+[03:09:10.866] Server  WARN     ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[03:09:11.435] Server  INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[03:09:13.453] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[03:09:18.190] Browser INFO    NEXT_PUBLIC_CONVEX_URL nije zadat za storefront, koristi se podrazumevani https://watchful-bear-609.convex.cloud.
+[03:09:32.940] Server  LOG      ✓ Compiled in 223ms

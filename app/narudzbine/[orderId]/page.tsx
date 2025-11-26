@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, Copy, Loader2, PenLine, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
@@ -19,6 +21,7 @@ const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
 ];
+const transportModes = ["Kol", "Joe", "Posta", "Bex", "Aks"] as const;
 
 const stageLabels = stageOptions.reduce((acc, item) => {
   acc[item.value] = { label: item.label, tone: item.tone };
@@ -37,6 +40,147 @@ const StageBadge = ({ stage }: { stage: OrderStage }) => {
     </span>
   );
 };
+
+type InlineFieldProps = {
+  label: string;
+  value?: string | number | null;
+  multiline?: boolean;
+  formatter?: (value?: string | number | null) => string;
+  onSave: (nextValue: string) => Promise<void>;
+};
+
+function InlineField({ label, value, multiline = false, formatter, onSave }: InlineFieldProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [draft, setDraft] = useState<string>(value ? String(value) : "");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const valueAsString = value === null || value === undefined ? "" : String(value);
+
+  useEffect(() => {
+    if (isEditing) {
+      const target = multiline ? textareaRef.current : inputRef.current;
+      if (target) {
+        requestAnimationFrame(() => {
+          target.focus();
+          try {
+            target.setSelectionRange(0, target.value.length);
+          } catch {
+            // ignore
+          }
+        });
+      }
+    }
+  }, [isEditing, multiline]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraft(valueAsString);
+    }
+  }, [isEditing, valueAsString]);
+
+  const handleCopy = async () => {
+    const copyValue = valueAsString || formatter?.(value) || "";
+    if (!copyValue) {
+      toast.info("Nema vrednosti za kopiranje.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(copyValue);
+      toast.success("Kopirano.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Kopiranje nije uspelo.");
+    }
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onSave(draft);
+      setIsEditing(false);
+    } catch {
+      // greska se vec javlja kroz toast
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const displayValue = formatter ? formatter(value) : valueAsString || "-";
+
+  return (
+    <div className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/80 p-4 shadow-sm">
+      <div className="flex w-full items-start justify-between gap-3">
+        <div className="w-full space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+          {isEditing ? (
+            multiline ? (
+              <Textarea
+                ref={textareaRef}
+                autoResize
+                rows={3}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                className="w-full text-sm"
+              />
+            ) : (
+              <Input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} className="text-sm" />
+            )
+          ) : (
+            <p className="text-base font-semibold text-slate-900">{displayValue}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 rounded-full bg-white/90 px-1 py-0.5 text-slate-500 shadow-sm opacity-0 transition group-hover:opacity-100">
+          {isEditing ? (
+            <>
+              <button
+                type="button"
+                className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
+                onClick={() => {
+                  setDraft(valueAsString);
+                  setIsEditing(false);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="rounded-full bg-blue-50 p-1 text-blue-700 hover:bg-blue-100"
+                onClick={handleSave}
+                disabled={isSaving}
+                title="Sacuvaj"
+              >
+                <Check className="h-4 w-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
+                onClick={() => {
+                  setDraft(valueAsString);
+                  setIsEditing(true);
+                }}
+                title="Izmeni"
+              >
+                <PenLine className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
+                onClick={handleCopy}
+                title="Kopiraj vrednost"
+              >
+                <Copy className="h-4 w-4" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function OrderDetailsPage() {
   return (
@@ -74,8 +218,168 @@ function OrderDetails({ orderId }: { orderId: string }) {
     id: orderId,
   });
 
+  const [order, setOrder] = useState<OrderWithProduct | null>(null);
   const isLoading = queryResult === undefined;
-  const order = queryResult ?? null;
+
+  useEffect(() => {
+    if (queryResult !== undefined) {
+      setOrder(queryResult);
+    }
+  }, [queryResult]);
+
+  const buildOrderUpdatePayload = (current: OrderWithProduct) => ({
+    token: sessionToken,
+    id: current._id,
+    stage: current.stage,
+    productId: current.productId,
+    variantId: current.variantId,
+    variantLabel: current.variantLabel,
+    title: current.title,
+    kolicina: Math.max(current.kolicina ?? 1, 1),
+    nabavnaCena: current.nabavnaCena,
+    prodajnaCena: current.prodajnaCena,
+    napomena: current.napomena,
+    transportCost: current.pickup ? 0 : current.transportCost,
+    transportMode: current.pickup ? undefined : current.transportMode,
+    customerName: current.customerName,
+    address: current.address,
+    phone: current.phone,
+    myProfitPercent: current.myProfitPercent,
+    pickup: current.pickup ?? false,
+  });
+
+  const applyOrderUpdate = async (
+    updater: (current: OrderWithProduct) => OrderWithProduct,
+    successMessage?: string,
+  ) => {
+    if (!order) return;
+    const previous = order;
+    const next = updater(previous);
+    setOrder(next);
+    try {
+      await updateOrder(buildOrderUpdatePayload(next));
+      if (successMessage) {
+        toast.success(successMessage);
+      }
+    } catch (error) {
+      console.error(error);
+      setOrder(previous);
+      toast.error("Cuvanje nije uspelo.");
+      throw error;
+    }
+  };
+
+  const handleOrderFieldSave = async (
+    field:
+      | "title"
+      | "variantLabel"
+      | "kolicina"
+      | "nabavnaCena"
+      | "prodajnaCena"
+      | "transportCost"
+      | "transportMode"
+      | "customerName"
+      | "address"
+      | "phone"
+      | "myProfitPercent"
+      | "napomena",
+    value: string,
+  ) => {
+    if (!order) return;
+    const trimmed = value.trim();
+
+    const parseNumber = (input: string) => Number(input.replace(",", "."));
+
+    if (field === "kolicina") {
+      const qty = Number.parseInt(trimmed, 10);
+      if (!Number.isFinite(qty) || qty < 1) {
+        toast.error("Kolicina mora biti 1 ili vise.");
+        throw new Error("Invalid quantity");
+      }
+      await applyOrderUpdate((current) => ({ ...current, kolicina: qty }), "Sacuvano.");
+      return;
+    }
+
+    if (field === "nabavnaCena" || field === "prodajnaCena") {
+      const price = parseNumber(trimmed);
+      if (!Number.isFinite(price) || price < 0) {
+        toast.error("Cena mora biti 0 ili vise.");
+        throw new Error("Invalid price");
+      }
+      await applyOrderUpdate((current) => ({ ...current, [field]: price }), "Sacuvano.");
+      return;
+    }
+
+    if (field === "transportCost") {
+      if (!trimmed) {
+        await applyOrderUpdate((current) => ({ ...current, transportCost: undefined }), "Sacuvano.");
+        return;
+      }
+      const cost = parseNumber(trimmed);
+      if (!Number.isFinite(cost) || cost < 0) {
+        toast.error("Transport mora biti 0 ili vise.");
+        throw new Error("Invalid transport");
+      }
+      await applyOrderUpdate((current) => ({ ...current, transportCost: cost }), "Sacuvano.");
+      return;
+    }
+
+    if (field === "transportMode") {
+      const normalized = transportModes.find((mode) => mode.toLowerCase() === trimmed.toLowerCase());
+      await applyOrderUpdate((current) => ({ ...current, transportMode: normalized }), "Sacuvano.");
+      return;
+    }
+
+    if (field === "myProfitPercent") {
+      if (!trimmed) {
+        await applyOrderUpdate((current) => ({ ...current, myProfitPercent: undefined }), "Sacuvano.");
+        return;
+      }
+      const percent = parseNumber(trimmed);
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+        toast.error("Procenat mora biti izmedju 0 i 100.");
+        throw new Error("Invalid percent");
+      }
+      await applyOrderUpdate((current) => ({ ...current, myProfitPercent: percent }), "Sacuvano.");
+      return;
+    }
+
+    if (field === "napomena") {
+      await applyOrderUpdate(
+        (current) => ({
+          ...current,
+          napomena: trimmed.length === 0 ? undefined : trimmed,
+        }),
+        "Sacuvano.",
+      );
+      return;
+    }
+
+    if (field === "variantLabel") {
+      await applyOrderUpdate((current) => ({ ...current, variantLabel: trimmed || undefined }), "Sacuvano.");
+      return;
+    }
+
+    if (field === "title" || field === "customerName" || field === "address" || field === "phone") {
+      if (trimmed.length < 2) {
+        toast.error("Popuni polje.");
+        throw new Error("Invalid field");
+      }
+      await applyOrderUpdate((current) => ({ ...current, [field]: trimmed }), "Sacuvano.");
+    }
+  };
+
+  const handlePickupToggle = async (value: boolean) => {
+    await applyOrderUpdate(
+      (current) => ({
+        ...current,
+        pickup: value,
+        transportCost: value ? 0 : current.transportCost,
+        transportMode: value ? undefined : current.transportMode,
+      }),
+      "Sacuvano.",
+    );
+  };
 
   const variantFromProduct: ProductVariant | undefined = useMemo(() => {
     if (!order?.product) return undefined;
@@ -90,7 +394,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
 
   const prodajnoUkupno = order ? ukupnoProdajno(order.kolicina, order.prodajnaCena) : 0;
   const nabavnoUkupno = order ? ukupnoNabavno(order.kolicina, order.nabavnaCena) : 0;
-  const transport = order?.transportCost ?? 0;
+  const transport = order?.pickup ? 0 : order?.transportCost ?? 0;
   const prof = profit(prodajnoUkupno, nabavnoUkupno, transport);
   const mojDeo = myProfitShare(prof, order?.myProfitPercent ?? 0);
   const shouldShowMyShare = order?.stage === "legle_pare" && order?.myProfitPercent !== undefined;
@@ -99,29 +403,9 @@ function OrderDetails({ orderId }: { orderId: string }) {
     if (!order) return;
     setIsUpdatingStage(true);
     try {
-      await updateOrder({
-        token: sessionToken,
-        id: order._id,
-        stage: nextStage,
-        productId: order.productId,
-        variantId: order.variantId,
-        variantLabel: order.variantLabel,
-        title: order.title,
-        kolicina: order.kolicina,
-        nabavnaCena: order.nabavnaCena,
-        prodajnaCena: order.prodajnaCena,
-        napomena: order.napomena,
-        transportCost: order.transportCost,
-        transportMode: order.transportMode,
-        customerName: order.customerName,
-        address: order.address,
-        phone: order.phone,
-        myProfitPercent: order.myProfitPercent,
-      });
-      toast.success("Status narudzbine je azuriran.");
+      await applyOrderUpdate((current) => ({ ...current, stage: nextStage }), "Status narudzbine je azuriran.");
     } catch (error) {
       console.error(error);
-      toast.error("Nije moguce promeniti status.");
     } finally {
       setIsUpdatingStage(false);
     }
@@ -219,7 +503,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
                 {mainImage?.url ? (
                   <div className="h-16 w-16 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={mainImage.url} alt={order.product.name} className="h-full w-full object-cover" />
+                    <img src={mainImage.url} alt={order.product.kpName ?? order.product.name} className="h-full w-full object-cover" />
                   </div>
                 ) : (
                   <div className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-slate-200 text-[10px] uppercase text-slate-400">
@@ -228,7 +512,8 @@ function OrderDetails({ orderId }: { orderId: string }) {
                 )}
                 <div className="space-y-1">
                   <p className="text-sm uppercase tracking-wide text-slate-500">Proizvod</p>
-                  <p className="text-lg font-semibold text-slate-900">{order.product.name}</p>
+                  <p className="text-lg font-semibold text-slate-900">{order.product.kpName ?? order.product.name}</p>
+                  <p className="text-xs text-slate-500">FB / IG naziv: {order.product.name}</p>
                   {variantFromProduct ? (
                     <p className="text-sm text-slate-600">{variantFromProduct.label}</p>
                   ) : null}
@@ -245,11 +530,24 @@ function OrderDetails({ orderId }: { orderId: string }) {
                 </p>
               </div>
             </div>
-          ) : (
-            <p className="text-sm text-slate-600">Narudzbina nije vezana za proizvod. Naslov: {order.title}</p>
-          )}
-        </CardContent>
-      </Card>
+              ) : (
+                <p className="text-sm text-slate-600">Narudzbina nije vezana za proizvod. Naslov: {order.title}</p>
+              )}
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <InlineField label="Naziv narudzbine" value={order.title} onSave={(val) => handleOrderFieldSave("title", val)} />
+                <InlineField
+                  label="Kolicina"
+                  value={order.kolicina}
+                  onSave={(val) => handleOrderFieldSave("kolicina", val)}
+                />
+                <InlineField
+                  label="Oznaka tipa / varijante"
+                  value={order.variantLabel ?? variantFromProduct?.label ?? ""}
+                  onSave={(val) => handleOrderFieldSave("variantLabel", val)}
+                />
+              </div>
+            </CardContent>
+          </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -257,22 +555,60 @@ function OrderDetails({ orderId }: { orderId: string }) {
             <CardTitle>Kupac i dostava</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Kupac</p>
-              <p className="text-base font-semibold text-slate-900">{order.customerName}</p>
-              <p className="text-sm text-slate-600">{order.phone}</p>
-              <p className="text-sm text-slate-600">{order.address}</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <InlineField
+                label="Kupac"
+                value={order.customerName}
+                onSave={(val) => handleOrderFieldSave("customerName", val)}
+              />
+              <InlineField label="Telefon" value={order.phone} onSave={(val) => handleOrderFieldSave("phone", val)} />
+              <InlineField
+                label="Adresa"
+                value={order.address}
+                multiline
+                onSave={(val) => handleOrderFieldSave("address", val)}
+              />
+              <InlineField
+                label="Transport (EUR)"
+                value={transport}
+                formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
+                onSave={(val) => handleOrderFieldSave("transportCost", val)}
+              />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Transport</p>
-                <p className="text-base font-semibold text-slate-900">{formatCurrency(transport, "EUR")}</p>
-                {order.transportMode ? <p className="text-xs text-slate-500">{order.transportMode}</p> : null}
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Stage</p>
-                <StageBadge stage={order.stage} />
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {transportModes.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`rounded-full border px-3 py-1 text-sm font-semibold transition ${
+                    order.transportMode === mode
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                  }`}
+                  onClick={() => handleOrderFieldSave("transportMode", mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:border-slate-300"
+                onClick={() => handleOrderFieldSave("transportMode", "")}
+              >
+                Bez kurira
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(order.pickup)}
+                  onChange={(event) => handlePickupToggle(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Lično preuzimanje
+              </label>
+              <StageBadge stage={order.stage} />
             </div>
           </CardContent>
         </Card>
@@ -281,30 +617,57 @@ function OrderDetails({ orderId }: { orderId: string }) {
           <CardHeader>
             <CardTitle>Finansije</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Prodajno ukupno</p>
-              <p className="text-base font-semibold text-slate-900">{formatCurrency(prodajnoUkupno, "EUR")}</p>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <InlineField
+                label="Prodajna cena (EUR)"
+                value={order.prodajnaCena}
+                formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
+                onSave={(val) => handleOrderFieldSave("prodajnaCena", val)}
+              />
+              <InlineField
+                label="Nabavna cena (EUR)"
+                value={order.nabavnaCena}
+                formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
+                onSave={(val) => handleOrderFieldSave("nabavnaCena", val)}
+              />
+              <InlineField
+                label="Kolicina"
+                value={order.kolicina}
+                onSave={(val) => handleOrderFieldSave("kolicina", val)}
+              />
+              <InlineField
+                label="Moj procenat profita"
+                value={order.myProfitPercent ?? ""}
+                formatter={(val) => (val === undefined || val === null || val === "" ? "-" : `${val}%`)}
+                onSave={(val) => handleOrderFieldSave("myProfitPercent", val)}
+              />
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Nabavno ukupno</p>
-              <p className="text-base font-semibold text-slate-900">{formatCurrency(nabavnoUkupno, "EUR")}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Profit</p>
-              <p className={`text-base font-semibold ${prof < 0 ? "text-red-600" : "text-slate-900"}`}>
-                {formatCurrency(prof, "EUR")}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Moj deo</p>
-              {shouldShowMyShare ? (
-                <p className="text-base font-semibold text-emerald-700">
-                  {formatCurrency(mojDeo, "EUR")} <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Prodajno ukupno</p>
+                <p className="text-base font-semibold text-slate-900">{formatCurrency(prodajnoUkupno, "EUR")}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Nabavno ukupno</p>
+                <p className="text-base font-semibold text-slate-900">{formatCurrency(nabavnoUkupno, "EUR")}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Profit</p>
+                <p className={`text-base font-semibold ${prof < 0 ? "text-red-600" : "text-slate-900"}`}>
+                  {formatCurrency(prof, "EUR")}
                 </p>
-              ) : (
-                <p className="text-sm text-slate-500">Bice dostupno kada stage bude "legle pare".</p>
-              )}
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Moj deo</p>
+                {shouldShowMyShare ? (
+                  <p className="text-base font-semibold text-emerald-700">
+                    {formatCurrency(mojDeo, "EUR")} <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-500">Bice dostupno kada stage bude "legle pare".</p>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -315,8 +678,13 @@ function OrderDetails({ orderId }: { orderId: string }) {
           <CardTitle>Napomena</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <p className="text-sm text-slate-700">{order.napomena || "Nema dodatnih napomena."}</p>
-          <p className="text-xs text-slate-500">Telefon: {order.phone} ? Adresa: {order.address}</p>
+          <InlineField
+            label="Napomena"
+            value={order.napomena ?? ""}
+            multiline
+            onSave={(val) => handleOrderFieldSave("napomena", val)}
+          />
+          <p className="text-xs text-slate-500">Telefon: {order.phone} · Adresa: {order.address}</p>
         </CardContent>
       </Card>
     </div>

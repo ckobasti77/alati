@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Copy, Download, ImageOff, Loader2, Maximize2, PenLine, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Download, GripVertical, ImageOff, Loader2, Maximize2, PenLine, Plus, Tag, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
-import type { Product, ProductImage, ProductVariant } from "@/types/order";
+import type { Category, Product, ProductImage, ProductVariant } from "@/types/order";
 
 type ProductWithUrls = Product & {
   images?: (ProductImage & { url?: string | null })[];
@@ -29,6 +29,13 @@ type GalleryItem = {
   fileName?: string | null;
   isMain: boolean;
   origin: { type: "product" } | { type: "variant"; variantId: string };
+};
+
+type DraftCategoryIcon = {
+  storageId: string;
+  previewUrl?: string;
+  fileName?: string;
+  contentType?: string;
 };
 
 const parsePrice = (value: string) => {
@@ -199,11 +206,31 @@ function ProductDetailsContent() {
   const productId = params?.productId as string;
   const uploadInputId = useMemo(() => `product-upload-${productId}`, [productId]);
   const queryResult = useConvexQuery<ProductWithUrls | null>("products:get", { token: sessionToken, id: productId });
+  const categories = useConvexQuery<Category[]>("categories:list", { token: sessionToken });
   const updateProduct = useConvexMutation("products:update");
+  const createCategory = useConvexMutation<
+    {
+      token: string;
+      name: string;
+      icon?: { storageId: string; fileName?: string; contentType?: string };
+    },
+    string
+  >("categories:create");
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
   const [product, setProduct] = useState<ProductWithUrls | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
+  const [draggingItem, setDraggingItem] = useState<GalleryItem | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [categorySearch, setCategorySearch] = useState("");
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIcon, setNewCategoryIcon] = useState<DraftCategoryIcon | null>(null);
+  const [isUploadingCategoryIcon, setIsUploadingCategoryIcon] = useState(false);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
+  const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const isLoading = queryResult === undefined;
 
@@ -212,6 +239,38 @@ function ProductDetailsContent() {
       setProduct(queryResult);
     }
   }, [queryResult]);
+
+  useEffect(() => {
+    if (!categoryMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const node = categoryDropdownRef.current;
+      if (!node) return;
+      const path = typeof event.composedPath === "function" ? event.composedPath() : undefined;
+      if (path && path.includes(node)) return;
+      if (node.contains(event.target as Node)) return;
+      setCategoryMenuOpen(false);
+      resetNewCategoryState();
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [categoryMenuOpen]);
+
+  const productCategories = useMemo(() => {
+    if (!product || !categories) return [];
+    const map = new Map(categories.map((category) => [category._id, category]));
+    return (product.categoryIds ?? []).map((id) => map.get(id)).filter(Boolean) as Category[];
+  }, [categories, product]);
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, Category>();
+    (categories ?? []).forEach((category) => map.set(category._id, category));
+    return map;
+  }, [categories]);
+  const filteredCategories = useMemo(() => {
+    const list = categories ?? [];
+    const needle = categorySearch.trim().toLowerCase();
+    if (!needle) return list;
+    return list.filter((category) => category.name.toLowerCase().includes(needle));
+  }, [categories, categorySearch]);
 
   const buildUpdatePayload = (current: ProductWithUrls) => {
     const variants = current.variants?.map((variant) => ({
@@ -234,6 +293,7 @@ function ProductDetailsContent() {
       token: sessionToken,
       id: current._id,
       name: current.name,
+      kpName: current.kpName ?? current.name,
       nabavnaCena: defaultVariant?.nabavnaCena ?? current.nabavnaCena,
       prodajnaCena: defaultVariant?.prodajnaCena ?? current.prodajnaCena,
       opis: resolvedOpisFb,
@@ -242,6 +302,7 @@ function ProductDetailsContent() {
       publishKp: current.publishKp,
       publishFb: current.publishFb,
       publishIg: current.publishIg,
+      categoryIds: current.categoryIds ?? [],
       variants,
       images: (current.images ?? []).map((image) => ({
         storageId: image.storageId,
@@ -270,6 +331,123 @@ function ProductDetailsContent() {
     }
   };
 
+  const resetNewCategoryState = () => {
+    setIsAddingCategory(false);
+    setNewCategoryName("");
+    if (newCategoryIcon?.previewUrl) {
+      URL.revokeObjectURL(newCategoryIcon.previewUrl);
+    }
+    setNewCategoryIcon(null);
+    setIsUploadingCategoryIcon(false);
+  };
+
+  const handleSelectCategory = async (categoryId: string) => {
+    await applyUpdate(
+      (current) => {
+        const existing = new Set(current.categoryIds ?? []);
+        if (existing.has(categoryId)) return current;
+        return { ...current, categoryIds: [...existing, categoryId] as any };
+      },
+      "Kategorija dodata.",
+    );
+    setCategoryMenuOpen(false);
+    setCategorySearch("");
+  };
+
+  const handleRemoveCategory = async (categoryId: string) => {
+    await applyUpdate(
+      (current) => ({
+        ...current,
+        categoryIds: (current.categoryIds ?? []).filter((id) => id !== categoryId),
+      }),
+      "Kategorija uklonjena.",
+    );
+  };
+
+  const handleUploadCategoryIcon = async (file: File) => {
+    if (isUploadingCategoryIcon) return;
+    const isImage = file.type?.startsWith("image/") || /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name);
+    if (!isImage) {
+      toast.error("Prevuci ili izaberi fajl tipa slike za ikonicu.");
+      return;
+    }
+    setIsUploadingCategoryIcon(true);
+    try {
+      const uploadUrl = await generateUploadUrl({ token: sessionToken });
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!response.ok) {
+        throw new Error("Upload ikonice nije uspeo.");
+      }
+      const { storageId } = await response.json();
+      if (newCategoryIcon?.previewUrl) {
+        URL.revokeObjectURL(newCategoryIcon.previewUrl);
+      }
+      setNewCategoryIcon({
+        storageId,
+        previewUrl: URL.createObjectURL(file),
+        fileName: file.name,
+        contentType: file.type,
+      });
+      toast.success("Ikonica je spremna.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Upload ikonice nije uspeo.");
+    } finally {
+      setIsUploadingCategoryIcon(false);
+    }
+  };
+
+  const handleCategoryIconChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await handleUploadCategoryIcon(file);
+    }
+    event.target.value = "";
+  };
+
+  const handleCategoryIconDrop = async (event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const file = event.dataTransfer?.files?.[0];
+    if (file) {
+      await handleUploadCategoryIcon(file);
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) {
+      toast.error("Upisi naziv kategorije.");
+      return;
+    }
+    setIsCreatingCategory(true);
+    try {
+      const id = await createCategory({
+        token: sessionToken,
+        name,
+        icon: newCategoryIcon
+          ? {
+              storageId: newCategoryIcon.storageId,
+              fileName: newCategoryIcon.fileName,
+              contentType: newCategoryIcon.contentType,
+            }
+          : undefined,
+      });
+      await handleSelectCategory(id);
+      toast.success("Kategorija dodata.");
+      resetNewCategoryState();
+    } catch (error) {
+      console.error(error);
+      toast.error("Kreiranje kategorije nije uspelo.");
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  };
+
   const ensureMainImage = (list: (ProductImage & { url?: string | null })[] = []) => {
     if (list.length === 0) return [];
     if (list.some((image) => image.isMain)) return list;
@@ -278,12 +456,12 @@ function ProductDetailsContent() {
   };
 
   const handleBaseFieldSave = async (
-    field: "name" | "opisKp" | "opisFbInsta" | "nabavnaCena" | "prodajnaCena",
+    field: "name" | "kpName" | "opisKp" | "opisFbInsta" | "nabavnaCena" | "prodajnaCena",
     value: string,
   ) => {
     const trimmed = value.trim();
     if (!product) return;
-    if (field === "name" && trimmed.length < 2) {
+    if ((field === "name" || field === "kpName") && trimmed.length < 2) {
       toast.error("Naziv mora imati bar 2 karaktera.");
       throw new Error("Invalid name");
     }
@@ -316,7 +494,7 @@ function ProductDetailsContent() {
     await applyUpdate(
       (current) => ({
         ...current,
-        [field]: trimmed.length === 0 ? undefined : trimmed,
+        [field]: trimmed.length === 0 ? (field === "kpName" ? current.kpName ?? current.name : current.name) : trimmed,
       }),
       "Sacuvano.",
     );
@@ -449,6 +627,99 @@ function ProductDetailsContent() {
     );
   };
 
+  const isSameGalleryGroup = (a: GalleryItem, b: GalleryItem) => {
+    if (a.origin.type !== b.origin.type) return false;
+    if (a.origin.type === "variant" && b.origin.type === "variant") {
+      return a.origin.variantId === b.origin.variantId;
+    }
+    return true;
+  };
+
+  const reorderImageList = (
+    list: (ProductImage & { url?: string | null })[] = [],
+    sourceId: string,
+    targetId: string,
+  ) => {
+    const next = [...list];
+    const fromIndex = next.findIndex((image) => image.storageId === sourceId);
+    const toIndex = next.findIndex((image) => image.storageId === targetId);
+    if (fromIndex === -1 || toIndex === -1) return list;
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next.map((image, index) => ({ ...image, isMain: index === 0 }));
+  };
+
+  const handleReorderGallery = async (source: GalleryItem, target: GalleryItem) => {
+    await applyUpdate(
+      (current) => {
+        if (source.origin.type === "product" && target.origin.type === "product") {
+          const images = reorderImageList(current.images ?? [], source.storageId, target.storageId);
+          return { ...current, images };
+        }
+        if (source.origin.type === "variant" && target.origin.type === "variant") {
+          const variantId = source.origin.variantId;
+          const variants = (current.variants ?? []).map((variant) => {
+            if (variant.id !== variantId) return variant;
+            const nextImages = reorderImageList(variant.images ?? [], source.storageId, target.storageId);
+            return { ...variant, images: nextImages };
+          });
+          return { ...current, variants };
+        }
+        return current;
+      },
+      "Redosled sacuvan.",
+    );
+  };
+
+  const handleGalleryDragStart = (event: React.DragEvent<HTMLDivElement>, item: GalleryItem) => {
+    event.dataTransfer.effectAllowed = "move";
+    try {
+      event.dataTransfer.setData("text/plain", item.id);
+    } catch {
+      // ignore
+    }
+    setDraggingItem(item);
+  };
+
+  const handleGalleryDragOver = (event: React.DragEvent<HTMLDivElement>, target: GalleryItem) => {
+    if (!draggingItem || !isSameGalleryGroup(draggingItem, target)) return;
+    event.preventDefault();
+    setDragOverId(target.id);
+  };
+
+  const handleGalleryDrop = async (event: React.DragEvent<HTMLDivElement>, target: GalleryItem) => {
+    event.preventDefault();
+    if (!draggingItem || draggingItem.id === target.id) return;
+    if (!isSameGalleryGroup(draggingItem, target)) return;
+    await handleReorderGallery(draggingItem, target);
+    setDraggingItem(null);
+    setDragOverId(null);
+  };
+
+  const handleGalleryDragEnd = () => {
+    setDraggingItem(null);
+    setDragOverId(null);
+  };
+
+  const handleGalleryDragLeave = (target: GalleryItem) => {
+    if (!draggingItem || !isSameGalleryGroup(draggingItem, target)) return;
+    setDragOverId((current) => (current === target.id ? null : current));
+  };
+
+  const getShiftClass = (item: GalleryItem, index: number) => {
+    if (!draggingSameGroup || draggingIndex === -1 || targetIndex === -1) return "";
+    if (item.id === draggingItem?.id) return "scale-[1.02] shadow-lg";
+    // dragging item moving to the left
+    if (draggingIndex > targetIndex) {
+      if (index >= targetIndex && index < draggingIndex) return "translate-x-3";
+    }
+    // dragging item moving to the right
+    if (draggingIndex < targetIndex) {
+      if (index > draggingIndex && index <= targetIndex) return "-translate-x-3";
+    }
+    return "";
+  };
+
   const uploadImages = async (fileList: FileList | File[]) => {
     if (!product) return;
     const accepted = Array.from(fileList instanceof FileList ? Array.from(fileList) : fileList).filter((file) => {
@@ -528,7 +799,7 @@ function ProductDetailsContent() {
         id: image.storageId,
         storageId: image.storageId,
         url: image.url ?? "",
-        alt: product.name,
+        alt: product.kpName ?? product.name,
         label: image.isMain ? "Glavna" : "Slika",
         fileName: image.fileName,
         isMain: Boolean(image.isMain),
@@ -549,6 +820,18 @@ function ProductDetailsContent() {
       ) ?? [];
     return [...baseImages, ...variantImages].filter((item) => Boolean(item.url));
   }, [product]);
+  const draggingIndex = useMemo(
+    () => (draggingItem ? gallery.findIndex((item) => item.id === draggingItem.id) : -1),
+    [draggingItem, gallery],
+  );
+  const targetIndex = useMemo(
+    () => (dragOverId ? gallery.findIndex((item) => item.id === dragOverId) : -1),
+    [dragOverId, gallery],
+  );
+  const draggingSameGroup =
+    draggingItem && dragOverId && targetIndex !== -1
+      ? isSameGalleryGroup(draggingItem, gallery[targetIndex])
+      : false;
 
   if (isLoading) {
     return (
@@ -589,7 +872,7 @@ function ProductDetailsContent() {
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                {product.name}
+                {product.kpName ?? product.name}
                 {product.variants && product.variants.length > 0 ? (
                   <Badge variant="yellow">Tipski</Badge>
                 ) : (
@@ -597,9 +880,204 @@ function ProductDetailsContent() {
                 )}
               </CardTitle>
               <p className="text-sm text-slate-500">Textualni podaci su editabilni na licu mesta.</p>
+              <p className="text-xs text-slate-500">FB / Insta naziv: {product.name}</p>
+              <div className="flex flex-wrap gap-2">
+                {productCategories.length ? (
+                  productCategories.map((category) => (
+                    <span
+                      key={category._id}
+                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700"
+                    >
+                      <Tag className="h-3 w-3 text-slate-500" />
+                      {category.name}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-500">Nema dodeljenih kategorija.</span>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <InlineField label="Naziv" value={product.name} onSave={(val) => handleBaseFieldSave("name", val)} />
+              <InlineField
+                label="KP naziv (glavni)"
+                value={product.kpName ?? product.name}
+                onSave={(val) => handleBaseFieldSave("kpName", val)}
+              />
+              <InlineField label="FB / Insta naziv" value={product.name} onSave={(val) => handleBaseFieldSave("name", val)} />
+              <div
+                className="space-y-2"
+                ref={categoryDropdownRef}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kategorije</p>
+                <div className="flex flex-wrap gap-2">
+                  {productCategories.length === 0 ? (
+                    <span className="text-xs text-slate-500">Nema dodeljenih kategorija.</span>
+                  ) : (
+                    productCategories.map((category) => (
+                      <span
+                        key={category._id}
+                        className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
+                      >
+                        <Tag className="h-3 w-3 text-slate-500" />
+                        {category.name}
+                        <button
+                          type="button"
+                          className="rounded-full p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+                          onClick={() => handleRemoveCategory(category._id)}
+                          title="Ukloni kategoriju"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+                <div className="relative">
+                  <Input
+                    value={categorySearch}
+                    placeholder={categories === undefined ? "Ucitavanje kategorija..." : "Pretrazi ili dodaj kategoriju"}
+                    disabled={categories === undefined}
+                    onChange={(event) => {
+                      setCategorySearch(event.target.value);
+                      setCategoryMenuOpen(true);
+                    }}
+                    onFocus={() => setCategoryMenuOpen(true)}
+                    onClick={() => setCategoryMenuOpen(true)}
+                  />
+                  <input
+                    ref={categoryIconInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={handleCategoryIconChange}
+                  />
+                  {categoryMenuOpen && (
+                    <div
+                      className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg"
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      <div className="border-b border-slate-100 bg-slate-50/60">
+                        {isAddingCategory ? (
+                          <div className="flex items-center gap-2 px-3 py-2">
+                            <div
+                              className="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-white text-slate-500 hover:border-blue-400"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                categoryIconInputRef.current?.click();
+                              }}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDrop={handleCategoryIconDrop}
+                              title="Prevuci ili izaberi ikonicu"
+                            >
+                              {isUploadingCategoryIcon ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : newCategoryIcon?.previewUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={newCategoryIcon.previewUrl} alt="Ikonica" className="h-full w-full object-cover" />
+                              ) : (
+                                <Tag className="h-4 w-4" />
+                              )}
+                            </div>
+                            <Input
+                              value={newCategoryName}
+                              placeholder="Naziv kategorije"
+                              onChange={(event) => setNewCategoryName(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  handleCreateCategory();
+                                }
+                              }}
+                            />
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  handleCreateCategory();
+                                }}
+                                disabled={isCreatingCategory}
+                                className="gap-1"
+                              >
+                                {isCreatingCategory ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Check className="h-4 w-4" />
+                                )}
+                                Sacuvaj
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  resetNewCategoryState();
+                                }}
+                              >
+                                Odustani
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setIsAddingCategory(true);
+                            setCategoryMenuOpen(true);
+                          }}
+                        >
+                            <Plus className="h-4 w-4" />
+                            Dodaj novu kategoriju
+                          </button>
+                        )}
+                      </div>
+                      {categories === undefined ? (
+                        <div className="px-3 py-2 text-sm text-slate-500">Ucitavanje...</div>
+                      ) : filteredCategories.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-slate-500">Nema rezultata</div>
+                      ) : (
+                        filteredCategories.map((category, idx) => {
+                          const isSelected = (product.categoryIds ?? []).includes(category._id);
+                          return (
+                            <button
+                              key={category._id}
+                              type="button"
+                              className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition ${
+                                idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                              } ${isSelected ? "text-blue-700" : "text-slate-800"} hover:bg-blue-50`}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                handleSelectCategory(category._id);
+                              }}
+                            >
+                              {category.iconUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={category.iconUrl} alt={category.name} className="h-8 w-8 rounded-md object-cover" />
+                              ) : (
+                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-500">
+                                  <Tag className="h-4 w-4" />
+                                </div>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-semibold">{category.name}</p>
+                                {isSelected ? <p className="text-[11px] text-emerald-600">Izabrana</p> : null}
+                              </div>
+                              {isSelected ? <Check className="h-4 w-4 text-emerald-600" /> : null}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
               <InlineField
                 label="Prodajna cena (EUR)"
                 value={product.prodajnaCena}
@@ -759,10 +1237,21 @@ function ProductDetailsContent() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                {gallery.map((item) => (
+                {gallery.map((item, index) => {
+                  const shiftClass = getShiftClass(item, index);
+                  const isDragOver = dragOverId === item.id && draggingSameGroup;
+                  return (
                   <div
                     key={item.id}
-                    className="group relative aspect-[4/3] cursor-zoom-in overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition hover:shadow-md"
+                    className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition-all duration-200 hover:shadow-md ${shiftClass} ${
+                      isDragOver ? "ring-1 ring-blue-200" : ""
+                    }`}
+                    draggable
+                    onDragStart={(event) => handleGalleryDragStart(event, item)}
+                    onDragOver={(event) => handleGalleryDragOver(event, item)}
+                    onDrop={(event) => handleGalleryDrop(event, item)}
+                    onDragEnd={handleGalleryDragEnd}
+                    onDragLeave={() => handleGalleryDragLeave(item)}
                     onClick={() => handleOpenPreview(item)}
                   >
                     <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-white/90 p-1 text-slate-600 shadow-sm opacity-0 transition group-hover:opacity-100">
@@ -818,6 +1307,7 @@ function ProductDetailsContent() {
                       </div>
                     </div>
                     <div className="absolute left-2 top-2 inline-flex items-center gap-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                      <GripVertical className="h-3 w-3 text-slate-500" />
                       {item.label}
                     </div>
                     <a
@@ -830,7 +1320,8 @@ function ProductDetailsContent() {
                       Preuzmi
                     </a>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

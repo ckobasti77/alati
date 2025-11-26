@@ -16,11 +16,26 @@ export default defineSchema({
     createdAt: v.number(),
     expiresAt: v.optional(v.number()),
   }).index("by_token", ["token"]),
+  categories: defineTable({
+    userId: v.optional(v.id("users")),
+    name: v.string(),
+    slug: v.string(),
+    iconStorageId: v.optional(v.id("_storage")),
+    iconFileName: v.optional(v.string()),
+    iconContentType: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_createdAt", ["createdAt"])
+    .index("by_slug", ["slug"])
+    .index("by_user_createdAt", ["userId", "createdAt"]),
   products: defineTable({
     userId: v.optional(v.id("users")),
     name: v.string(),
+    kpName: v.optional(v.string()),
     nabavnaCena: v.number(),
     prodajnaCena: v.number(),
+    categoryIds: v.optional(v.array(v.id("categories"))),
     variants: v.optional(
       v.array(
         v.object({
@@ -85,6 +100,7 @@ export default defineSchema({
     address: v.string(),
     phone: v.string(),
     myProfitPercent: v.optional(v.number()),
+    pickup: v.optional(v.boolean()),
     kreiranoAt: v.number(),
   })
     .index("by_kreiranoAt", ["kreiranoAt"])

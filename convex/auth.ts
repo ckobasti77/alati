@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 
 const ADMIN_USERNAME = "kodmajstora";
-const ADMIN_PASSWORD = "masinazamlevenje";
+const ADMIN_PASSWORD = "prekobrdaprekobrega";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 dana
 const encoder = new TextEncoder();
 
