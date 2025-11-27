@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent as ReactDragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent as ReactDragEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Copy, Download, GripVertical, ImageOff, Loader2, Maximize2, PenLine, Plus, Tag, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Download, GripVertical, ImageOff, Loader2, Maximize2, PenLine, Plus, Tag, Trash2, UploadCloud, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -219,6 +219,9 @@ function ProductDetailsContent() {
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
   const [product, setProduct] = useState<ProductWithUrls | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [isGlobalDropActive, setIsGlobalDropActive] = useState(false);
+  const globalFileDragCounterRef = useRef(0);
+  const uploadImagesRef = useRef<(fileList: FileList | File[]) => Promise<void> | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
   const [draggingItem, setDraggingItem] = useState<GalleryItem | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -231,6 +234,10 @@ function ProductDetailsContent() {
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
+  const resetGlobalDropState = useCallback(() => {
+    globalFileDragCounterRef.current = 0;
+    setIsGlobalDropActive(false);
+  }, []);
 
   const isLoading = queryResult === undefined;
 
@@ -413,6 +420,7 @@ function ProductDetailsContent() {
   const handleCategoryIconDrop = async (event: ReactDragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    resetGlobalDropState();
     const file = event.dataTransfer?.files?.[0];
     if (file) {
       await handleUploadCategoryIcon(file);
@@ -781,6 +789,61 @@ function ProductDetailsContent() {
       setIsUploadingImages(false);
     }
   };
+  uploadImagesRef.current = uploadImages;
+
+  useEffect(() => {
+    const hasFiles = (event: DragEvent) => {
+      const types = event.dataTransfer?.types;
+      if (!types) return false;
+      return Array.from(types).includes("Files");
+    };
+
+    const handleDragEnter = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      globalFileDragCounterRef.current += 1;
+      if (globalFileDragCounterRef.current === 1) {
+        setIsGlobalDropActive(true);
+      }
+    };
+
+    const handleDragOver = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+    };
+
+    const handleDragLeave = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      globalFileDragCounterRef.current = Math.max(globalFileDragCounterRef.current - 1, 0);
+      if (globalFileDragCounterRef.current === 0 || !event.relatedTarget) {
+        resetGlobalDropState();
+      }
+    };
+
+    const handleDrop = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      const files = event.dataTransfer?.files;
+      resetGlobalDropState();
+      if (files && files.length > 0) {
+        void uploadImagesRef.current?.(files);
+      }
+    };
+
+    window.addEventListener("dragenter", handleDragEnter);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("dragleave", handleDragLeave);
+    window.addEventListener("drop", handleDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleDragEnter);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("dragleave", handleDragLeave);
+      window.removeEventListener("drop", handleDrop);
+      resetGlobalDropState();
+    };
+  }, [resetGlobalDropState]);
 
   const handleFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -1332,6 +1395,16 @@ function ProductDetailsContent() {
           </CardContent>
         </Card>
       </div>
+
+      {isGlobalDropActive && (
+        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-blue-950/40 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-white/60 bg-blue-900/70 px-8 py-6 text-center text-white shadow-2xl">
+            <UploadCloud className="h-10 w-10" />
+            <p className="text-lg font-semibold tracking-tight">Otpusti da dodas slike</p>
+            <p className="text-sm text-blue-100">Nove fotografije se dodaju u galeriju, postojece ostaju.</p>
+          </div>
+        </div>
+      )}
 
       {previewImage && (
         <div

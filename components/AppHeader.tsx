@@ -9,6 +9,7 @@ const navLinks = [
   { href: "/", label: "Kontrolna tabla" },
   { href: "/narudzbine", label: "Narudzbine" },
   { href: "/proizvodi", label: "Proizvodi" },
+  { href: "/objave", label: "Objave", adminOnly: true },
   { href: "/profili", label: "Profili", adminOnly: true },
 ];
 
