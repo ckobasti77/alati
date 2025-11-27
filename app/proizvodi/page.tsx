@@ -7,7 +7,23 @@ import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, Check, CloudUpload, Images, LayoutGrid, List, Loader2, Plus, Search, Tag, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  CloudUpload,
+  Facebook,
+  Images,
+  Instagram,
+  Layers,
+  LayoutGrid,
+  List,
+  Loader2,
+  Plus,
+  Search,
+  Tag,
+  UserRound,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,14 +45,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
@@ -179,6 +187,7 @@ function ProductsContent() {
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
+  const [isMobile, setIsMobile] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
@@ -238,6 +247,21 @@ function ProductsContent() {
       setHasSeededCategories(false);
     });
   }, [categories, ensureDefaultCategories, hasSeededCategories, sessionToken]);
+
+  useEffect(() => {
+    const media = typeof window !== "undefined" ? window.matchMedia("(max-width: 768px)") : null;
+    if (!media) return;
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile) {
+      setViewMode("grid");
+    }
+  }, [isMobile]);
 
   const resetForm = () => {
     form.reset(emptyProductForm());
@@ -521,6 +545,21 @@ function ProductsContent() {
   const variantsFieldError = form.formState.errors.variants;
   const variantsError =
     variantsFieldError && !Array.isArray(variantsFieldError) ? (variantsFieldError.message as string | undefined) : undefined;
+  const getPrimaryVariant = useCallback((product: Product) => {
+    const list = product.variants ?? [];
+    return list.find((variant) => variant.isDefault) ?? list[0];
+  }, []);
+  const getDisplayPrice = useCallback(
+    (product: Product) => {
+      const primary = getPrimaryVariant(product);
+      return formatCurrency(primary?.prodajnaCena ?? product.prodajnaCena, "EUR");
+    },
+    [getPrimaryVariant],
+  );
+  const getMainImage = useCallback((product: Product) => {
+    const images = product.images ?? [];
+    return images.find((image) => image.isMain) ?? images[0];
+  }, []);
 
   const seedInitialVariant = () => {
     const entry = createVariantFormEntry({
@@ -1724,7 +1763,7 @@ function ProductsContent() {
             <p className="text-sm text-slate-500">
               {viewMode === "list"
                 ? "Klikni na red da otvoris pregled proizvoda."
-                : "Klikni na sliku da otvoris pregled proizvoda."}
+                : "Klikni na karticu da otvoris pregled proizvoda."}
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
@@ -1740,7 +1779,7 @@ function ProductsContent() {
                 aria-label="Pretraga proizvoda"
               />
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
+            <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1 md:flex">
               <Button
                 type="button"
                 variant={viewMode === "grid" ? "default" : "ghost"}
@@ -1764,198 +1803,209 @@ function ProductsContent() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className={viewMode === "list" ? "overflow-x-auto" : "pb-6"}>
-          {viewMode === "list" ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Slika</TableHead>
-                  <TableHead>Naziv</TableHead>
-                  <TableHead>Tipovi</TableHead>
-                  <TableHead>Opis</TableHead>
-                  <TableHead className="text-right">Nabavna (EUR)</TableHead>
-                  <TableHead className="text-right">Prodajna (EUR)</TableHead>
-                  <TableHead>Akcije</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredProducts.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-sm text-slate-500">
-                      {items.length === 0 ? "Dodaj prvi proizvod." : "Nema proizvoda koji odgovaraju pretrazi."}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredProducts.map((product) => {
-                    const variantsList = product.variants ?? [];
-                    const defaultVariant = variantsList.find((variant) => variant.isDefault) ?? variantsList[0];
-                    const productCategories = (product.categoryIds ?? [])
-                      .map((id) => categoryMap.get(id))
-                      .filter(Boolean) as Category[];
-                    return (
-                      <TableRow
-                        key={product._id}
-                        className="cursor-pointer transition hover:bg-slate-50"
-                        onClick={() => handleRowClick(product._id)}
-                      >
-                        <TableCell>
-                          {(() => {
-                            const images = product.images ?? [];
-                            const mainImage = images.find((image) => image.isMain) ?? images[0];
-                            if (mainImage?.url) {
-                              return (
-                                <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={mainImage.url} alt={product.kpName ?? product.name} className="h-full w-full object-cover" />
-                                </div>
-                              );
-                            }
-                            return (
-                              <div className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-200 text-center text-[10px] uppercase text-slate-400">
-                                N/A
-                              </div>
-                            );
-                          })()}
-                        </TableCell>
-                        <TableCell className="font-medium text-slate-700">
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1 text-slate-900">
-                              {product.kpName ?? product.name}
-                              <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                            </span>
-                            <p className="text-xs text-slate-500">FB/IG: {product.name}</p>
-                            {productCategories.length ? (
-                              <div className="flex flex-wrap gap-1">
-                                {productCategories.map((category) => (
-                                  <span
-                                    key={category._id}
-                                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
-                                  >
-                                    <Tag className="h-3 w-3 text-slate-500" />
-                                    {category.name}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                        <TableCell className="max-w-sm text-sm text-slate-600">
-                          {variantsList.length === 0 ? (
-                            "-"
-                          ) : (
-                            <div className="space-y-1">
-                              {variantsList.map((variant) => (
-                                <div key={variant.id} className="flex items-center justify-between gap-3 rounded-md border border-slate-200/80 px-3 py-1">
-                                  <span className={variant.isDefault ? "font-semibold text-slate-800" : "text-slate-700"}>
-                                    {variant.label}
-                                  </span>
-                                  <div className="text-right text-[11px] leading-tight text-slate-500">
-                                    <div>Nab {formatCurrency(variant.nabavnaCena, "EUR")}</div>
-                                    <div className="font-semibold text-slate-700">
-                                      {formatCurrency(variant.prodajnaCena, "EUR")}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="max-w-md align-top text-sm text-slate-600">
-                          {(() => {
-                            const preview = product.opisKp || product.opisFbInsta || product.opis || "";
-                            if (!preview.trim()) return <span className="text-slate-400">-</span>;
-                            return <span className="line-clamp-3 block whitespace-pre-wrap">{preview}</span>;
-                          })()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(defaultVariant?.nabavnaCena ?? product.nabavnaCena, "EUR")}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(defaultVariant?.prodajnaCena ?? product.prodajnaCena, "EUR")}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleStartEdit(product);
-                              }}
-                            >
-                              Izmeni
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleDelete(product._id);
-                              }}
-                            >
-                              Obrisi
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          ) : (
-            <>
-              {filteredProducts.length === 0 ? (
-                <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
-                  {items.length === 0 ? "Dodaj prvi proizvod." : "Nema proizvoda koji odgovaraju pretrazi."}
-                </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {filteredProducts.map((product) => {
-                    const images = product.images ?? [];
-                    const mainImage = images.find((image) => image.isMain) ?? images[0];
-                    const mainUrl = mainImage?.url;
-                    const productCategories = (product.categoryIds ?? [])
-                      .map((id) => categoryMap.get(id))
-                      .filter(Boolean) as Category[];
-                    return (
-                      <button
-                        key={product._id}
-                        type="button"
-                        className="group relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                        onClick={() => handleRowClick(product._id)}
-                      >
-                        {mainUrl ? (
+        <CardContent className="pb-6">
+          {filteredProducts.length === 0 ? (
+            <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
+              {items.length === 0 ? "Dodaj prvi proizvod." : "Nema proizvoda koji odgovaraju pretrazi."}
+            </div>
+          ) : viewMode === "list" && !isMobile ? (
+            <div className="space-y-2">
+              {filteredProducts.map((product) => {
+                const mainImage = getMainImage(product);
+                const productCategories = (product.categoryIds ?? [])
+                  .map((id) => categoryMap.get(id))
+                  .filter(Boolean) as Category[];
+                const isVariantProduct = (product.variants ?? []).length > 0;
+                return (
+                  <div
+                    key={product._id}
+                    className="group cursor-pointer rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:shadow-md"
+                    onClick={() => handleRowClick(product._id)}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                      <div className="relative h-16 w-16 overflow-hidden rounded-md bg-slate-100">
+                        {mainImage?.url ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={mainUrl} alt={product.kpName ?? product.name} className="h-full w-full object-cover" />
+                          <img src={mainImage.url} alt={product.kpName ?? product.name} className="h-full w-full object-cover" />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase text-slate-400">
                             Bez slike
                           </div>
                         )}
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent opacity-0 transition group-hover:opacity-100" />
-                        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 bg-gradient-to-t from-black/60 to-transparent px-3 pb-3 pt-6 text-white">
-                          {productCategories.length > 0 ? (
-                            <div className="flex flex-wrap gap-1 text-[11px] font-semibold text-slate-200">
-                              {productCategories.slice(0, 2).map((category) => (
-                                <span key={category._id} className="rounded-full bg-white/15 px-2 py-0.5 backdrop-blur">
-                                  {category.name}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                          <div className="flex items-center gap-2">
-                            <p className="w-full truncate text-sm font-semibold">{product.kpName ?? product.name}</p>
-                            <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
+                        {isVariantProduct ? (
+                          <span className="absolute left-1 top-1 inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
+                            <Layers className="h-3 w-3" />
+                            Tipski
+                          </span>
+                        ) : null}
+                        {product.publishIg || product.publishFb ? (
+                          <div className="absolute bottom-1 right-1 flex gap-1">
+                            {product.publishIg ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
+                                <Instagram className="h-3 w-3" />
+                                IG
+                              </span>
+                            ) : null}
+                            {product.publishFb ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
+                                <Facebook className="h-3 w-3" />
+                                FB
+                              </span>
+                            ) : null}
                           </div>
-                          <p className="truncate text-[11px] text-slate-200">FB/IG: {product.name}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-slate-900">{product.kpName ?? product.name}</p>
+                          <ArrowUpRight className="h-4 w-4 text-slate-400" />
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </>
+                        {productCategories.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {productCategories.slice(0, 3).map((category) => (
+                              <span
+                                key={category._id}
+                                className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
+                              >
+                                <Tag className="h-3 w-3 text-slate-500" />
+                                {category.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-white shadow">
+                            {getDisplayPrice(product)}
+                          </span>
+                          {isVariantProduct ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
+                              <Layers className="h-3.5 w-3.5" />
+                              Tipovi
+                            </span>
+                          ) : null}
+                          {product.pickupAvailable ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
+                              <UserRound className="h-3.5 w-3.5" />
+                              Licno
+                            </span>
+                          ) : null}
+                          {product.publishIg ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 px-2 py-1 text-[11px] font-semibold text-white shadow">
+                              <Instagram className="h-3.5 w-3.5" />
+                              IG
+                            </span>
+                          ) : null}
+                          {product.publishFb ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow">
+                              <Facebook className="h-3.5 w-3.5" />
+                              FB
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 sm:flex-col sm:items-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleStartEdit(product);
+                          }}
+                        >
+                          Izmeni
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDelete(product._id);
+                          }}
+                        >
+                          Obrisi
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {filteredProducts.map((product) => {
+                const mainImage = getMainImage(product);
+                const productCategories = (product.categoryIds ?? [])
+                  .map((id) => categoryMap.get(id))
+                  .filter(Boolean) as Category[];
+                const isVariantProduct = (product.variants ?? []).length > 0;
+                return (
+                  <button
+                    key={product._id}
+                    type="button"
+                    className="group relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                    onClick={() => handleRowClick(product._id)}
+                  >
+                    {mainImage?.url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={mainImage.url}
+                        alt={product.kpName ?? product.name}
+                        className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.01] group-hover:blur-[1px]"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Bez slike
+                      </div>
+                    )}
+                    <div className="absolute inset-0 z-0 bg-black/35" />
+                    <div className="absolute right-2 top-2 z-20">
+                      <span className="inline-flex items-center rounded-full bg-white/95 px-3 py-1 text-sm font-bold text-slate-900 shadow">
+                        {getDisplayPrice(product)}
+                      </span>
+                    </div>
+                    {isVariantProduct ? (
+                      <span className="absolute left-2 top-2 z-20 inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-3 py-1 text-sm font-bold text-white shadow-lg">
+                        <Layers className="h-5 w-5" />
+                        Tipski
+                      </span>
+                    ) : null}
+                    {product.pickupAvailable ? (
+                      <span className="absolute left-2 bottom-2 z-20 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-slate-900 shadow">
+                        <UserRound className="h-4 w-4" />
+                        Licno
+                      </span>
+                    ) : null}
+                    <div className="absolute right-2 bottom-2 z-30 flex gap-2">
+                      {product.publishIg ? (
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-rose-500 text-white shadow-[0_0_16px_rgba(244,114,182,0.55)] ring-1 ring-white/25 backdrop-blur-[1.5px]">
+                          <Instagram className="h-5 w-5 drop-shadow-[0_0_8px_rgba(244,114,182,0.55)]" />
+                        </span>
+                      ) : null}
+                      {product.publishFb ? (
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-[0_0_16px_rgba(37,99,235,0.5)] ring-1 ring-white/25 backdrop-blur-[1.5px]">
+                          <Facebook className="h-5 w-5 drop-shadow-[0_0_8px_rgba(59,130,246,0.55)]" />
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pr-16 pb-6 pt-8 text-left">
+                      {productCategories.length > 0 ? (
+                        <div className="mb-1 flex flex-wrap gap-1 text-[11px] font-semibold text-slate-200">
+                          {productCategories.slice(0, 2).map((category) => (
+                            <span key={category._id} className="rounded-full bg-white/20 px-2 py-0.5 backdrop-blur">
+                              {category.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="flex items-center gap-2">
+                        <p className="w-full truncate text-sm font-semibold text-white mb-1">{product.kpName ?? product.name}</p>
+                        <ArrowUpRight className="h-4 w-4 flex-shrink-0 text-white/80" />
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>

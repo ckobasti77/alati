@@ -17,6 +17,7 @@ import type * as orders from "../orders.js";
 import type * as products from "../products.js";
 import type * as sales from "../sales.js";
 import type * as social from "../social.js";
+import type * as socialTokens from "../socialTokens.js";
 
 import type {
   ApiFromModules,
@@ -42,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   products: typeof products;
   sales: typeof sales;
   social: typeof social;
+  socialTokens: typeof socialTokens;
 }>;
 declare const fullApiWithMounts: typeof fullApi;
 

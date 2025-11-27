@@ -16,6 +16,21 @@ export default defineSchema({
     createdAt: v.number(),
     expiresAt: v.optional(v.number()),
   }).index("by_token", ["token"]),
+  secrets: defineTable({
+    key: v.string(),
+    value: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    expiresAt: v.optional(v.number()),
+    meta: v.optional(
+      v.object({
+        provider: v.optional(v.string()),
+        type: v.optional(v.string()),
+        pageId: v.optional(v.string()),
+        instagramBusinessId: v.optional(v.string()),
+      }),
+    ),
+  }).index("by_key", ["key"]),
   categories: defineTable({
     userId: v.optional(v.id("users")),
     name: v.string(),

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Facebook, Instagram, Layers, LayoutGrid, List, Search, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,11 +9,38 @@ import { Input } from "@/components/ui/input";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexQuery } from "@/lib/convex";
+import { formatCurrency } from "@/lib/format";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { cn } from "@/lib/utils";
-import type { Product } from "@/types/order";
+import type { Product, ProductVariant } from "@/types/order";
 
 type Platform = "facebook" | "instagram";
+
+function resolvePrimaryVariant(product: Product): ProductVariant | undefined {
+  const variants = product.variants ?? [];
+  return variants.find((variant) => variant.isDefault) ?? variants[0];
+}
+
+function getMainImage(product?: Product | null) {
+  if (!product) return null;
+  const images = product.images ?? [];
+  return images.find((image) => image.isMain) ?? images[0] ?? null;
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const media = typeof window !== "undefined" ? window.matchMedia("(max-width: 768px)") : null;
+    if (!media) return;
+    const update = () => setIsMobile(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return isMobile;
+}
 
 export default function SocialPostsPage() {
   return (
@@ -25,12 +53,18 @@ export default function SocialPostsPage() {
 function SocialContent() {
   const { user, token } = useAuth();
   const sessionToken = token as string | null;
-  const [productInput, setProductInput] = useState("");
   const [search, setSearch] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [scheduledAt, setScheduledAt] = useState<string>("");
   const [publishing, setPublishing] = useState<Platform | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (isMobile) {
+      setViewMode("grid");
+    }
+  }, [isMobile]);
 
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken ?? "" });
   const filteredProducts = useMemo(() => {
@@ -38,6 +72,7 @@ function SocialContent() {
     const needle = search.trim().toLowerCase();
     if (!needle) return list;
     return list.filter((product) => {
+      if (product.kpName?.toLowerCase().includes(needle)) return true;
       if (product.name.toLowerCase().includes(needle)) return true;
       if (product.opisFbInsta?.toLowerCase().includes(needle)) return true;
       if (product.opisKp?.toLowerCase().includes(needle)) return true;
@@ -76,8 +111,6 @@ function SocialContent() {
 
   const handleSelectProduct = (product: Product) => {
     setSelectedProductId(product._id);
-    setProductInput(product.name);
-    setDropdownOpen(false);
   };
 
   const publish = async (platform: Platform) => {
@@ -131,72 +164,189 @@ function SocialContent() {
           <CardTitle>Izbor proizvoda</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="relative">
-            <Input
-              value={productInput}
-              placeholder={products === undefined ? "Ucitavanje..." : "Pretrazi proizvod"}
-              disabled={products === undefined || (products?.length ?? 0) === 0}
-              onChange={(event) => {
-                const value = event.target.value;
-                setProductInput(value);
-                setSearch(value);
-                setDropdownOpen(true);
-              }}
-              onFocus={() => setDropdownOpen(true)}
-              onClick={() => setDropdownOpen(true)}
-              onBlur={() => setTimeout(() => setDropdownOpen(false), 120)}
-            />
-            {dropdownOpen && (
-              <div className="absolute left-0 right-0 z-10 mt-1 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
-                {products === undefined ? (
-                  <div className="px-3 py-2 text-sm text-slate-500">Ucitavanje...</div>
-                ) : filteredProducts.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-slate-500">Nema rezultata.</div>
-                ) : (
-                  filteredProducts.map((product) => {
-                    const images = product.images ?? [];
-                    const previewImage = images.find((image) => image.isMain) ?? images[0];
-                    const description =
-                      product.opisFbInsta || product.opis || product.opisKp || "Nema opisa za FB/IG.";
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="relative w-full md:max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                placeholder={products === undefined ? "Ucitavanje..." : "Pretrazi proizvode"}
+                disabled={products === undefined || (products?.length ?? 0) === 0}
+                onChange={(event) => setSearch(event.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="hidden md:flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
+              <Button
+                type="button"
+                variant={viewMode === "grid" ? "default" : "ghost"}
+                size="sm"
+                className="gap-2 rounded-full"
+                onClick={() => setViewMode("grid")}
+              >
+                <LayoutGrid className="h-4 w-4" />
+                Grid
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === "list" ? "default" : "ghost"}
+                size="sm"
+                className="gap-2 rounded-full"
+                onClick={() => setViewMode("list")}
+              >
+                <List className="h-4 w-4" />
+                Lista
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[7fr,5fr]">
+            <div className="space-y-3">
+              {products === undefined ? (
+                <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
+                  Ucitavanje proizvoda...
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
+                  Nema proizvoda koji odgovaraju pretrazi.
+                </div>
+              ) : viewMode === "list" && !isMobile ? (
+                <div className="space-y-2">
+                  {filteredProducts.map((product) => {
+                    const main = getMainImage(product);
+                    const isActive = selectedProductId === product._id;
+                    const primaryVariant = resolvePrimaryVariant(product);
+                    const price = formatCurrency(primaryVariant?.prodajnaCena ?? product.prodajnaCena, "EUR");
+                    const isVariantProduct = (product.variants ?? []).length > 0;
+                    return (
+                      <button
+                        key={product._id}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
+                          isActive
+                            ? "border-blue-500 bg-blue-50 shadow-sm"
+                            : "border-slate-200 bg-white hover:border-blue-200 hover:shadow-sm",
+                        )}
+                        onClick={() => handleSelectProduct(product)}
+                      >
+                        <div className="relative h-16 w-16 overflow-hidden rounded-md bg-slate-100">
+                          {main?.url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={main.url} alt={product.kpName ?? product.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase text-slate-400">
+                              Bez slike
+                            </div>
+                          )}
+                          {isVariantProduct ? (
+                            <span className="absolute left-1 top-1 inline-flex items-center gap-1 rounded-full bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
+                              <Layers className="h-3 w-3" />
+                              Tipski
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">{product.kpName ?? product.name}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-white shadow">
+                              {price}
+                            </span>
+                            {product.pickupAvailable ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
+                                <UserRound className="h-3.5 w-3.5" />
+                                Licno
+                              </span>
+                            ) : null}
+                            {product.publishIg ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 px-2 py-1 text-[11px] font-semibold text-white shadow">
+                                <Instagram className="h-3.5 w-3.5" />
+                                IG
+                              </span>
+                            ) : null}
+                            {product.publishFb ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow">
+                                <Facebook className="h-3.5 w-3.5" />
+                                FB
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredProducts.map((product) => {
+                    const main = getMainImage(product);
+                    const primaryVariant = resolvePrimaryVariant(product);
+                    const price = formatCurrency(primaryVariant?.prodajnaCena ?? product.prodajnaCena, "EUR");
+                    const isVariantProduct = (product.variants ?? []).length > 0;
                     const isActive = selectedProductId === product._id;
                     return (
                       <button
                         key={product._id}
                         type="button"
                         className={cn(
-                          "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition hover:bg-blue-50 hover:text-blue-700",
-                          isActive && "bg-blue-50 text-blue-700",
+                          "group relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg",
+                          isActive && "ring-2 ring-blue-500 ring-offset-2",
                         )}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          handleSelectProduct(product);
-                        }}
+                        onClick={() => handleSelectProduct(product)}
                       >
-                        {previewImage?.url ? (
-                          <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border border-slate-200">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={previewImage.url} alt={product.name} className="h-full w-full object-cover" />
-                          </div>
+                        {main?.url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={main.url}
+                            alt={product.kpName ?? product.name}
+                            className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.01] group-hover:blur-[1px]"
+                          />
                         ) : (
-                          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-md border border-dashed border-slate-300 text-[10px] uppercase text-slate-400">
-                            N/A
+                          <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Bez slike
                           </div>
                         )}
-                        <div className="flex-1">
-                          <p className="font-semibold">{product.name}</p>
-                          <p className="line-clamp-1 text-xs text-slate-500">{description}</p>
+                        <div className="absolute inset-0 z-0 bg-black/35" />
+                        <div className="absolute right-2 top-2 z-20">
+                          <span className="inline-flex items-center rounded-full bg-white/95 px-3 py-1 text-sm font-bold text-slate-900 shadow">
+                            {price}
+                          </span>
+                        </div>
+                        {isVariantProduct ? (
+                          <span className="absolute left-2 top-2 z-20 inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-3 py-1 text-sm font-bold text-white shadow-lg">
+                            <Layers className="h-5 w-5" />
+                            Tipski
+                          </span>
+                        ) : null}
+                        {product.pickupAvailable ? (
+                          <span className="absolute left-2 bottom-2 z-20 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-slate-900 shadow">
+                            <UserRound className="h-4 w-4" />
+                            Licno
+                          </span>
+                        ) : null}
+                        <div className="absolute right-2 bottom-2 z-30 flex gap-2">
+                          {product.publishIg ? (
+                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-rose-500 text-white shadow-[0_0_16px_rgba(244,114,182,0.55)] ring-1 ring-white/25 backdrop-blur-[1.5px]">
+                              <Instagram className="h-5 w-5 drop-shadow-[0_0_8px_rgba(244,114,182,0.55)]" />
+                            </span>
+                          ) : null}
+                          {product.publishFb ? (
+                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-[0_0_16px_rgba(37,99,235,0.5)] ring-1 ring-white/25 backdrop-blur-[1.5px]">
+                              <Facebook className="h-5 w-5 drop-shadow-[0_0_8px_rgba(59,130,246,0.55)]" />
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pr-16 pb-6 pt-8 text-left">
+                          <p className="truncate text-sm font-semibold text-white mb-1">{product.kpName ?? product.name}</p>
                         </div>
                       </button>
                     );
-                  })
-                )}
-              </div>
-            )}
-          </div>
+                  })}
+                </div>
+              )}
+            </div>
 
-          {selectedProduct ? (
-            <div className="grid gap-4 lg:grid-cols-[2fr,3fr]">
-              <div className="space-y-3">
+            {selectedProduct ? (
+              <div className="grid gap-4">
                 <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                   {mainImage?.url ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -212,40 +362,42 @@ function SocialContent() {
                     dangerouslySetInnerHTML={{ __html: formatRichTextToHtml(captionPreview) }}
                   />
                 </div>
-              </div>
 
-              <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-800">Zakazi (opciono)</label>
-                  <Input
-                    type="datetime-local"
-                    value={scheduledAt}
-                    onChange={(event) => setScheduledAt(event.target.value)}
-                  />
-                  <p className="text-xs text-slate-500">Ostavi prazno za objavu odmah.</p>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    className="flex-1"
-                    onClick={() => publish("facebook")}
-                    disabled={publishing !== null || !selectedProduct}
-                  >
-                    {publishing === "facebook" ? "Objavljivanje..." : "Okaci na Facebook"}
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    variant="outline"
-                    onClick={() => publish("instagram")}
-                    disabled={publishing !== null || !selectedProduct}
-                  >
-                    {publishing === "instagram" ? "Objavljivanje..." : "Okaci na Instagram"}
-                  </Button>
+                <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-800">Zakazi (opciono)</label>
+                    <Input
+                      type="datetime-local"
+                      value={scheduledAt}
+                      onChange={(event) => setScheduledAt(event.target.value)}
+                    />
+                    <p className="text-xs text-slate-500">Ostavi prazno za objavu odmah.</p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      className="flex-1"
+                      onClick={() => publish("facebook")}
+                      disabled={publishing !== null || !selectedProduct}
+                    >
+                      {publishing === "facebook" ? "Objavljivanje..." : "Okaci na Facebook"}
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      variant="outline"
+                      onClick={() => publish("instagram")}
+                      disabled={publishing !== null || !selectedProduct}
+                    >
+                      {publishing === "instagram" ? "Objavljivanje..." : "Okaci na Instagram"}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">Izaberi proizvod da vidis pregled i dugmad za objavu.</p>
-          )}
+            ) : (
+              <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
+                Izaberi proizvod da vidis pregled i dugmad za objavu.
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

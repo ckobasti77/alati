@@ -4,9 +4,12 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
 const GRAPH_VERSION = "v21.0";
+const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID;
+const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET;
 const FACEBOOK_USER_TOKEN = process.env.FACEBOOK_ACCESS_TOKEN;
 const FACEBOOK_PAGE_ID = process.env.FB_PAGE_ID;
 const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL;
+const TOKEN_REFRESH_WINDOW_MS = 1000 * 60 * 60 * 24 * 5; // 5 dana
 const convex = new ConvexHttpClient(requireEnv(CONVEX_URL, "NEXT_PUBLIC_CONVEX_URL"));
 
 type Platform = "facebook" | "instagram";
@@ -28,6 +31,15 @@ type ProductForPosting = {
 
 type GraphErrorResponse = {
   error?: { message?: string; code?: number; type?: string };
+};
+
+type StoredFacebookTokens = {
+  userAccessToken: string | null;
+  userTokenExpiresAt?: number | null;
+  pageAccessToken: string | null;
+  pageTokenExpiresAt?: number | null;
+  instagramBusinessId?: string | null;
+  pageId?: string | null;
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -68,8 +80,45 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-async function getPageAccess() {
-  const userToken = requireEnv(FACEBOOK_USER_TOKEN, "FACEBOOK_ACCESS_TOKEN");
+function isExpiringSoon(expiresAt?: number | null) {
+  if (!expiresAt) return true;
+  return expiresAt - Date.now() <= TOKEN_REFRESH_WINDOW_MS;
+}
+
+async function exchangeForLongLivedUserToken(userToken: string) {
+  const appId = requireEnv(FACEBOOK_APP_ID, "FACEBOOK_APP_ID");
+  const appSecret = requireEnv(FACEBOOK_APP_SECRET, "FACEBOOK_APP_SECRET");
+  const params = new URLSearchParams({
+    grant_type: "fb_exchange_token",
+    client_id: appId,
+    client_secret: appSecret,
+    fb_exchange_token: userToken,
+  });
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token?${params.toString()}`;
+  const data = await fetchJson<{ access_token: string; expires_in?: number }>(url);
+  return {
+    accessToken: data.access_token,
+    expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : undefined,
+  };
+}
+
+async function debugUserToken(userToken: string) {
+  if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) return null;
+  const appAccessToken = `${FACEBOOK_APP_ID}|${FACEBOOK_APP_SECRET}`;
+  const url = `https://graph.facebook.com/${GRAPH_VERSION}/debug_token?input_token=${userToken}&access_token=${appAccessToken}`;
+  try {
+    const data = await fetchJson<{ data?: { is_valid?: boolean; expires_at?: number } }>(url);
+    return {
+      isValid: data?.data?.is_valid !== false,
+      expiresAt: data?.data?.expires_at ? data.data.expires_at * 1000 : undefined,
+    };
+  } catch (error) {
+    console.warn("Facebook token debug failed", error);
+    return null;
+  }
+}
+
+async function fetchPageAccessToken(userToken: string) {
   const pageId = requireEnv(FACEBOOK_PAGE_ID, "FB_PAGE_ID");
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}?fields=access_token,instagram_business_account&access_token=${userToken}`;
   const data = await fetchJson<{ access_token: string; instagram_business_account?: { id: string } }>(url);
@@ -83,12 +132,110 @@ async function getPageAccess() {
   };
 }
 
+async function getStoredFacebookTokens(adminToken: string): Promise<StoredFacebookTokens | null> {
+  try {
+    return await convex.query(api.socialTokens.getFacebookTokens, { token: adminToken });
+  } catch (error) {
+    console.error("Neuspesno citanje FB tokena iz baze", error);
+    return null;
+  }
+}
+
+async function persistFacebookTokens(
+  adminToken: string,
+  tokens: {
+    userAccessToken: string;
+    userTokenExpiresAt?: number | null;
+    pageAccessToken: string;
+    pageTokenExpiresAt?: number | null;
+    instagramBusinessId?: string | null;
+  },
+) {
+  try {
+    await convex.mutation(api.socialTokens.saveFacebookTokens, {
+      token: adminToken,
+      userAccessToken: tokens.userAccessToken,
+      userTokenExpiresAt: tokens.userTokenExpiresAt ?? undefined,
+      pageAccessToken: tokens.pageAccessToken,
+      pageTokenExpiresAt: tokens.pageTokenExpiresAt ?? undefined,
+      instagramBusinessId: tokens.instagramBusinessId ?? undefined,
+      pageId: FACEBOOK_PAGE_ID ?? undefined,
+    });
+  } catch (error) {
+    console.error("Neuspesno cuvanje FB tokena u bazu", error);
+  }
+}
+
+async function getPageAccess(adminToken: string) {
+  const pageId = requireEnv(FACEBOOK_PAGE_ID, "FB_PAGE_ID");
+  const stored = await getStoredFacebookTokens(adminToken);
+  const bootstrapUserToken = FACEBOOK_USER_TOKEN;
+  let userAccessToken = stored?.userAccessToken ?? null;
+  let userTokenExpiresAt = stored?.userTokenExpiresAt ?? null;
+
+  if (!userAccessToken && bootstrapUserToken) {
+    userAccessToken = bootstrapUserToken;
+  }
+
+  if (!userAccessToken) {
+    throw new Error("Nedostaje Facebook user token. Postavi FACEBOOK_ACCESS_TOKEN u .env.local.");
+  }
+
+  const canRefreshUser = Boolean(FACEBOOK_APP_ID && FACEBOOK_APP_SECRET);
+  if (!userTokenExpiresAt && canRefreshUser && stored?.userAccessToken) {
+    const inspected = await debugUserToken(userAccessToken);
+    if (inspected?.expiresAt) {
+      userTokenExpiresAt = inspected.expiresAt;
+    }
+  }
+
+  let refreshedUser = false;
+  if (isExpiringSoon(userTokenExpiresAt) && canRefreshUser) {
+    const refreshed = await exchangeForLongLivedUserToken(userAccessToken);
+    userAccessToken = refreshed.accessToken;
+    userTokenExpiresAt = refreshed.expiresAt ?? null;
+    refreshedUser = true;
+  } else if (isExpiringSoon(userTokenExpiresAt) && !canRefreshUser) {
+    console.warn(
+      "FACEBOOK_APP_ID/SECRET nisu definisani - auto osvezavanje FB tokena je onemoguceno.",
+    );
+  }
+
+  let pageAccessToken = stored?.pageAccessToken ?? null;
+  let pageTokenExpiresAt = stored?.pageTokenExpiresAt ?? null;
+  let instagramBusinessId = stored?.instagramBusinessId ?? null;
+
+  const needsPageRefresh =
+    !pageAccessToken || !instagramBusinessId || refreshedUser || isExpiringSoon(pageTokenExpiresAt);
+
+  if (needsPageRefresh) {
+    const pageData = await fetchPageAccessToken(userAccessToken);
+    pageAccessToken = pageData.pageAccessToken;
+    instagramBusinessId = pageData.instagramBusinessId ?? instagramBusinessId ?? null;
+    pageTokenExpiresAt = userTokenExpiresAt ?? pageTokenExpiresAt ?? null;
+  }
+
+  if (!pageAccessToken) {
+    throw new Error("Nije moguce dobiti page access token.");
+  }
+
+  await persistFacebookTokens(adminToken, {
+    userAccessToken,
+    userTokenExpiresAt,
+    pageAccessToken,
+    pageTokenExpiresAt,
+    instagramBusinessId,
+  });
+
+  return { pageId, pageAccessToken, instagramBusinessId };
+}
+
 async function publishToFacebook(
   product: ProductForPosting,
   images: ProductImage[],
-  options: { scheduledAt?: number },
+  options: { scheduledAt?: number; adminToken: string },
 ) {
-  const { pageId, pageAccessToken } = await getPageAccess();
+  const { pageId, pageAccessToken } = await getPageAccess(options.adminToken);
   const caption = resolveCaption(product);
   const selectedImages = images.slice(0, 10);
   if (selectedImages.length === 0) {
@@ -131,9 +278,9 @@ async function publishToFacebook(
 async function publishToInstagram(
   product: ProductForPosting,
   images: ProductImage[],
-  options: { scheduledAt?: number },
+  options: { scheduledAt?: number; adminToken: string },
 ) {
-  const { instagramBusinessId, pageAccessToken } = await getPageAccess();
+  const { instagramBusinessId, pageAccessToken } = await getPageAccess(options.adminToken);
   if (!instagramBusinessId) {
     throw new Error("Instagram Business nalog nije povezan sa FB stranicom.");
   }
@@ -247,12 +394,18 @@ export async function POST(req: Request) {
     const scheduledAt = parseSchedule(body.scheduledAt);
 
     if (body.platform === "facebook") {
-      const result = await publishToFacebook(product as ProductForPosting, images, { scheduledAt });
+      const result = await publishToFacebook(product as ProductForPosting, images, {
+        scheduledAt,
+        adminToken: body.token,
+      });
       return jsonResponse({ ok: true, platform: "facebook", id: result.id });
     }
 
     if (body.platform === "instagram") {
-      const result = await publishToInstagram(product as ProductForPosting, images, { scheduledAt });
+      const result = await publishToInstagram(product as ProductForPosting, images, {
+        scheduledAt,
+        adminToken: body.token,
+      });
       return jsonResponse({ ok: true, platform: "instagram", id: result.id });
     }
 
