@@ -219,6 +219,24 @@ function SocialContent() {
               />
               <p className="text-[11px] text-slate-500">Prazno = objava odmah.</p>
             </div>
+            {selectedProduct ? (
+              <div className="flex w-full items-center gap-3 rounded-lg bg-white px-3 py-2 text-left shadow-sm ring-1 ring-slate-200 sm:max-w-sm">
+                <div className="h-12 w-12 overflow-hidden rounded-md bg-slate-100">
+                  {mainImage?.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={mainImage.url} alt={selectedProduct.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase text-slate-400">
+                      Bez slike
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Izabrano za objavu</p>
+                  <p className="truncate text-sm font-semibold text-slate-900">{selectedProduct.kpName ?? selectedProduct.name}</p>
+                </div>
+              </div>
+            ) : null}
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               <Button
                 size="sm"

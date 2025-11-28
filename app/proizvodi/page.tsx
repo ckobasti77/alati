@@ -2382,7 +2382,7 @@ function ProductsContent() {
                       ) : null}
                       <div className="flex items-center gap-2">
                         <p className="w-full truncate text-sm font-semibold text-white mb-1">{product.kpName ?? product.name}</p>
-                        <ArrowUpRight className="h-4 w-4 flex-shrink-0 text-white/80" />
+                        <ArrowUpRight className="h-4 w-4 shrink-0 text-white/80" />
                       </div>
                     </div>
                   </button>

@@ -130,7 +130,7 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
             <p className="text-base font-semibold text-slate-900">{displayValue}</p>
           )}
         </div>
-        <div className="flex items-center gap-1 rounded-full bg-white/90 px-1 py-0.5 text-slate-500 shadow-sm opacity-0 transition group-hover:opacity-100">
+        <div className="flex items-center gap-1 rounded-full bg-white/90 px-1 py-0.5 text-slate-500 shadow-sm opacity-100 transition md:absolute md:right-3 md:top-3 md:opacity-0 md:group-hover:opacity-100">
           {isEditing ? (
             <>
               <button
@@ -461,23 +461,25 @@ function OrderDetails({ orderId }: { orderId: string }) {
             <p className="text-xs text-slate-500">Kreirano {formatDate(order.kreiranoAt)}</p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {stageOptions.map((option) => (
-            <Button
-              key={option.value}
-              type="button"
-              size="sm"
-              variant={order.stage === option.value ? "default" : "outline"}
-              className="min-w-[92px]"
-              disabled={isUpdatingStage || order.stage === option.value}
-              onClick={() => handleStageChange(option.value)}
-            >
-              {isUpdatingStage && order.stage !== option.value ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              {option.label}
-            </Button>
-          ))}
+        <div className="w-full -mx-2 overflow-x-auto pb-2 sm:mx-0 sm:pb-0">
+          <div className="flex min-w-max gap-2 px-2 sm:px-0">
+            {stageOptions.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                size="sm"
+                variant={order.stage === option.value ? "default" : "outline"}
+                className="min-w-[92px] whitespace-nowrap"
+                disabled={isUpdatingStage || order.stage === option.value}
+                onClick={() => handleStageChange(option.value)}
+              >
+                {isUpdatingStage && order.stage !== option.value ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                {option.label}
+              </Button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -684,9 +686,15 @@ function OrderDetails({ orderId }: { orderId: string }) {
             multiline
             onSave={(val) => handleOrderFieldSave("napomena", val)}
           />
-          <p className="text-xs text-slate-500">Telefon: {order.phone} · Adresa: {order.address}</p>
+          <p className="text-xs text-slate-500">Telefon: {order.phone} - Adresa: {order.address}</p>
         </CardContent>
       </Card>
     </div>
   );
 }
+
+
+
+
+
+

@@ -162,7 +162,7 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
             <p className="text-base font-semibold text-slate-900">{displayValue}</p>
           )}
         </div>
-        <div className="flex items-center gap-1 rounded-full bg-white/90 px-1 py-0.5 text-slate-500 shadow-sm opacity-0 transition group-hover:opacity-100">
+        <div className="flex items-center gap-1 rounded-full bg-white/90 px-1 py-0.5 text-slate-500 shadow-sm opacity-100 transition md:absolute md:right-3 md:top-3 md:opacity-0 md:group-hover:opacity-100">
           {isEditing ? (
             <>
               <button
@@ -247,6 +247,10 @@ function ProductDetailsContent() {
   const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
   const [isGalleryDropActive, setIsGalleryDropActive] = useState(false);
   const [isAdDropActive, setIsAdDropActive] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(pointer: coarse)").matches;
+  });
   const adImageInputRef = useRef<HTMLInputElement | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
   const [draggingItem, setDraggingItem] = useState<GalleryItem | null>(null);
@@ -258,6 +262,8 @@ function ProductDetailsContent() {
   const [newCategoryIcon, setNewCategoryIcon] = useState<DraftCategoryIcon | null>(null);
   const [isUploadingCategoryIcon, setIsUploadingCategoryIcon] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [reorderEditingId, setReorderEditingId] = useState<string | null>(null);
+  const [reorderInputValue, setReorderInputValue] = useState("");
   const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -268,6 +274,31 @@ function ProductDetailsContent() {
       setProduct(queryResult);
     }
   }, [queryResult]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsTouchDevice(mediaQuery.matches);
+    update();
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", update);
+    } else if (typeof mediaQuery.addListener === "function") {
+      mediaQuery.addListener(update);
+    }
+    return () => {
+      if (typeof mediaQuery.removeEventListener === "function") {
+        mediaQuery.removeEventListener("change", update);
+      } else if (typeof mediaQuery.removeListener === "function") {
+        mediaQuery.removeListener(update);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTouchDevice) return;
+    setIsGalleryDropActive(false);
+    setIsAdDropActive(false);
+  }, [isTouchDevice]);
 
   useEffect(() => {
     if (!categoryMenuOpen) return;
@@ -849,6 +880,16 @@ function ProductDetailsContent() {
     );
   };
 
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const touchDragActiveRef = useRef(false);
+  const [touchDraggingId, setTouchDraggingId] = useState<string | null>(null);
+
+  const isTouchOnActionButton = (event: React.TouchEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return false;
+    return Boolean(target.closest("button"));
+  };
+
   const handleGalleryDragStart = (event: React.DragEvent<HTMLDivElement>, item: GalleryItem) => {
     event.dataTransfer.effectAllowed = "move";
     try {
@@ -857,6 +898,52 @@ function ProductDetailsContent() {
       // ignore
     }
     setDraggingItem(item);
+  };
+
+  const handleGalleryTouchStart = (event: React.TouchEvent<HTMLDivElement>, item: GalleryItem) => {
+    if (event.touches.length !== 1) return;
+    if (isTouchOnActionButton(event)) return;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressTimerRef.current = setTimeout(() => {
+      touchDragActiveRef.current = true;
+      setTouchDraggingId(item.id);
+      setDraggingItem(item);
+      setDragOverId(item.id);
+    }, 1000);
+  };
+
+  const handleGalleryTouchMove = async (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!touchDragActiveRef.current || !draggingItem) return;
+    event.preventDefault();
+    const touch = event.touches[0];
+    const targetElement = document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
+    const targetId = targetElement?.closest("[data-gallery-id]")?.getAttribute("data-gallery-id");
+    if (!targetId || targetId === touchDraggingId) return;
+    const targetItem = gallery.find((item) => item.id === targetId);
+    if (!targetItem) return;
+    if (!isSameGalleryGroup(draggingItem, targetItem)) return;
+    await handleReorderGallery(draggingItem, targetItem);
+    setTouchDraggingId(targetId);
+    setDraggingItem(targetItem);
+    setDragOverId(targetId);
+  };
+
+  const resetTouchDrag = () => {
+    touchDragActiveRef.current = false;
+    setTouchDraggingId(null);
+    setDraggingItem(null);
+    setDragOverId(null);
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleGalleryTouchEnd = () => {
+    resetTouchDrag();
   };
 
   const handleGalleryDragOver = (event: React.DragEvent<HTMLDivElement>, target: GalleryItem) => {
@@ -879,9 +966,52 @@ function ProductDetailsContent() {
     setDragOverId(null);
   };
 
+  const handleGalleryTouchCancel = () => {
+    resetTouchDrag();
+  };
+
   const handleGalleryDragLeave = (target: GalleryItem) => {
     if (!draggingItem || !isSameGalleryGroup(draggingItem, target)) return;
     setDragOverId((current) => (current === target.id ? null : current));
+  };
+
+  const getGalleryGroup = (item: GalleryItem) => gallery.filter((candidate) => isSameGalleryGroup(item, candidate));
+
+  const handleOpenReorderInput = (item: GalleryItem) => {
+    const group = getGalleryGroup(item);
+    const currentIndex = group.findIndex((candidate) => candidate.id === item.id);
+    setReorderEditingId(item.id);
+    setReorderInputValue(String(currentIndex >= 0 ? currentIndex + 1 : 1));
+  };
+
+  const handleCancelReorderInput = () => {
+    setReorderEditingId(null);
+    setReorderInputValue("");
+  };
+
+  const handleConfirmReorderInput = async (item: GalleryItem) => {
+    const group = getGalleryGroup(item);
+    if (group.length === 0) return;
+    const parsed = Number.parseInt(reorderInputValue, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      toast.error("Upisi redni broj (1 ili vise).");
+      return;
+    }
+    const targetIndex = Math.min(Math.max(parsed - 1, 0), group.length - 1);
+    const targetItem = group[targetIndex];
+    handleCancelReorderInput();
+    if (!targetItem || targetItem.id === item.id) return;
+    setDraggingItem(item);
+    setDragOverId(targetItem.id);
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    try {
+      await handleReorderGallery(item, targetItem);
+    } finally {
+      setTimeout(() => {
+        setDraggingItem(null);
+        setDragOverId(null);
+      }, 260);
+    }
   };
 
   const getShiftClass = (item: GalleryItem, index: number) => {
@@ -959,17 +1089,24 @@ function ProductDetailsContent() {
   };
   const isFileDrag = (event: { dataTransfer?: DataTransfer | null }) => {
     const types = event.dataTransfer?.types;
+    const items = event.dataTransfer?.items;
     if (!types) return false;
-    return Array.from(types).includes("Files");
+    const hasFiles = Array.from(types).includes("Files");
+    if (!hasFiles) return false;
+    return Array.from(items ?? []).some((item) => item.kind === "file");
   };
 
   const handleGalleryDropZoneDragEnter = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (isTouchDevice) return;
+    if (draggingItem || touchDragActiveRef.current) return;
     if (!isFileDrag(event)) return;
     event.preventDefault();
     setIsGalleryDropActive(true);
   };
 
   const handleGalleryDropZoneDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (isTouchDevice) return;
+    if (draggingItem || touchDragActiveRef.current) return;
     if (!isFileDrag(event)) return;
     event.preventDefault();
     if (!isGalleryDropActive) {
@@ -978,6 +1115,8 @@ function ProductDetailsContent() {
   };
 
   const handleGalleryDropZoneDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (isTouchDevice) return;
+    if (draggingItem || touchDragActiveRef.current) return;
     if (!isFileDrag(event)) return;
     const relatedTarget = event.relatedTarget as Node | null;
     if (relatedTarget && event.currentTarget.contains(relatedTarget)) return;
@@ -985,6 +1124,8 @@ function ProductDetailsContent() {
   };
 
   const handleGalleryDropZoneDrop = async (event: ReactDragEvent<HTMLDivElement>) => {
+    if (isTouchDevice) return;
+    if (draggingItem || touchDragActiveRef.current) return;
     if (!isFileDrag(event)) return;
     event.preventDefault();
     setIsGalleryDropActive(false);
@@ -995,12 +1136,14 @@ function ProductDetailsContent() {
   };
 
   const handleAdDropZoneDragEnter = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (isTouchDevice) return;
     if (!isFileDrag(event)) return;
     event.preventDefault();
     setIsAdDropActive(true);
   };
 
   const handleAdDropZoneDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (isTouchDevice) return;
     if (!isFileDrag(event)) return;
     event.preventDefault();
     if (!isAdDropActive) {
@@ -1009,6 +1152,7 @@ function ProductDetailsContent() {
   };
 
   const handleAdDropZoneDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (isTouchDevice) return;
     if (!isFileDrag(event)) return;
     const relatedTarget = event.relatedTarget as Node | null;
     if (relatedTarget && event.currentTarget.contains(relatedTarget)) return;
@@ -1016,6 +1160,7 @@ function ProductDetailsContent() {
   };
 
   const handleAdDropZoneDrop = async (event: ReactDragEvent<HTMLDivElement>) => {
+    if (isTouchDevice) return;
     if (!isFileDrag(event)) return;
     event.preventDefault();
     setIsAdDropActive(false);
@@ -1036,6 +1181,23 @@ function ProductDetailsContent() {
   const handleOpenPreview = (item: GalleryItem) => {
     if (!item.url) return;
     setPreviewImage({ url: item.url, alt: item.alt || item.label });
+  };
+
+  const handleDownloadImage = async (url: string, filename: string) => {
+    if (!url) return;
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error(error);
+      toast.error("Preuzimanje nije uspelo.");
+    }
   };
 
   const handleClosePreview = () => setPreviewImage(null);
@@ -1085,6 +1247,8 @@ function ProductDetailsContent() {
       ? isSameGalleryGroup(draggingItem, gallery[targetIndex])
       : false;
   const baseNabavnaIsReal = product?.nabavnaCenaIsReal ?? true;
+  const showGalleryDropOverlay = isGalleryDropActive && !isTouchDevice;
+  const showAdDropOverlay = isAdDropActive && !isTouchDevice;
 
   if (isLoading) {
     return (
@@ -1159,14 +1323,14 @@ function ProductDetailsContent() {
           <CardContent>
             <div
               className={`relative rounded-xl border border-transparent transition ${
-                isGalleryDropActive ? "border-2 border-dashed border-blue-300 bg-blue-50/60" : ""
+                showGalleryDropOverlay ? "border-2 border-dashed border-blue-300 bg-blue-50/60" : ""
               }`}
               onDragEnter={handleGalleryDropZoneDragEnter}
               onDragOver={handleGalleryDropZoneDragOver}
               onDragLeave={handleGalleryDropZoneDragLeave}
               onDrop={handleGalleryDropZoneDrop}
             >
-              {isGalleryDropActive ? (
+              {showGalleryDropOverlay ? (
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-blue-100/80 backdrop-blur-sm">
                   <div className="flex items-center gap-3 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-blue-700 shadow">
                     <UploadCloud className="h-4 w-4" />
@@ -1181,15 +1345,21 @@ function ProductDetailsContent() {
                   <p className="text-xs text-slate-500">Prevuci fotografije ovde ili klikni na dugme iznad.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                   {gallery.map((item, index) => {
                   const shiftClass = getShiftClass(item, index);
                   const isDragOver = dragOverId === item.id && draggingSameGroup;
                   const fbActive = item.publishFb ?? true;
                   const igActive = item.publishIg ?? true;
+                  const groupItems = getGalleryGroup(item);
+                  const position = groupItems.findIndex((candidate) => candidate.id === item.id);
+                  const currentPosition = position >= 0 ? position + 1 : 1;
+                  const totalInGroup = groupItems.length || 1;
+                  const isReorderEditing = reorderEditingId === item.id;
                   return (
                     <div
                       key={item.id}
+                      data-gallery-id={item.id}
                       className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition-all duration-200 hover:shadow-md ${shiftClass} ${
                         isDragOver ? "ring-1 ring-blue-200" : ""
                       }`}
@@ -1199,9 +1369,16 @@ function ProductDetailsContent() {
                       onDrop={(event) => handleGalleryDrop(event, item)}
                       onDragEnd={handleGalleryDragEnd}
                       onDragLeave={() => handleGalleryDragLeave(item)}
-                      onClick={() => handleOpenPreview(item)}
+                      onTouchStart={(event) => handleGalleryTouchStart(event, item)}
+                      onTouchMove={handleGalleryTouchMove}
+                      onTouchEnd={handleGalleryTouchEnd}
+                      onTouchCancel={handleGalleryTouchCancel}
+                      onClick={() => {
+                        if (touchDragActiveRef.current) return;
+                        handleOpenPreview(item);
+                      }}
                     >
-                      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-white/90 p-1 text-slate-600 shadow-sm opacity-0 transition group-hover:opacity-100">
+                      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-white/90 p-1 text-slate-600 shadow-sm opacity-100 transition md:opacity-0 md:group-hover:opacity-100">
                         <button
                           type="button"
                           className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
@@ -1212,6 +1389,17 @@ function ProductDetailsContent() {
                           }}
                         >
                           <Maximize2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
+                          title="Preuzmi sliku"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDownloadImage(item.url, item.fileName ?? `${item.id}.jpg`);
+                          }}
+                        >
+                          <Download className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
@@ -1291,6 +1479,74 @@ function ProductDetailsContent() {
                           IG
                         </button>
                       </div>
+                      <div className="absolute bottom-2 right-2 z-10">
+                        <div
+                          className={`flex items-center gap-1 overflow-hidden rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-300 ${
+                            isReorderEditing ? "w-36" : "w-auto"
+                          }`}
+                        >
+                          {isReorderEditing ? (
+                            <>
+                              <input
+                                type="number"
+                                min={1}
+                                max={totalInGroup}
+                                value={reorderInputValue}
+                                onChange={(event) => setReorderInputValue(event.target.value)}
+                                className="h-8 w-14 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300"
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    void handleConfirmReorderInput(item);
+                                  }
+                                  if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    handleCancelReorderInput();
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-md bg-blue-600 px-2 text-white transition hover:bg-blue-700"
+                                title="Promeni redosled"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleConfirmReorderInput(item);
+                                }}
+                              >
+                                OK
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-md px-2 text-slate-500 transition hover:text-slate-800"
+                                title="Zatvori"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleCancelReorderInput();
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full bg-slate-900/80 px-3 py-1 text-white transition hover:bg-slate-900"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOpenReorderInput(item);
+                              }}
+                              title="Promeni poziciju slike"
+                            >
+                              <GripVertical className="h-3 w-3 text-white/80" />
+                              #{currentPosition}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -1340,14 +1596,14 @@ function ProductDetailsContent() {
           <CardContent>
             <div
               className={`relative rounded-xl border border-transparent transition ${
-                isAdDropActive ? "border-2 border-dashed border-blue-300 bg-blue-50/60" : ""
+                showAdDropOverlay ? "border-2 border-dashed border-blue-300 bg-blue-50/60" : ""
               }`}
               onDragEnter={handleAdDropZoneDragEnter}
               onDragOver={handleAdDropZoneDragOver}
               onDragLeave={handleAdDropZoneDragLeave}
               onDrop={handleAdDropZoneDrop}
             >
-              {isAdDropActive ? (
+              {showAdDropOverlay ? (
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-blue-100/80 backdrop-blur-sm">
                   <div className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-blue-700 shadow">
                     <UploadCloud className="h-4 w-4" />
@@ -1368,14 +1624,19 @@ function ProductDetailsContent() {
                     Glavna za drustvene mreze
                   </div>
                   {product.adImage.url ? (
-                    <a
-                      href={product.adImage.url ?? "#"}
-                      download={product.adImage.fileName ?? `${product._id}-ad.jpg`}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleDownloadImage(
+                          product.adImage?.url ?? "",
+                          product.adImage?.fileName ?? `${product._id}-ad.jpg`,
+                        )
+                      }
                       className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 shadow hover:bg-slate-100"
                     >
                       <Download className="h-4 w-4" />
                       Preuzmi
-                    </a>
+                    </button>
                   ) : null}
                 </div>
               ) : (
