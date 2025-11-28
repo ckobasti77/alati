@@ -6,6 +6,7 @@ export interface ProductImage {
   publishFb?: boolean;
   publishIg?: boolean;
   url?: string | null;
+  uploadedAt?: number;
 }
 
 export interface ProductAdImage {
