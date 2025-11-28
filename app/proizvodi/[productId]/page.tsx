@@ -32,7 +32,7 @@ import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Category, Product, ProductAdImage, ProductImage, ProductVariant } from "@/types/order";
 
-type ProductWithUrls = Product & {
+type ProductWithUrls = Omit<Product, "images" | "variants" | "adImage"> & {
   images?: (ProductImage & { url?: string | null })[];
   variants?: (ProductVariant & { images?: (ProductImage & { url?: string | null })[] })[];
   adImage?: (ProductAdImage & { url?: string | null }) | null;
@@ -57,6 +57,10 @@ type DraftCategoryIcon = {
   fileName?: string;
   contentType?: string;
 };
+
+const isVariantOrigin = (
+  origin: GalleryItem["origin"],
+): origin is Extract<GalleryItem["origin"], { type: "variant"; variantId: string }> => origin.type === "variant";
 
 const parsePrice = (value: string) => {
   const normalized = value.replace(",", ".").trim();
@@ -796,13 +800,12 @@ function ProductDetailsContent() {
         if (item.origin.type === "product") {
           return { ...current, images: updateList(current.images ?? []) };
         }
-        if (item.origin.type === "variant") {
-          const variants = (current.variants ?? []).map((variant) =>
-            variant.id === item.origin.variantId ? { ...variant, images: updateList(variant.images ?? []) } : variant,
-          );
-          return { ...current, variants };
-        }
-        return current;
+        const origin = item.origin;
+        if (!isVariantOrigin(origin)) return current;
+        const variants = (current.variants ?? []).map((variant) =>
+          variant.id === origin.variantId ? { ...variant, images: updateList(variant.images ?? []) } : variant,
+        );
+        return { ...current, variants };
       },
       "Sacuvano.",
     );
