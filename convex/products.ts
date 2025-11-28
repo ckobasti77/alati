@@ -388,7 +388,7 @@ export const create = mutation({
     const nabavnaCenaIsReal = args.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? true;
     const adImage = normalizeAdImage(undefined, args.adImage);
     const categoryIds = normalizeCategoryIds(args.categoryIds);
-    await ctx.db.insert("products", {
+    const productId = await ctx.db.insert("products", {
       userId: user._id,
       name: fbName,
       kpName,
@@ -409,6 +409,7 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    return productId;
   },
 });
 

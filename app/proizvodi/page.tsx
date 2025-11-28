@@ -125,6 +125,9 @@ type DraftImage = {
   previewUrl?: string;
   fileName?: string;
   fileType?: string;
+  uploadedAt?: number;
+  publishFb?: boolean;
+  publishIg?: boolean;
   isMain: boolean;
 };
 
@@ -134,6 +137,17 @@ type DraftCategoryIcon = {
   fileName?: string;
   contentType?: string;
 };
+
+type DraftAdImage = {
+  storageId: string;
+  url?: string | null;
+  previewUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  uploadedAt?: number;
+};
+
+type SocialPlatform = "facebook" | "instagram";
 
 const generateId = () => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -187,9 +201,12 @@ function ProductsContent() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [images, setImages] = useState<DraftImage[]>([]);
   const [variantImages, setVariantImages] = useState<Record<string, DraftImage[]>>({});
+  const [adImage, setAdImage] = useState<DraftAdImage | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [isAdDragActive, setIsAdDragActive] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
   const [isMobile, setIsMobile] = useState(false);
   const [productSearch, setProductSearch] = useState("");
@@ -203,10 +220,12 @@ function ProductsContent() {
   const [hasSeededCategories, setHasSeededCategories] = useState(false);
   const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
   const productUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const adImageInputRef = useRef<HTMLInputElement | null>(null);
   const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
   const dialogScrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputId = useMemo(() => `product-images-${generateId()}`, []);
+  const adUploadInputId = useMemo(() => `ad-image-${generateId()}`, []);
   const hiddenFileInputStyle = useMemo<CSSProperties>(
     () => ({ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, opacity: 0 }),
     [],
@@ -287,9 +306,14 @@ function ProductsContent() {
       );
       return {};
     });
+    if (adImage?.previewUrl) {
+      URL.revokeObjectURL(adImage.previewUrl);
+    }
+    setAdImage(null);
     variantUploadInputsRef.current = {};
     setEditingProduct(null);
     setIsDraggingFiles(false);
+    setIsAdDragActive(false);
     setCategorySearch("");
     setCategoryMenuOpen(false);
     setIsAddingCategory(false);
@@ -299,6 +323,7 @@ function ProductsContent() {
     }
     setNewCategoryIcon(null);
     setIsUploadingCategoryIcon(false);
+    setIsUploadingAdImage(false);
   };
 
   const closeModal = () => {
@@ -324,9 +349,62 @@ function ProductsContent() {
         isMain,
         fileName: image.fileName,
         contentType: image.fileType,
+        publishFb: image.publishFb ?? true,
+        publishIg: image.publishIg ?? true,
+        uploadedAt: image.uploadedAt,
       };
     });
   };
+
+  const buildAdImagePayload = (image: DraftAdImage | null) => {
+    if (!image) return null;
+    return {
+      storageId: image.storageId,
+      fileName: image.fileName,
+      contentType: image.fileType,
+      uploadedAt: image.uploadedAt,
+    };
+  };
+
+  const publishToSocial = useCallback(
+    async (productId: string, options: { publishFb: boolean; publishIg: boolean }) => {
+      if (!sessionToken) {
+        toast.error("Nedostaje token za objavu na mrezama.");
+        return;
+      }
+      const targets: SocialPlatform[] = [];
+      if (options.publishFb) targets.push("facebook");
+      if (options.publishIg) targets.push("instagram");
+      for (const platform of targets) {
+        try {
+          const response = await fetch("/api/social", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              platform,
+              productId,
+              token: sessionToken,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok || result?.error) {
+            throw new Error(result?.error || "Objava nije uspela.");
+          }
+          toast.success(
+            platform === "facebook" ? "Objavljeno na Facebook stranici." : "Objavljeno na Instagram nalogu.",
+          );
+        } catch (error) {
+          console.error(error);
+          toast.error(
+            platform === "facebook"
+              ? "Objava na Facebook nije uspela."
+              : "Objava na Instagram nije uspela.",
+          );
+        }
+      }
+    },
+    [sessionToken],
+  );
 
   const handleSubmit = async (values: ProductFormValues) => {
     const isVariantProduct = values.productType === "variant";
@@ -369,6 +447,7 @@ function ProductsContent() {
       categoryIds: (values.categoryIds ?? []).filter(Boolean),
       images: buildImagePayload(images),
       variants,
+      adImage: buildAdImagePayload(adImage),
     };
 
     try {
@@ -376,8 +455,14 @@ function ProductsContent() {
         await updateProduct({ id: editingProduct._id, ...payload });
         toast.success("Proizvod je azuriran.");
       } else {
-        await createProduct(payload);
+        const productId = await createProduct(payload);
         toast.success("Proizvod je dodat.");
+        if (productId && (payload.publishFb || payload.publishIg)) {
+          await publishToSocial(productId as string, {
+            publishFb: payload.publishFb,
+            publishIg: payload.publishIg,
+          });
+        }
       }
       closeModal();
     } catch (error) {
@@ -671,6 +756,89 @@ function ProductsContent() {
     });
   };
 
+  const uploadAdImage = async (file: File) => {
+    const isImage = file.type?.startsWith("image/") || /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name);
+    if (!isImage) {
+      toast.error("Prevuci ili izaberi fajl tipa slike.");
+      return;
+    }
+    setIsUploadingAdImage(true);
+    try {
+      const uploadUrl = await generateUploadUrl({ token: sessionToken });
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!response.ok) {
+        throw new Error("Upload nije uspeo.");
+      }
+      const { storageId } = await response.json();
+      if (adImage?.previewUrl) {
+        URL.revokeObjectURL(adImage.previewUrl);
+      }
+      setAdImage({
+        storageId,
+        previewUrl: URL.createObjectURL(file),
+        fileName: file.name,
+        fileType: file.type,
+        uploadedAt: Date.now(),
+      });
+      toast.success("Glavna slika sacuvana.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Dodavanje glavne slike nije uspelo.");
+    } finally {
+      setIsUploadingAdImage(false);
+    }
+  };
+
+  const handleAdImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await uploadAdImage(file);
+    }
+    event.target.value = "";
+  };
+
+  const handleAdDrop = async (event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const file = event.dataTransfer?.files?.[0];
+    if (file) {
+      await uploadAdImage(file);
+    }
+    setIsAdDragActive(false);
+  };
+
+  const handleAdDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const hasFile = Array.from(event.dataTransfer?.items ?? []).some((item) => item.kind === "file");
+    if (hasFile) {
+      setIsAdDragActive(true);
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+    }
+  };
+
+  const handleAdDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const nextTarget = event.relatedTarget as Node | null;
+    if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+      setIsAdDragActive(false);
+    }
+  };
+
+  const handleRemoveAdImage = () => {
+    if (adImage?.previewUrl) {
+      URL.revokeObjectURL(adImage.previewUrl);
+    }
+    setAdImage(null);
+  };
+
   const uploadImages = useCallback(
     async (
       fileList: FileList | File[],
@@ -715,6 +883,9 @@ function ProductsContent() {
                   previewUrl,
                   fileName: file.name,
                   fileType: file.type,
+                  publishFb: true,
+                  publishIg: true,
+                  uploadedAt: Date.now(),
                   isMain: hasMain ? false : true,
                 },
               ];
@@ -732,6 +903,9 @@ function ProductsContent() {
                     previewUrl,
                     fileName: file.name,
                     fileType: file.type,
+                    publishFb: true,
+                    publishIg: true,
+                    uploadedAt: Date.now(),
                     isMain: hasMain ? false : true,
                   },
                 ],
@@ -901,6 +1075,25 @@ function ProductsContent() {
     });
   };
 
+  const handleToggleImagePublish = (storageId: string, field: "publishFb" | "publishIg", value: boolean) => {
+    setImages((prev) => prev.map((image) => (image.storageId === storageId ? { ...image, [field]: value } : image)));
+  };
+
+  const handleToggleVariantImagePublish = (
+    variantId: string,
+    storageId: string,
+    field: "publishFb" | "publishIg",
+    value: boolean,
+  ) => {
+    setVariantImages((prev) => {
+      const current = prev[variantId] ?? [];
+      return {
+        ...prev,
+        [variantId]: current.map((image) => (image.storageId === storageId ? { ...image, [field]: value } : image)),
+      };
+    });
+  };
+
   const handleRemoveImage = (storageId: string) => {
     setImages((prev) => {
       const filtered = prev.filter((image) => {
@@ -975,6 +1168,9 @@ function ProductsContent() {
         fileName: image.fileName,
         fileType: image.contentType,
         isMain: image.isMain,
+        publishFb: image.publishFb ?? true,
+        publishIg: image.publishIg ?? true,
+        uploadedAt: image.uploadedAt,
       }));
     });
     setVariantImages(() => {
@@ -987,9 +1183,25 @@ function ProductsContent() {
           fileName: image.fileName,
           fileType: image.contentType,
           isMain: image.isMain,
+          publishFb: image.publishFb ?? true,
+          publishIg: image.publishIg ?? true,
+          uploadedAt: image.uploadedAt,
         }));
       });
       return map;
+    });
+    setAdImage((previous) => {
+      if (previous?.previewUrl) {
+        URL.revokeObjectURL(previous.previewUrl);
+      }
+      if (!product.adImage) return null;
+      return {
+        storageId: product.adImage.storageId,
+        url: product.adImage.url,
+        fileName: product.adImage.fileName,
+        fileType: product.adImage.contentType,
+        uploadedAt: product.adImage.uploadedAt,
+      };
     });
     resetNewCategoryState();
     setIsModalOpen(true);
@@ -1593,63 +1805,82 @@ function ProductsContent() {
                         </div>
                         {variantImages[variant.id]?.length ? (
                           <div className="grid gap-3 sm:grid-cols-2">
-                            {variantImages[variant.id]?.map((image) => (
-                              <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
-                                {(() => {
-                                  const resolvedUrl = image.url ?? image.previewUrl;
-                                  return (
-                                    <div
-                                      className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
-                                        resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
-                                      }`}
-                                      onClick={() => handleOpenPreview(resolvedUrl, image.fileName ?? "Variant image")}
-                                    >
-                                      {resolvedUrl ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={resolvedUrl} alt={image.fileName ?? "Variant image"} className="h-full w-full object-cover" />
-                                      ) : (
-                                        <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
-                                          Bez pregleda
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                                <div className="flex items-center justify-between text-xs">
-                                  <div className="flex items-center gap-2">
-                                    <label className="flex items-center gap-2 font-medium text-slate-600">
-                                      <input
-                                        type="radio"
-                                        name={`variant-main-${variant.id}`}
-                                        checked={image.isMain}
-                                        onChange={() => handleSetVariantMainImage(variant.id, image.storageId)}
-                                      />
-                                      Glavna
-                                    </label>
-                                    {(() => {
-                                      const resolvedUrl = image.url ?? image.previewUrl;
-                                      if (!resolvedUrl) return null;
-                                      return (
-                                        <Button type="button" variant="secondary" size="sm" asChild>
-                                          <a href={resolvedUrl} download={image.fileName ?? "slika"}>
-                                            Preuzmi
-                                          </a>
-                                        </Button>
-                                      );
-                                    })()}
-                                  </div>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRemoveVariantImage(variant.id, image.storageId)}
+                            {variantImages[variant.id]?.map((image) => {
+                              const resolvedUrl = image.url ?? image.previewUrl;
+                              const fbActive = image.publishFb ?? true;
+                              const igActive = image.publishIg ?? true;
+                              return (
+                                <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
+                                  <div
+                                    className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
+                                      resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
+                                    }`}
+                                    onClick={() => handleOpenPreview(resolvedUrl, image.fileName ?? "Variant image")}
                                   >
-                                    Ukloni
-                                  </Button>
+                                    {resolvedUrl ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={resolvedUrl} alt={image.fileName ?? "Variant image"} className="h-full w-full object-cover" />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
+                                        Bez pregleda
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <label className="flex items-center gap-2 font-medium text-slate-600">
+                                        <input
+                                          type="radio"
+                                          name={`variant-main-${variant.id}`}
+                                          checked={image.isMain}
+                                          onChange={() => handleSetVariantMainImage(variant.id, image.storageId)}
+                                        />
+                                        Glavna
+                                      </label>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                                            fbActive
+                                              ? "bg-blue-600 text-white hover:bg-blue-700"
+                                              : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                          }`}
+                                          onClick={() =>
+                                            handleToggleVariantImagePublish(variant.id, image.storageId, "publishFb", !fbActive)
+                                          }
+                                        >
+                                          <Facebook className="h-3.5 w-3.5" />
+                                          FB
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                                            igActive
+                                              ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
+                                              : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                          }`}
+                                          onClick={() =>
+                                            handleToggleVariantImagePublish(variant.id, image.storageId, "publishIg", !igActive)
+                                          }
+                                        >
+                                          <Instagram className="h-3.5 w-3.5" />
+                                          IG
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleRemoveVariantImage(variant.id, image.storageId)}
+                                    >
+                                      Ukloni
+                                    </Button>
+                                  </div>
+                                  {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
                                 </div>
-                                {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         ) : (
                           <p className="text-xs text-slate-500">Jos nema slika za ovaj tip.</p>
@@ -1664,6 +1895,92 @@ function ProductsContent() {
                 )}
               </div>
             )}
+            <div className="space-y-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <FormLabel>Glavna slika za drustvene mreze</FormLabel>
+                  <p className="text-sm text-slate-500">Prva fotka koja ide uz FB / Instagram objave.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    id={adUploadInputId}
+                    ref={adImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={handleAdImageChange}
+                    disabled={isUploadingAdImage}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    disabled={isUploadingAdImage}
+                    onClick={() => adImageInputRef.current?.click()}
+                  >
+                    <CloudUpload className="h-4 w-4" />
+                    {adImage ? "Zameni sliku" : "Dodaj glavnu sliku"}
+                  </Button>
+                  {adImage ? (
+                    <Button type="button" size="sm" variant="ghost" className="gap-1 text-red-600" onClick={handleRemoveAdImage}>
+                      <X className="h-4 w-4" />
+                      Ukloni
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <div
+                className={`relative overflow-hidden rounded-xl border border-dashed transition ${
+                  isAdDragActive ? "border-blue-400 bg-blue-50/60" : "border-slate-200 bg-slate-50"
+                }`}
+                onDragEnter={handleAdDragOver}
+                onDragOver={handleAdDragOver}
+                onDragLeave={handleAdDragLeave}
+                onDrop={handleAdDrop}
+              >
+                {(() => {
+                  const previewUrl = adImage?.previewUrl ?? adImage?.url;
+                  if (previewUrl) {
+                    return (
+                      <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white/60">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={previewUrl}
+                          alt="Glavna slika za drustvene mreze"
+                          className="h-[200px] w-full object-cover sm:h-[260px]"
+                        />
+                        <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow">
+                          <Tag className="h-3 w-3 text-slate-500" />
+                          Glavna za drustvene mreze
+                        </div>
+                        <div className="absolute right-3 top-3 hidden gap-2 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow sm:inline-flex">
+                          <CloudUpload className="h-3.5 w-3.5 text-blue-600" />
+                          Prevuci novu fotku da zamenis
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="flex min-h-[160px] items-center justify-between gap-3 p-4 sm:p-6">
+                      <div className="flex items-center gap-3 text-slate-700">
+                        <div className="rounded-full bg-blue-100 p-3 text-blue-600 shadow-inner shadow-blue-200">
+                          <Images className="h-5 w-5" />
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-sm font-semibold">Dodaj glavnu sliku</p>
+                          <p className="text-xs text-slate-500">Prevuci je ovde ili klikni na dugme.</p>
+                        </div>
+                      </div>
+                      <div className="hidden text-xs text-slate-500 sm:block">Koristi se kao prva na FB/IG.</div>
+                    </div>
+                  );
+                })()}
+                {isAdDragActive ? (
+                  <div className="pointer-events-none absolute inset-0 rounded-xl border-2 border-blue-400/60 bg-blue-100/50" />
+                ) : null}
+              </div>
+            </div>
             <div className="space-y-3">
               <div>
                 <FormLabel>Slike</FormLabel>
@@ -1734,58 +2051,73 @@ function ProductsContent() {
                 <p className="text-sm italic text-slate-500">Jos nema dodatih slika.</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {images.map((image) => (
-                    <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
-                      {(() => {
-                        const resolvedUrl = image.url ?? image.previewUrl;
-                        return (
-                          <div
-                            className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
-                              resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
-                            }`}
-                            onClick={() => handleOpenPreview(resolvedUrl, image.fileName ?? "Product image")}
-                          >
-                            {resolvedUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={resolvedUrl} alt={image.fileName ?? "Product image"} className="h-full w-full object-cover" />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
-                                Bez pregleda
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <label className="flex items-center gap-2 font-medium text-slate-600">
-                            <input
-                              type="radio"
-                              name="main-image"
-                              checked={image.isMain}
-                              onChange={() => handleSetMainImage(image.storageId)}
-                            />
-                            Glavna
-                          </label>
-                          {(() => {
-                            const resolvedUrl = image.url ?? image.previewUrl;
-                            if (!resolvedUrl) return null;
-                            return (
-                              <Button type="button" variant="secondary" size="sm" asChild>
-                                <a href={resolvedUrl} download={image.fileName ?? "slika"}>
-                                  Preuzmi
-                                </a>
-                              </Button>
-                            );
-                          })()}
+                  {images.map((image) => {
+                    const resolvedUrl = image.url ?? image.previewUrl;
+                    const fbActive = image.publishFb ?? true;
+                    const igActive = image.publishIg ?? true;
+                    return (
+                      <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
+                        <div
+                          className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
+                            resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
+                          }`}
+                          onClick={() => handleOpenPreview(resolvedUrl, image.fileName ?? "Product image")}
+                        >
+                          {resolvedUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={resolvedUrl} alt={image.fileName ?? "Product image"} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
+                              Bez pregleda
+                            </div>
+                          )}
                         </div>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveImage(image.storageId)}>
-                          Ukloni
-                        </Button>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="flex items-center gap-2 font-medium text-slate-600">
+                              <input
+                                type="radio"
+                                name="main-image"
+                                checked={image.isMain}
+                                onChange={() => handleSetMainImage(image.storageId)}
+                              />
+                              Glavna
+                            </label>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                                  fbActive
+                                    ? "bg-blue-600 text-white hover:bg-blue-700"
+                                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                }`}
+                                onClick={() => handleToggleImagePublish(image.storageId, "publishFb", !fbActive)}
+                              >
+                                <Facebook className="h-3.5 w-3.5" />
+                                FB
+                              </button>
+                              <button
+                                type="button"
+                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                                  igActive
+                                    ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
+                                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                }`}
+                                onClick={() => handleToggleImagePublish(image.storageId, "publishIg", !igActive)}
+                              >
+                                <Instagram className="h-3.5 w-3.5" />
+                                IG
+                              </button>
+                            </div>
+                          </div>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveImage(image.storageId)}>
+                            Ukloni
+                          </Button>
+                        </div>
+                        {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
                       </div>
-                      {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

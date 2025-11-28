@@ -1291,15 +1291,6 @@ function ProductDetailsContent() {
                           IG
                         </button>
                       </div>
-                      <a
-                        href={item.url}
-                        download={item.fileName ?? `${item.id}.jpg`}
-                        className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm opacity-0 transition hover:bg-slate-100 group-hover:opacity-100"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <Download className="h-4 w-4" />
-                        Preuzmi
-                      </a>
                     </div>
                   );
                 })}
