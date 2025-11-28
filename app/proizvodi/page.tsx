@@ -72,6 +72,7 @@ const variantSchema = z.object({
   id: z.string(),
   label: z.string().min(1, "Naziv tipa je obavezan."),
   nabavnaCena: priceField("Nabavna cena"),
+  nabavnaCenaIsReal: z.boolean().optional(),
   prodajnaCena: priceField("Prodajna cena"),
   opis: z.string().optional(),
   isDefault: z.boolean(),
@@ -83,6 +84,7 @@ const productSchema = z
     kpName: z.string().min(2, "KP naziv je obavezan."),
     name: z.string().min(2, "FB / Insta naziv je obavezan."),
     nabavnaCena: priceField("Nabavna cena"),
+    nabavnaCenaIsReal: z.boolean().optional(),
     prodajnaCena: priceField("Prodajna cena"),
     categoryIds: z.array(z.string()).optional(),
     opisKp: z.string().optional(),
@@ -146,6 +148,7 @@ const createVariantFormEntry = (
   id: generateId(),
   label: options.label ?? "",
   nabavnaCena: options.nabavnaCena ?? "",
+  nabavnaCenaIsReal: true,
   prodajnaCena: options.prodajnaCena ?? "",
   opis: options.opis ?? "",
   isDefault: options.isDefault ?? false,
@@ -156,6 +159,7 @@ const emptyProductForm = (): ProductFormValues => ({
   kpName: "",
   name: "",
   nabavnaCena: "",
+  nabavnaCenaIsReal: true,
   prodajnaCena: "",
   categoryIds: [],
   opisKp: "",
@@ -327,6 +331,7 @@ function ProductsContent() {
   const handleSubmit = async (values: ProductFormValues) => {
     const isVariantProduct = values.productType === "variant";
     const baseNabavna = parsePrice(values.nabavnaCena);
+    const baseNabavnaIsReal = values.nabavnaCenaIsReal ?? true;
     const baseProdajna = parsePrice(values.prodajnaCena);
     const variants =
       isVariantProduct && (values.variants ?? []).length > 0
@@ -337,6 +342,7 @@ function ProductsContent() {
               id: variant.id || generateId(),
               label: variant.label.trim() || `Tip ${index + 1}`,
               nabavnaCena: parsePrice(variant.nabavnaCena),
+              nabavnaCenaIsReal: variant.nabavnaCenaIsReal ?? true,
               prodajnaCena: parsePrice(variant.prodajnaCena),
               opis: variant.opis?.trim() ? variant.opis.trim() : undefined,
               isDefault: variant.isDefault,
@@ -352,6 +358,7 @@ function ProductsContent() {
       name: fbName,
       kpName,
       nabavnaCena: defaultVariant?.nabavnaCena ?? baseNabavna,
+      nabavnaCenaIsReal: values.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? baseNabavnaIsReal,
       prodajnaCena: defaultVariant?.prodajnaCena ?? baseProdajna,
       opisKp: values.opisKp?.trim() ? values.opisKp.trim() : undefined,
       opisFbInsta: values.opisFbInsta?.trim() ? values.opisFbInsta.trim() : undefined,
@@ -934,6 +941,7 @@ function ProductsContent() {
         id: variantId,
         label: variant.label || `Tip ${index + 1}`,
         nabavnaCena: variant.nabavnaCena.toString(),
+        nabavnaCenaIsReal: variant.nabavnaCenaIsReal ?? true,
         prodajnaCena: variant.prodajnaCena.toString(),
         opis: variant.opis ?? "",
         isDefault: variant.isDefault ?? index === 0,
@@ -944,6 +952,7 @@ function ProductsContent() {
       kpName: product.kpName ?? product.name,
       name: product.name,
       nabavnaCena: product.nabavnaCena.toString(),
+      nabavnaCenaIsReal: product.nabavnaCenaIsReal ?? true,
       prodajnaCena: product.prodajnaCena.toString(),
       categoryIds: product.categoryIds ?? [],
       opisKp: product.opisKp ?? "",
@@ -1366,7 +1375,7 @@ function ProductsContent() {
                       className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
                     <FormLabel htmlFor="pickup-available" className="m-0 cursor-pointer">
-                      Lično preuzimanje
+                      Licno preuzimanje
                     </FormLabel>
                   </FormItem>
                 )}
@@ -1406,6 +1415,26 @@ function ProductsContent() {
                 )}
               />
             </div>
+            <FormField
+              name="nabavnaCenaIsReal"
+              render={({ field }) => (
+                <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <input
+                    id="nabavna-is-real"
+                    type="checkbox"
+                    checked={field.value ?? true}
+                    onChange={(event) => field.onChange(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex flex-col">
+                    <FormLabel htmlFor="nabavna-is-real" className="m-0 cursor-pointer">
+                      Prava nabavna cena
+                    </FormLabel>
+                    <p className="text-xs text-slate-500">Odznači ako je cena procenjena.</p>
+                  </div>
+                </FormItem>
+              )}
+            />
             {resolvedProductType === "variant" && (
               <div className="space-y-4">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -1478,23 +1507,23 @@ function ProductsContent() {
                           name={`variants.${index}.nabavnaCena` as const}
                           render={({ field, fieldState }) => (
                             <FormItem>
-                                <FormLabel>Nabavna cena (EUR)</FormLabel>
-                                <Input
-                                  type="text"
-                                  inputMode="decimal"
-                                  placeholder="npr. 120.00"
-                                  value={field.value}
-                                  onChange={(event) => field.onChange(event.target.value)}
-                                />
-                                <FormMessage>{fieldState.error?.message}</FormMessage>
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            name={`variants.${index}.prodajnaCena` as const}
-                            render={({ field, fieldState }) => (
-                              <FormItem>
-                                <FormLabel>Prodajna cena (EUR)</FormLabel>
+                              <FormLabel>Nabavna cena (EUR)</FormLabel>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="npr. 120.00"
+                                value={field.value}
+                                onChange={(event) => field.onChange(event.target.value)}
+                              />
+                              <FormMessage>{fieldState.error?.message}</FormMessage>
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          name={`variants.${index}.prodajnaCena` as const}
+                          render={({ field, fieldState }) => (
+                            <FormItem>
+                              <FormLabel>Prodajna cena (EUR)</FormLabel>
                                 <Input
                                   type="text"
                                   inputMode="decimal"
@@ -1502,8 +1531,30 @@ function ProductsContent() {
                                   value={field.value}
                                   onChange={(event) => field.onChange(event.target.value)}
                                 />
-                                <FormMessage>{fieldState.error?.message}</FormMessage>
-                              </FormItem>
+                              <FormMessage>{fieldState.error?.message}</FormMessage>
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          name={`variants.${index}.nabavnaCenaIsReal` as const}
+                          render={({ field }) => (
+                            <FormItem className="md:col-span-2">
+                              <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                                <input
+                                  id={`variant-${index}-nabavna-real`}
+                                  type="checkbox"
+                                  checked={field.value ?? true}
+                                  onChange={(event) => field.onChange(event.target.checked)}
+                                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <div className="flex flex-col">
+                                  <FormLabel htmlFor={`variant-${index}-nabavna-real`} className="m-0 cursor-pointer">
+                                    Prava nabavna cena
+                                  </FormLabel>
+                                  <p className="text-xs text-slate-500">Odznači ako je cena procenjena.</p>
+                                </div>
+                              </div>
+                            </FormItem>
                           )}
                         />
                       </div>

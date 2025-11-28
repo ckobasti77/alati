@@ -17,6 +17,13 @@ type Platform = "facebook" | "instagram";
 type ProductImage = {
   url?: string | null;
   isMain: boolean;
+  publishFb?: boolean;
+  publishIg?: boolean;
+  uploadedAt?: number;
+};
+
+type AdImage = {
+  url?: string | null;
   uploadedAt?: number;
 };
 
@@ -27,6 +34,7 @@ type ProductForPosting = {
   opisFbInsta?: string | null;
   opisKp?: string | null;
   images?: ProductImage[];
+  adImage?: AdImage | null;
 };
 
 type GraphErrorResponse = {
@@ -53,10 +61,16 @@ function requireEnv(value: string | undefined, name: string) {
   return value;
 }
 
-function sortImages(images: ProductImage[] = []) {
+function sortImages(images: ProductImage[] = [], platform: Platform) {
   const withUrl = images
     .map((image, index) => ({ ...image, index }))
-    .filter((image) => image.url);
+    .filter((image) => {
+      if (!image.url) return false;
+      if (platform === "facebook") {
+        return image.publishFb !== false;
+      }
+      return image.publishIg !== false;
+    });
   return withUrl
     .sort((a, b) => {
       if (a.isMain && !b.isMain) return -1;
@@ -64,6 +78,21 @@ function sortImages(images: ProductImage[] = []) {
       return a.index - b.index;
     })
     .map(({ index, ...rest }) => rest);
+}
+
+function mergeSocialImages(product: ProductForPosting) {
+  const baseImages = (product.images as ProductImage[] | undefined) ?? [];
+  const list: ProductImage[] = [];
+  if (product.adImage?.url) {
+    list.push({
+      url: product.adImage.url,
+      isMain: true,
+      publishFb: true,
+      publishIg: true,
+      uploadedAt: product.adImage.uploadedAt,
+    });
+  }
+  return [...list, ...baseImages];
 }
 
 function resolveCaption(product: ProductForPosting) {
@@ -390,7 +419,7 @@ export async function POST(req: Request) {
       return jsonResponse({ error: "Proizvod nije pronadjen." }, 404);
     }
 
-    const images = sortImages(product.images as ProductImage[] | undefined);
+    const images = sortImages(mergeSocialImages(product as ProductForPosting), body.platform);
     const scheduledAt = parseSchedule(body.scheduledAt);
 
     if (body.platform === "facebook") {

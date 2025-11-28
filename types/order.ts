@@ -3,13 +3,24 @@ export interface ProductImage {
   isMain: boolean;
   fileName?: string;
   contentType?: string;
+  publishFb?: boolean;
+  publishIg?: boolean;
   url?: string | null;
+}
+
+export interface ProductAdImage {
+  storageId: string;
+  fileName?: string;
+  contentType?: string;
+  url?: string | null;
+  uploadedAt?: number;
 }
 
 export interface ProductVariant {
   id: string;
   label: string;
   nabavnaCena: number;
+  nabavnaCenaIsReal?: boolean;
   prodajnaCena: number;
   isDefault: boolean;
   opis?: string;
@@ -35,6 +46,7 @@ export interface Product {
   kpName?: string;
   fbName?: string;
   nabavnaCena: number;
+  nabavnaCenaIsReal?: boolean;
   prodajnaCena: number;
   variants?: ProductVariant[];
   categoryIds?: string[];
@@ -47,6 +59,7 @@ export interface Product {
   publishIg?: boolean;
   pickupAvailable?: boolean;
   images?: ProductImage[];
+  adImage?: ProductAdImage;
   createdAt: number;
   updatedAt: number;
 }

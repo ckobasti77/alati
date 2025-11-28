@@ -3,6 +3,8 @@ export type PublicImage = {
   isMain: boolean;
   fileName?: string;
   contentType?: string;
+  publishFb?: boolean;
+  publishIg?: boolean;
   uploadedAt?: number;
   url?: string | null;
 };

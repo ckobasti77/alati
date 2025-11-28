@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Facebook, Instagram, Layers, LayoutGrid, List, Search, UserRound } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Facebook, Instagram, Layers, LayoutGrid, List, Search, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +59,7 @@ function SocialContent() {
   const [publishing, setPublishing] = useState<Platform | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const isMobile = useIsMobile();
+  const topRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (isMobile) {
@@ -111,6 +112,14 @@ function SocialContent() {
 
   const handleSelectProduct = (product: Product) => {
     setSelectedProductId(product._id);
+    if (typeof window !== "undefined" && window.scrollY > 120) {
+      const target = topRef.current;
+      if (target?.scrollIntoView) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
   };
 
   const publish = async (platform: Platform) => {
@@ -149,7 +158,7 @@ function SocialContent() {
   };
 
   return (
-    <div className="space-y-6">
+    <div ref={topRef} className="space-y-6">
       <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Objave na mreze</h1>
@@ -199,6 +208,38 @@ function SocialContent() {
             </div>
           </div>
 
+          <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 shadow-inner sm:flex-row sm:items-center sm:justify-between">
+            <div className="w-full sm:max-w-xs">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Zakazivanje</p>
+              <Input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(event) => setScheduledAt(event.target.value)}
+                className="mt-1 h-9 text-sm"
+              />
+              <p className="text-[11px] text-slate-500">Prazno = objava odmah.</p>
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Button
+                size="sm"
+                className="h-9 sm:w-40"
+                onClick={() => publish("facebook")}
+                disabled={publishing !== null || !selectedProduct}
+              >
+                {publishing === "facebook" ? "Objavljivanje..." : "Okaci na Facebook"}
+              </Button>
+              <Button
+                size="sm"
+                className="h-9 sm:w-40"
+                variant="outline"
+                onClick={() => publish("instagram")}
+                disabled={publishing !== null || !selectedProduct}
+              >
+                {publishing === "instagram" ? "Objavljivanje..." : "Okaci na Instagram"}
+              </Button>
+            </div>
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-[7fr,5fr]">
             <div className="space-y-3">
               {products === undefined ? (
@@ -222,13 +263,18 @@ function SocialContent() {
                         key={product._id}
                         type="button"
                         className={cn(
-                          "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
+                          "relative flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition",
                           isActive
                             ? "border-blue-500 bg-blue-50 shadow-sm"
                             : "border-slate-200 bg-white hover:border-blue-200 hover:shadow-sm",
                         )}
                         onClick={() => handleSelectProduct(product)}
                       >
+                        {isActive ? (
+                          <span className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md ring-2 ring-white">
+                            <Check className="h-4 w-4" />
+                          </span>
+                        ) : null}
                         <div className="relative h-16 w-16 overflow-hidden rounded-md bg-slate-100">
                           {main?.url ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -276,7 +322,7 @@ function SocialContent() {
                   })}
                 </div>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   {filteredProducts.map((product) => {
                     const main = getMainImage(product);
                     const primaryVariant = resolvePrimaryVariant(product);
@@ -293,6 +339,16 @@ function SocialContent() {
                         )}
                         onClick={() => handleSelectProduct(product)}
                       >
+                        <div className="absolute right-2 top-2 z-20 flex items-center gap-2">
+                          {isActive ? (
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg ring-2 ring-white/90">
+                              <Check className="h-4 w-4" />
+                            </span>
+                          ) : null}
+                          <span className="inline-flex items-center rounded-full bg-white/95 px-3 py-1 text-sm font-bold text-slate-900 shadow">
+                            {price}
+                          </span>
+                        </div>
                         {main?.url ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -306,11 +362,6 @@ function SocialContent() {
                           </div>
                         )}
                         <div className="absolute inset-0 z-0 bg-black/35" />
-                        <div className="absolute right-2 top-2 z-20">
-                          <span className="inline-flex items-center rounded-full bg-white/95 px-3 py-1 text-sm font-bold text-slate-900 shadow">
-                            {price}
-                          </span>
-                        </div>
                         {isVariantProduct ? (
                           <span className="absolute left-2 top-2 z-20 inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-3 py-1 text-sm font-bold text-white shadow-lg">
                             <Layers className="h-5 w-5" />
@@ -362,39 +413,10 @@ function SocialContent() {
                     dangerouslySetInnerHTML={{ __html: formatRichTextToHtml(captionPreview) }}
                   />
                 </div>
-
-                <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-800">Zakazi (opciono)</label>
-                    <Input
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(event) => setScheduledAt(event.target.value)}
-                    />
-                    <p className="text-xs text-slate-500">Ostavi prazno za objavu odmah.</p>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button
-                      className="flex-1"
-                      onClick={() => publish("facebook")}
-                      disabled={publishing !== null || !selectedProduct}
-                    >
-                      {publishing === "facebook" ? "Objavljivanje..." : "Okaci na Facebook"}
-                    </Button>
-                    <Button
-                      className="flex-1"
-                      variant="outline"
-                      onClick={() => publish("instagram")}
-                      disabled={publishing !== null || !selectedProduct}
-                    >
-                      {publishing === "instagram" ? "Objavljivanje..." : "Okaci na Instagram"}
-                    </Button>
-                  </div>
-                </div>
               </div>
             ) : (
               <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
-                Izaberi proizvod da vidis pregled i dugmad za objavu.
+                Izaberi proizvod da vidis pregled.
               </div>
             )}
           </div>

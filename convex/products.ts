@@ -8,6 +8,15 @@ const productImageArg = v.object({
   isMain: v.boolean(),
   fileName: v.optional(v.string()),
   contentType: v.optional(v.string()),
+  publishFb: v.optional(v.boolean()),
+  publishIg: v.optional(v.boolean()),
+  uploadedAt: v.optional(v.number()),
+});
+
+const productAdImageArg = v.object({
+  storageId: v.id("_storage"),
+  fileName: v.optional(v.string()),
+  contentType: v.optional(v.string()),
   uploadedAt: v.optional(v.number()),
 });
 
@@ -15,6 +24,7 @@ const productVariantArg = v.object({
   id: v.string(),
   label: v.string(),
   nabavnaCena: v.number(),
+  nabavnaCenaIsReal: v.optional(v.boolean()),
   prodajnaCena: v.number(),
   isDefault: v.boolean(),
   opis: v.optional(v.string()),
@@ -25,6 +35,8 @@ const productVariantArg = v.object({
         isMain: v.boolean(),
         fileName: v.optional(v.string()),
         contentType: v.optional(v.string()),
+        publishFb: v.optional(v.boolean()),
+        publishIg: v.optional(v.boolean()),
         uploadedAt: v.optional(v.number()),
       }),
     ),
@@ -38,6 +50,8 @@ function normalizeImages(
     isMain: boolean;
     fileName?: string;
     contentType?: string;
+    publishFb?: boolean;
+    publishIg?: boolean;
     uploadedAt?: number;
   }[] = [],
 ) {
@@ -60,9 +74,37 @@ function normalizeImages(
       isMain,
       fileName: image.fileName ?? previous?.fileName,
       contentType: image.contentType ?? previous?.contentType,
+      publishFb: image.publishFb ?? previous?.publishFb ?? true,
+      publishIg: image.publishIg ?? previous?.publishIg ?? true,
       uploadedAt: image.uploadedAt ?? previous?.uploadedAt ?? now,
     };
   });
+}
+
+function normalizeAdImage(
+  previous: Doc<"products">["adImage"],
+  incoming?:
+    | {
+        storageId: Id<"_storage">;
+        fileName?: string;
+        contentType?: string;
+        uploadedAt?: number;
+      }
+    | null,
+) {
+  if (incoming === undefined) {
+    return previous;
+  }
+  if (incoming === null) {
+    return undefined;
+  }
+  const now = Date.now();
+  return {
+    storageId: incoming.storageId,
+    fileName: incoming.fileName ?? previous?.fileName,
+    contentType: incoming.contentType ?? previous?.contentType,
+    uploadedAt: incoming.uploadedAt ?? previous?.uploadedAt ?? now,
+  };
 }
 
 function normalizeVariants(
@@ -71,6 +113,7 @@ function normalizeVariants(
         id: string;
         label: string;
         nabavnaCena: number;
+        nabavnaCenaIsReal?: boolean;
         prodajnaCena: number;
         isDefault: boolean;
         opis?: string;
@@ -79,6 +122,8 @@ function normalizeVariants(
           isMain: boolean;
           fileName?: string;
           contentType?: string;
+          publishFb?: boolean;
+          publishIg?: boolean;
           uploadedAt?: number;
         }[];
       }[]
@@ -86,11 +131,14 @@ function normalizeVariants(
   previous?:
     | {
         id: string;
+        nabavnaCenaIsReal?: boolean;
         images?: {
           storageId: Id<"_storage">;
           isMain: boolean;
           fileName?: string;
           contentType?: string;
+          publishFb?: boolean;
+          publishIg?: boolean;
           uploadedAt: number;
         }[];
       }[]
@@ -116,6 +164,8 @@ function normalizeVariants(
         isMain: image.isMain,
         fileName: image.fileName,
         contentType: image.contentType,
+        publishFb: image.publishFb,
+        publishIg: image.publishIg,
         uploadedAt: image.uploadedAt,
       })),
     );
@@ -123,6 +173,7 @@ function normalizeVariants(
       id: variant.id,
       label: variant.label.trim() || `Tip ${index + 1}`,
       nabavnaCena: Math.max(variant.nabavnaCena, 0),
+      nabavnaCenaIsReal: variant.nabavnaCenaIsReal ?? prevMap.get(variant.id)?.nabavnaCenaIsReal ?? true,
       prodajnaCena: Math.max(variant.prodajnaCena, 0),
       isDefault,
       opis: opis && opis.length > 0 ? opis : undefined,
@@ -161,6 +212,12 @@ export const get = query({
         url: await ctx.storage.getUrl(image.storageId),
       })),
     );
+    const adImage = product.adImage
+      ? {
+          ...product.adImage,
+          url: await ctx.storage.getUrl(product.adImage.storageId),
+        }
+      : undefined;
 
     const variants = await Promise.all(
       (product.variants ?? []).map(async (variant) => {
@@ -174,7 +231,7 @@ export const get = query({
       }),
     );
 
-    return { ...product, images, variants };
+    return { ...product, images, variants, adImage };
   },
 });
 
@@ -189,11 +246,14 @@ export const list = query({
     const withUrls = await Promise.all(
       items.map(async (item) => {
         const images = await Promise.all(
-          (item.images ?? []).map(async (image) => ({
-            ...image,
-            url: await ctx.storage.getUrl(image.storageId),
-          })),
-        );
+      (item.images ?? []).map(async (image) => ({
+        ...image,
+        url: await ctx.storage.getUrl(image.storageId),
+      })),
+    );
+        const adImage = item.adImage
+          ? { ...item.adImage, url: await ctx.storage.getUrl(item.adImage.storageId) }
+          : undefined;
         const variants = await Promise.all(
           (item.variants ?? []).map(async (variant) => {
             const variantImages = await Promise.all(
@@ -205,7 +265,7 @@ export const list = query({
             return { ...variant, images: variantImages };
           }),
         );
-        return { ...item, images, variants };
+        return { ...item, images, variants, adImage };
       }),
     );
     return withUrls.sort((a, b) => b.createdAt - a.createdAt);
@@ -219,6 +279,9 @@ async function toPublicProduct(ctx: { storage: any }, product: Doc<"products">) 
       url: await ctx.storage.getUrl(image.storageId),
     })),
   );
+  const adImage = product.adImage
+    ? { ...product.adImage, url: await ctx.storage.getUrl(product.adImage.storageId) }
+    : undefined;
   const variants = await Promise.all(
     (product.variants ?? []).map(async (variant) => {
       const variantImages = await Promise.all(
@@ -248,6 +311,7 @@ async function toPublicProduct(ctx: { storage: any }, product: Doc<"products">) 
     opisKp: product.opisKp,
     opisFbInsta: product.opisFbInsta,
     images,
+    adImage,
     variants: variants.length ? variants : undefined,
     publishKp: product.publishKp,
     publishFb: product.publishFb,
@@ -293,6 +357,7 @@ export const create = mutation({
     name: v.string(),
     kpName: v.optional(v.string()),
     nabavnaCena: v.number(),
+    nabavnaCenaIsReal: v.optional(v.boolean()),
     prodajnaCena: v.number(),
     categoryIds: v.optional(v.array(v.id("categories"))),
     opis: v.optional(v.string()),
@@ -304,6 +369,7 @@ export const create = mutation({
     pickupAvailable: v.optional(v.boolean()),
     variants: v.optional(v.array(productVariantArg)),
     images: v.optional(v.array(productImageArg)),
+    adImage: v.optional(productAdImageArg),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
@@ -319,15 +385,19 @@ export const create = mutation({
     const images = normalizeImages(undefined, args.images);
     const variants = normalizeVariants(args.variants);
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
+    const nabavnaCenaIsReal = args.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? true;
+    const adImage = normalizeAdImage(undefined, args.adImage);
     const categoryIds = normalizeCategoryIds(args.categoryIds);
     await ctx.db.insert("products", {
       userId: user._id,
       name: fbName,
       kpName,
       nabavnaCena: defaultVariant?.nabavnaCena ?? args.nabavnaCena,
+      nabavnaCenaIsReal,
       prodajnaCena: defaultVariant?.prodajnaCena ?? args.prodajnaCena,
       variants,
       images,
+      adImage,
       opis: opisFbInsta ? opisFbInsta : undefined,
       opisFbInsta: opisFbInsta || undefined,
       opisKp: opisKp || undefined,
@@ -349,6 +419,7 @@ export const update = mutation({
     name: v.string(),
     kpName: v.optional(v.string()),
     nabavnaCena: v.number(),
+    nabavnaCenaIsReal: v.optional(v.boolean()),
     prodajnaCena: v.number(),
     categoryIds: v.optional(v.array(v.id("categories"))),
     opis: v.optional(v.string()),
@@ -360,6 +431,7 @@ export const update = mutation({
     pickupAvailable: v.optional(v.boolean()),
     variants: v.optional(v.array(productVariantArg)),
     images: v.optional(v.array(productImageArg)),
+    adImage: v.optional(v.union(v.null(), productAdImageArg)),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
@@ -386,6 +458,9 @@ export const update = mutation({
     const images = normalizeImages(product.images, args.images);
     const variants = normalizeVariants(args.variants, product.variants);
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
+    const nabavnaCenaIsReal =
+      args.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? product.nabavnaCenaIsReal ?? true;
+    const adImage = normalizeAdImage(product.adImage, args.adImage);
     const categoryIds =
       args.categoryIds === undefined ? product.categoryIds : normalizeCategoryIds(args.categoryIds) ?? [];
     const removedImages = (product.images ?? []).filter(
@@ -403,13 +478,16 @@ export const update = mutation({
         removedVariantImages.push(storageId);
       }
     });
+    const previousAdImageId = product.adImage?.storageId;
     await ctx.db.patch(args.id, {
       name: fbName,
       kpName: resolvedKpName,
       nabavnaCena: defaultVariant?.nabavnaCena ?? args.nabavnaCena,
+      nabavnaCenaIsReal,
       prodajnaCena: defaultVariant?.prodajnaCena ?? args.prodajnaCena,
       variants,
       images,
+      adImage,
       opis: resolvedOpisLegacy,
       opisFbInsta: resolvedOpisFb,
       opisKp: resolvedOpisKp,
@@ -438,6 +516,13 @@ export const update = mutation({
         }
       }),
     );
+    if (previousAdImageId && previousAdImageId !== adImage?.storageId) {
+      try {
+        await ctx.storage.delete(previousAdImageId);
+      } catch (error) {
+        console.error("Failed to delete removed ad image", previousAdImageId, error);
+      }
+    }
   },
 });
 
@@ -460,6 +545,13 @@ export const remove = mutation({
         }
       }),
     );
+    if (product.adImage) {
+      try {
+        await ctx.storage.delete(product.adImage.storageId);
+      } catch (error) {
+        console.error("Failed to delete ad image", product.adImage.storageId, error);
+      }
+    }
     await Promise.all(
       (product.variants ?? [])
         .flatMap((variant) => variant.images ?? [])

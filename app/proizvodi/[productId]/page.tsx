@@ -3,7 +3,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent as ReactDragEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Copy, Download, GripVertical, ImageOff, Loader2, Maximize2, PenLine, Plus, Tag, Trash2, UploadCloud, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  Download,
+  Facebook,
+  GripVertical,
+  ImageOff,
+  Instagram,
+  Loader2,
+  Maximize2,
+  PenLine,
+  Plus,
+  Tag,
+  Trash2,
+  UploadCloud,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,11 +30,12 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
-import type { Category, Product, ProductImage, ProductVariant } from "@/types/order";
+import type { Category, Product, ProductAdImage, ProductImage, ProductVariant } from "@/types/order";
 
 type ProductWithUrls = Product & {
   images?: (ProductImage & { url?: string | null })[];
   variants?: (ProductVariant & { images?: (ProductImage & { url?: string | null })[] })[];
+  adImage?: (ProductAdImage & { url?: string | null }) | null;
 };
 
 type GalleryItem = {
@@ -28,6 +46,8 @@ type GalleryItem = {
   label: string;
   fileName?: string | null;
   isMain: boolean;
+  publishFb: boolean;
+  publishIg: boolean;
   origin: { type: "product" } | { type: "variant"; variantId: string };
 };
 
@@ -205,6 +225,7 @@ function ProductDetailsContent() {
   const router = useRouter();
   const productId = params?.productId as string;
   const uploadInputId = useMemo(() => `product-upload-${productId}`, [productId]);
+  const adUploadInputId = useMemo(() => `ad-upload-${productId}`, [productId]);
   const queryResult = useConvexQuery<ProductWithUrls | null>("products:get", { token: sessionToken, id: productId });
   const categories = useConvexQuery<Category[]>("categories:list", { token: sessionToken });
   const updateProduct = useConvexMutation("products:update");
@@ -219,9 +240,11 @@ function ProductDetailsContent() {
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
   const [product, setProduct] = useState<ProductWithUrls | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
   const [isGlobalDropActive, setIsGlobalDropActive] = useState(false);
   const globalFileDragCounterRef = useRef(0);
   const uploadImagesRef = useRef<(fileList: FileList | File[]) => Promise<void> | null>(null);
+  const adImageInputRef = useRef<HTMLInputElement | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
   const [draggingItem, setDraggingItem] = useState<GalleryItem | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -284,6 +307,7 @@ function ProductDetailsContent() {
       id: variant.id,
       label: variant.label,
       nabavnaCena: variant.nabavnaCena,
+      nabavnaCenaIsReal: variant.nabavnaCenaIsReal ?? true,
       prodajnaCena: variant.prodajnaCena,
       isDefault: variant.isDefault,
       opis: variant.opis,
@@ -292,6 +316,8 @@ function ProductDetailsContent() {
         isMain: image.isMain,
         fileName: image.fileName,
         contentType: image.contentType,
+        publishFb: image.publishFb ?? true,
+        publishIg: image.publishIg ?? true,
       })),
     }));
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
@@ -302,6 +328,11 @@ function ProductDetailsContent() {
       name: current.name,
       kpName: current.kpName ?? current.name,
       nabavnaCena: defaultVariant?.nabavnaCena ?? current.nabavnaCena,
+      nabavnaCenaIsReal:
+        current.nabavnaCenaIsReal ??
+        current.variants?.find((variant) => variant.isDefault)?.nabavnaCenaIsReal ??
+        defaultVariant?.nabavnaCenaIsReal ??
+        true,
       prodajnaCena: defaultVariant?.prodajnaCena ?? current.prodajnaCena,
       opis: resolvedOpisFb,
       opisKp: current.opisKp,
@@ -317,7 +348,17 @@ function ProductDetailsContent() {
         isMain: image.isMain,
         fileName: image.fileName,
         contentType: image.contentType,
+        publishFb: image.publishFb ?? true,
+        publishIg: image.publishIg ?? true,
       })),
+      adImage: current.adImage
+        ? {
+            storageId: current.adImage.storageId,
+            fileName: current.adImage.fileName,
+            contentType: current.adImage.contentType,
+            uploadedAt: current.adImage.uploadedAt,
+          }
+        : null,
     };
   };
 
@@ -550,6 +591,7 @@ function ProductDetailsContent() {
             ...current,
             variants: nextVariants,
             nabavnaCena: defaultVariant?.nabavnaCena ?? current.nabavnaCena,
+            nabavnaCenaIsReal: defaultVariant?.nabavnaCenaIsReal ?? current.nabavnaCenaIsReal ?? true,
             prodajnaCena: defaultVariant?.prodajnaCena ?? current.prodajnaCena,
           };
         },
@@ -569,6 +611,91 @@ function ProductDetailsContent() {
     );
   };
 
+  const handleBasePurchaseRealityToggle = async (value: boolean) => {
+    await applyUpdate(
+      (current) => {
+        const variantsList = current.variants ?? [];
+        const defaultVariant = variantsList.find((variant) => variant.isDefault) ?? variantsList[0];
+        const nextVariants =
+          variantsList.length && defaultVariant
+            ? variantsList.map((variant) =>
+                variant.id === defaultVariant.id ? { ...variant, nabavnaCenaIsReal: value } : variant,
+              )
+            : current.variants;
+        return {
+          ...current,
+          nabavnaCenaIsReal: value,
+          variants: nextVariants,
+        };
+      },
+      value ? "Oznaceno kao prava nabavna cena." : "Oznaceno kao procenjena nabavna cena.",
+    );
+  };
+
+  const handleVariantPurchaseRealityToggle = async (variantId: string, value: boolean) => {
+    await applyUpdate(
+      (current) => {
+        const currentVariants = current.variants ?? [];
+        if (currentVariants.length === 0) return current;
+        const nextVariants = currentVariants.map((variant) =>
+          variant.id === variantId ? { ...variant, nabavnaCenaIsReal: value } : variant,
+        );
+        const defaultVariant = nextVariants.find((variant) => variant.isDefault) ?? nextVariants[0];
+        return {
+          ...current,
+          variants: nextVariants,
+          nabavnaCenaIsReal:
+            defaultVariant && defaultVariant.id === variantId
+              ? value
+              : current.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? true,
+        };
+      },
+      value ? "Oznaceno kao prava nabavna cena." : "Oznaceno kao procenjena nabavna cena.",
+    );
+  };
+
+  const uploadAdImage = async (file: File) => {
+    if (!product) return;
+    const isImage = file.type?.startsWith("image/") || /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name);
+    if (!isImage) {
+      toast.error("Prevuci ili izaberi fajl tipa slike.");
+      return;
+    }
+    setIsUploadingAdImage(true);
+    try {
+      const uploadUrl = await generateUploadUrl({ token: sessionToken });
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!response.ok) {
+        throw new Error("Upload nije uspeo.");
+      }
+      const { storageId } = await response.json();
+      const nextImage = {
+        storageId,
+        fileName: file.name,
+        contentType: file.type,
+        uploadedAt: Date.now(),
+        url: URL.createObjectURL(file),
+      };
+      await applyUpdate(
+        (current) => ({
+          ...current,
+          adImage: nextImage,
+        }),
+        "Ad slika sacuvana.",
+      );
+    } catch (error) {
+      console.error(error);
+      toast.error("Dodavanje ad slike nije uspelo.");
+      throw error;
+    } finally {
+      setIsUploadingAdImage(false);
+    }
+  };
+
   const handleRemoveAllImages = async () => {
     if (!product) return;
     const shouldRemove = window.confirm("Obrisi sve slike ovog proizvoda (ukljucujuci slike tipova)?");
@@ -580,6 +707,24 @@ function ProductDetailsContent() {
         variants: current.variants?.map((variant) => ({ ...variant, images: [] })),
       }),
       "Sve slike su obrisane.",
+    );
+  };
+
+  const handleAdImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      await uploadAdImage(file);
+    }
+    event.target.value = "";
+  };
+
+  const handleRemoveAdImage = async () => {
+    await applyUpdate(
+      (current) => ({
+        ...current,
+        adImage: null,
+      }),
+      "Ad slika uklonjena.",
     );
   };
 
@@ -636,6 +781,30 @@ function ProductDetailsContent() {
         };
       },
       "Glavna slika podesena.",
+    );
+  };
+
+  const handleImagePublishToggle = async (
+    item: GalleryItem,
+    field: "publishFb" | "publishIg",
+    value: boolean,
+  ) => {
+    await applyUpdate(
+      (current) => {
+        const updateList = (list: (ProductImage & { url?: string | null })[] = []) =>
+          list.map((image) => (image.storageId === item.storageId ? { ...image, [field]: value } : image));
+        if (item.origin.type === "product") {
+          return { ...current, images: updateList(current.images ?? []) };
+        }
+        if (item.origin.type === "variant") {
+          const variants = (current.variants ?? []).map((variant) =>
+            variant.id === item.origin.variantId ? { ...variant, images: updateList(variant.images ?? []) } : variant,
+          );
+          return { ...current, variants };
+        }
+        return current;
+      },
+      "Sacuvano.",
     );
   };
 
@@ -762,6 +931,8 @@ function ProductDetailsContent() {
           isMain: false,
           fileName: file.name,
           contentType: file.type,
+          publishFb: true,
+          publishIg: true,
           url: URL.createObjectURL(file),
         });
       }
@@ -870,6 +1041,8 @@ function ProductDetailsContent() {
         label: image.isMain ? "Glavna" : "Slika",
         fileName: image.fileName,
         isMain: Boolean(image.isMain),
+        publishFb: image.publishFb ?? true,
+        publishIg: image.publishIg ?? true,
         origin: { type: "product" } as const,
       })) ?? [];
     const variantImages =
@@ -882,6 +1055,8 @@ function ProductDetailsContent() {
           label: variant.label,
           fileName: image.fileName,
           isMain: Boolean(image.isMain),
+          publishFb: image.publishFb ?? true,
+          publishIg: image.publishIg ?? true,
           origin: { type: "variant" as const, variantId: variant.id },
         })),
       ) ?? [];
@@ -899,6 +1074,7 @@ function ProductDetailsContent() {
     draggingItem && dragOverId && targetIndex !== -1
       ? isSameGalleryGroup(draggingItem, gallery[targetIndex])
       : false;
+  const baseNabavnaIsReal = product?.nabavnaCenaIsReal ?? true;
 
   if (isLoading) {
     return (
@@ -934,8 +1110,249 @@ function ProductDetailsContent() {
         <Badge variant="green">Azurirano: {formatDate(product.updatedAt)}</Badge>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.05fr_1fr]">
-        <div className="space-y-4">
+      <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                Galerija slika
+                <Badge variant="default">{gallery.length}</Badge>
+              </CardTitle>
+              <p className="text-sm text-slate-500">Kreativan grid sa slikama proizvoda i tipova.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                id={uploadInputId}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                onChange={handleFilesSelected}
+                disabled={isUploadingImages}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                disabled={isUploadingImages}
+                onClick={() => document.getElementById(uploadInputId)?.click()}
+              >
+                <Plus className="h-4 w-4" />
+                {isUploadingImages ? "Dodavanje..." : "Dodaj slike"}
+              </Button>
+              <Button variant="destructive" size="sm" className="gap-2" onClick={handleRemoveAllImages}>
+                <Trash2 className="h-4 w-4" />
+                Obrisi sve slike
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {gallery.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-slate-500">
+                <ImageOff className="h-8 w-8" />
+                <p className="text-sm">Trenutno nema slika za ovaj proizvod.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                {gallery.map((item, index) => {
+                  const shiftClass = getShiftClass(item, index);
+                  const isDragOver = dragOverId === item.id && draggingSameGroup;
+                  const fbActive = item.publishFb ?? true;
+                  const igActive = item.publishIg ?? true;
+                  return (
+                    <div
+                      key={item.id}
+                      className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition-all duration-200 hover:shadow-md ${shiftClass} ${
+                        isDragOver ? "ring-1 ring-blue-200" : ""
+                      }`}
+                      draggable
+                      onDragStart={(event) => handleGalleryDragStart(event, item)}
+                      onDragOver={(event) => handleGalleryDragOver(event, item)}
+                      onDrop={(event) => handleGalleryDrop(event, item)}
+                      onDragEnd={handleGalleryDragEnd}
+                      onDragLeave={() => handleGalleryDragLeave(item)}
+                      onClick={() => handleOpenPreview(item)}
+                    >
+                      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-white/90 p-1 text-slate-600 shadow-sm opacity-0 transition group-hover:opacity-100">
+                        <button
+                          type="button"
+                          className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
+                          title="Otvori pregled"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleOpenPreview(item);
+                          }}
+                        >
+                          <Maximize2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded-full px-2 py-1 text-xs font-semibold transition ${
+                            item.isMain
+                              ? "bg-emerald-50 text-emerald-700 shadow-[0_1px_0_rgba(16,185,129,0.25)]"
+                              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          }`}
+                          disabled={item.isMain}
+                          title={item.isMain ? "Vec je glavna" : "Postavi kao glavnu"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleSetAsMain(item);
+                          }}
+                        >
+                          Glavna
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full p-1 hover:bg-slate-100 hover:text-red-600"
+                          title="Obrisi sliku"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleRemoveSingleImage(item);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.url}
+                        alt={item.alt}
+                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02] group-hover:brightness-95"
+                      />
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <div className="flex items-center gap-2 rounded-full bg-slate-900/60 px-3 py-2 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">
+                          <Maximize2 className="h-4 w-4" />
+                          <span>Povecaj</span>
+                        </div>
+                      </div>
+                      <div className="absolute left-2 top-2 inline-flex items-center gap-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                        <GripVertical className="h-3 w-3 text-slate-500" />
+                        {item.label}
+                      </div>
+                      <div className="absolute left-2 bottom-2 z-10 flex gap-1">
+                        <button
+                          type="button"
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                            fbActive
+                              ? "bg-blue-600 text-white hover:bg-blue-700"
+                              : "bg-white/90 text-slate-700 ring-1 ring-slate-200 hover:bg-white"
+                          }`}
+                          title={fbActive ? "Ukloni iz FB objave" : "Uključi u FB objavu"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleImagePublishToggle(item, "publishFb", !fbActive);
+                          }}
+                        >
+                          <Facebook className="h-3.5 w-3.5" />
+                          FB
+                        </button>
+                        <button
+                          type="button"
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                            igActive
+                              ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
+                              : "bg-white/90 text-slate-700 ring-1 ring-slate-200 hover:bg-white"
+                          }`}
+                          title={igActive ? "Ukloni iz IG objave" : "Uključi u IG objavu"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleImagePublishToggle(item, "publishIg", !igActive);
+                          }}
+                        >
+                          <Instagram className="h-3.5 w-3.5" />
+                          IG
+                        </button>
+                      </div>
+                      <a
+                        href={item.url}
+                        download={item.fileName ?? `${item.id}.jpg`}
+                        className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm opacity-0 transition hover:bg-slate-100 group-hover:opacity-100"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Download className="h-4 w-4" />
+                        Preuzmi
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                Glavna slika za drustvene mreze
+                {product.adImage ? <Badge variant="green">Postavljena</Badge> : <Badge variant="default">Nije dodata</Badge>}
+              </CardTitle>
+              <p className="text-sm text-slate-500">Fotografija koja ide kao prva na FB / Instagram oglasima.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                id={adUploadInputId}
+                ref={adImageInputRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={handleAdImageChange}
+                disabled={isUploadingAdImage}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                disabled={isUploadingAdImage}
+                onClick={() => document.getElementById(adUploadInputId)?.click()}
+              >
+                <UploadCloud className="h-4 w-4" />
+                {isUploadingAdImage ? "Dodavanje..." : "Dodaj glavnu sliku"}
+              </Button>
+              {product.adImage ? (
+                <Button variant="ghost" size="sm" className="gap-2 text-red-600" onClick={handleRemoveAdImage}>
+                  <Trash2 className="h-4 w-4" />
+                  Obrisi glavnu sliku
+                </Button>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {product.adImage ? (
+              <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={product.adImage.url ?? ""}
+                  alt="Glavna slika za drustvene mreze"
+                  className="h-[260px] w-full object-cover sm:h-[320px]"
+                />
+                <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 shadow">
+                  <Tag className="h-3 w-3 text-slate-500" />
+                  Glavna za drustvene mreze
+                </div>
+                {product.adImage.url ? (
+                  <a
+                    href={product.adImage.url ?? "#"}
+                    download={product.adImage.fileName ?? `${product._id}-ad.jpg`}
+                    className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 shadow hover:bg-slate-100"
+                  >
+                    <Download className="h-4 w-4" />
+                    Preuzmi
+                  </a>
+                ) : null}
+              </div>
+            ) : (
+              <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-500">
+                <UploadCloud className="h-8 w-8" />
+                <p className="text-sm font-semibold text-slate-700">Nema glavne slike za drustvene mreze</p>
+                <p className="text-xs text-slate-500">Dodaj posebnu fotografiju koja ce biti prva na oglasu.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -1145,23 +1562,37 @@ function ProductDetailsContent() {
                   )}
                 </div>
               </div>
-              <InlineField
-                label="Prodajna cena (EUR)"
-                value={product.prodajnaCena}
-                formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
-                onSave={(val) => handleBaseFieldSave("prodajnaCena", val)}
-              />
+            <InlineField
+              label="Prodajna cena (EUR)"
+              value={product.prodajnaCena}
+              formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
+              onSave={(val) => handleBaseFieldSave("prodajnaCena", val)}
+            />
+            <div className="space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3">
               <InlineField
                 label="Nabavna cena (EUR)"
                 value={product.nabavnaCena}
                 formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
                 onSave={(val) => handleBaseFieldSave("nabavnaCena", val)}
               />
-              <InlineField
-                label="KupujemProdajem opis"
-                value={product.opisKp ?? ""}
-                multiline
-                onSave={(val) => handleBaseFieldSave("opisKp", val)}
+              <label className="flex items-center justify-between gap-3 rounded-lg bg-white/80 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm shadow-slate-100">
+                <div className="flex flex-col">
+                  <span>{baseNabavnaIsReal ? "Prava nabavna cena" : "Procenjena nabavna cena"}</span>
+                  <span className="text-xs font-normal text-slate-500">Check ako je cifra 100% sigurna.</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={baseNabavnaIsReal}
+                  onChange={(event) => handleBasePurchaseRealityToggle(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+              </label>
+            </div>
+            <InlineField
+              label="KupujemProdajem opis"
+              value={product.opisKp ?? ""}
+              multiline
+              onSave={(val) => handleBaseFieldSave("opisKp", val)}
               />
               <InlineField
                 label="FB / Insta opis"
@@ -1214,186 +1645,67 @@ function ProductDetailsContent() {
               {(product.variants ?? []).length === 0 ? (
                 <p className="text-sm text-slate-600">Ovaj proizvod nema dodatne tipove.</p>
               ) : (
-                product.variants?.map((variant) => (
-                  <div
-                    key={variant.id}
-                    className="rounded-lg border border-slate-200/80 bg-white/60 p-3 shadow-sm shadow-slate-100"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={variant.isDefault ? "green" : "default"}>
-                          {variant.isDefault ? "Glavni tip" : "Tip"}
-                        </Badge>
-                        <span className="text-sm font-semibold text-slate-800">{variant.label}</span>
+                product.variants?.map((variant) => {
+                  const variantNabavnaIsReal =
+                    variant.nabavnaCenaIsReal ?? product.nabavnaCenaIsReal ?? baseNabavnaIsReal;
+                  return (
+                    <div
+                      key={variant.id}
+                      className="rounded-lg border border-slate-200/80 bg-white/60 p-3 shadow-sm shadow-slate-100"
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={variant.isDefault ? "green" : "default"}>
+                            {variant.isDefault ? "Glavni tip" : "Tip"}
+                          </Badge>
+                          <span className="text-sm font-semibold text-slate-800">{variant.label}</span>
+                        </div>
+                        <span className="text-xs uppercase tracking-wide text-slate-400">ID: {variant.id}</span>
                       </div>
-                      <span className="text-xs uppercase tracking-wide text-slate-400">ID: {variant.id}</span>
-                    </div>
-                    <div className="grid gap-2 md:grid-cols-2">
-                      <InlineField
-                        label="Naziv tipa"
-                        value={variant.label}
-                        onSave={(val) => handleVariantFieldSave(variant.id, "label", val)}
-                      />
-                      <InlineField
-                        label="Prodajna cena (EUR)"
-                        value={variant.prodajnaCena}
-                        formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
-                        onSave={(val) => handleVariantFieldSave(variant.id, "prodajnaCena", val)}
-                      />
-                      <InlineField
-                        label="Nabavna cena (EUR)"
-                        value={variant.nabavnaCena}
-                        formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
-                        onSave={(val) => handleVariantFieldSave(variant.id, "nabavnaCena", val)}
-                      />
-                      <div className="md:col-span-2">
+                      <div className="grid gap-2 md:grid-cols-2">
                         <InlineField
-                          label="Opis tipa"
-                          value={variant.opis ?? ""}
-                          multiline
-                          onSave={(val) => handleVariantFieldSave(variant.id, "opis", val)}
+                          label="Naziv tipa"
+                          value={variant.label}
+                          onSave={(val) => handleVariantFieldSave(variant.id, "label", val)}
                         />
+                        <InlineField
+                          label="Prodajna cena (EUR)"
+                          value={variant.prodajnaCena}
+                          formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
+                          onSave={(val) => handleVariantFieldSave(variant.id, "prodajnaCena", val)}
+                        />
+                        <div className="space-y-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+                          <InlineField
+                            label="Nabavna cena (EUR)"
+                            value={variant.nabavnaCena}
+                            formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
+                            onSave={(val) => handleVariantFieldSave(variant.id, "nabavnaCena", val)}
+                          />
+                          <label className="flex items-center justify-between gap-2 rounded-lg bg-white/80 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm shadow-slate-100">
+                            <span>{variantNabavnaIsReal ? "Prava nabavna" : "Procenjena nabavna"}</span>
+                            <input
+                              type="checkbox"
+                              checked={variantNabavnaIsReal}
+                              onChange={(event) => handleVariantPurchaseRealityToggle(variant.id, event.target.checked)}
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                          </label>
+                        </div>
+                        <div className="md:col-span-2">
+                          <InlineField
+                            label="Opis tipa"
+                            value={variant.opis ?? ""}
+                            multiline
+                            onSave={(val) => handleVariantFieldSave(variant.id, "opis", val)}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </CardContent>
           </Card>
-        </div>
-
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                Galerija slika
-                <Badge variant="default">{gallery.length}</Badge>
-              </CardTitle>
-              <p className="text-sm text-slate-500">Desno kreativan grid sa slikama proizvoda i tipova.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                id={uploadInputId}
-                type="file"
-                accept="image/*"
-                multiple
-                className="sr-only"
-                onChange={handleFilesSelected}
-                disabled={isUploadingImages}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                disabled={isUploadingImages}
-                onClick={() => document.getElementById(uploadInputId)?.click()}
-              >
-                <Plus className="h-4 w-4" />
-                {isUploadingImages ? "Dodavanje..." : "Dodaj slike"}
-              </Button>
-              <Button variant="destructive" size="sm" className="gap-2" onClick={handleRemoveAllImages}>
-                <Trash2 className="h-4 w-4" />
-                Obrisi sve slike
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {gallery.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-slate-500">
-                <ImageOff className="h-8 w-8" />
-                <p className="text-sm">Trenutno nema slika za ovaj proizvod.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                {gallery.map((item, index) => {
-                  const shiftClass = getShiftClass(item, index);
-                  const isDragOver = dragOverId === item.id && draggingSameGroup;
-                  return (
-                  <div
-                    key={item.id}
-                    className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition-all duration-200 hover:shadow-md ${shiftClass} ${
-                      isDragOver ? "ring-1 ring-blue-200" : ""
-                    }`}
-                    draggable
-                    onDragStart={(event) => handleGalleryDragStart(event, item)}
-                    onDragOver={(event) => handleGalleryDragOver(event, item)}
-                    onDrop={(event) => handleGalleryDrop(event, item)}
-                    onDragEnd={handleGalleryDragEnd}
-                    onDragLeave={() => handleGalleryDragLeave(item)}
-                    onClick={() => handleOpenPreview(item)}
-                  >
-                    <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-white/90 p-1 text-slate-600 shadow-sm opacity-0 transition group-hover:opacity-100">
-                      <button
-                        type="button"
-                        className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
-                        title="Otvori pregled"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleOpenPreview(item);
-                        }}
-                      >
-                        <Maximize2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        className={`rounded-full px-2 py-1 text-xs font-semibold transition ${
-                          item.isMain
-                            ? "bg-emerald-50 text-emerald-700 shadow-[0_1px_0_rgba(16,185,129,0.25)]"
-                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                        }`}
-                        disabled={item.isMain}
-                        title={item.isMain ? "Vec je glavna" : "Postavi kao glavnu"}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleSetAsMain(item);
-                        }}
-                      >
-                        Glavna
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-full p-1 hover:bg-slate-100 hover:text-red-600"
-                        title="Obrisi sliku"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleRemoveSingleImage(item);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={item.url}
-                      alt={item.alt}
-                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02] group-hover:brightness-95"
-                    />
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                      <div className="flex items-center gap-2 rounded-full bg-slate-900/60 px-3 py-2 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">
-                        <Maximize2 className="h-4 w-4" />
-                        <span>Povecaj</span>
-                      </div>
-                    </div>
-                    <div className="absolute left-2 top-2 inline-flex items-center gap-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                      <GripVertical className="h-3 w-3 text-slate-500" />
-                      {item.label}
-                    </div>
-                    <a
-                      href={item.url}
-                      download={item.fileName ?? `${item.id}.jpg`}
-                      className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm opacity-0 transition hover:bg-slate-100 group-hover:opacity-100"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <Download className="h-4 w-4" />
-                      Preuzmi
-                    </a>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {isGlobalDropActive && (
