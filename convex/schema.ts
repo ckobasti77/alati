@@ -105,6 +105,8 @@ export default defineSchema({
     publishKp: v.optional(v.boolean()),
     publishFb: v.optional(v.boolean()),
     publishIg: v.optional(v.boolean()),
+    publishFbProfile: v.optional(v.boolean()),
+    publishMarketplace: v.optional(v.boolean()),
     pickupAvailable: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),

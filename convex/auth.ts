@@ -40,7 +40,21 @@ async function ensureAdmin(ctx: MutationCtx): Promise<Doc<"users">> {
     .query("users")
     .withIndex("by_username", (q: any) => q.eq("username", ADMIN_USERNAME))
     .unique();
-  if (existing) return existing;
+  if (existing) {
+    const passwordUpToDate = await passwordsMatch(
+      ADMIN_PASSWORD,
+      existing.salt,
+      existing.passwordHash,
+    );
+    if (!passwordUpToDate) {
+      const salt = randomHex(16);
+      const passwordHash = await hashPassword(ADMIN_PASSWORD, salt);
+      await ctx.db.patch(existing._id, { passwordHash, salt });
+      const updated = await ctx.db.get(existing._id);
+      return updated ?? { ...existing, passwordHash, salt };
+    }
+    return existing;
+  }
 
   const salt = randomHex(16);
   const passwordHash = await hashPassword(ADMIN_PASSWORD, salt);

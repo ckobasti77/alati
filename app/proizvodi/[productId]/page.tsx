@@ -58,6 +58,8 @@ type DraftCategoryIcon = {
   contentType?: string;
 };
 
+type SocialPlatform = "facebook" | "instagram";
+
 const isVariantOrigin = (
   origin: GalleryItem["origin"],
 ): origin is Extract<GalleryItem["origin"], { type: "variant"; variantId: string }> => origin.type === "variant";
@@ -247,6 +249,7 @@ function ProductDetailsContent() {
   const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
   const [isGalleryDropActive, setIsGalleryDropActive] = useState(false);
   const [isAdDropActive, setIsAdDropActive] = useState(false);
+  const [publishing, setPublishing] = useState<SocialPlatform | null>(null);
   const [isTouchDevice, setIsTouchDevice] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.matchMedia("(pointer: coarse)").matches;
@@ -370,6 +373,8 @@ function ProductDetailsContent() {
       publishKp: current.publishKp,
       publishFb: current.publishFb,
       publishIg: current.publishIg,
+      publishFbProfile: current.publishFbProfile ?? false,
+      publishMarketplace: current.publishMarketplace ?? false,
       pickupAvailable: current.pickupAvailable ?? false,
       categoryIds: current.categoryIds ?? [],
       variants,
@@ -580,7 +585,7 @@ function ProductDetailsContent() {
   };
 
   const handlePublishToggle = async (
-    field: "publishKp" | "publishFb" | "publishIg" | "pickupAvailable",
+    field: "publishKp" | "publishFb" | "publishIg" | "publishFbProfile" | "publishMarketplace" | "pickupAvailable",
     value: boolean,
   ) => {
     await applyUpdate(
@@ -590,6 +595,50 @@ function ProductDetailsContent() {
       }),
       "Sacuvano.",
     );
+  };
+
+  const publishNow = async (platform: SocialPlatform) => {
+    if (!sessionToken) {
+      toast.error("Nedostaje token za objavu. Prijavi se ponovo.");
+      return;
+    }
+    if (!product) {
+      toast.error("Proizvod nije ucitan.");
+      return;
+    }
+    try {
+      setPublishing(platform);
+      const response = await fetch("/api/social", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform,
+          productId: product._id,
+          token: sessionToken,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || result?.error) {
+        throw new Error(result?.error || "Objava nije uspela.");
+      }
+      toast.success(
+        platform === "facebook" ? "Objavljeno na Facebook stranici." : "Objavljeno na Instagram nalogu.",
+      );
+      const publishField: "publishFb" | "publishIg" = platform === "facebook" ? "publishFb" : "publishIg";
+      if (!product[publishField]) {
+        try {
+          await applyUpdate((current) => ({ ...current, [publishField]: true }));
+        } catch (error) {
+          console.error(error);
+          toast.error("Objava je poslata, ali cuvanje oznake nije uspelo.");
+        }
+      }
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message ?? "Objava nije uspela.");
+    } finally {
+      setPublishing(null);
+    }
   };
 
   const handleVariantFieldSave = async (
@@ -1887,26 +1936,116 @@ function ProductDetailsContent() {
                 />
               </label>
             </div>
-          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {([
-              { key: "publishKp" as const, label: "Objava KP", checked: product.publishKp },
-              { key: "publishFb" as const, label: "Objava Facebook", checked: product.publishFb },
-              { key: "publishIg" as const, label: "Objava Instagram", checked: product.publishIg },
-              { key: "pickupAvailable" as const, label: "Lično preuzimanje", checked: product.pickupAvailable },
-            ]).map((item) => (
-                  <label
-                    key={item.key}
-                    className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={Boolean(item.checked)}
-                      onChange={(event) => handlePublishToggle(item.key, event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    {item.label}
-                  </label>
-                ))}
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <label className="flex min-w-[240px] flex-1 cursor-pointer items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.publishKp)}
+                  onChange={(event) => handlePublishToggle("publishKp", event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="flex items-center gap-2">
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-md">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src="/kp.png" alt="KP" className="h-28 w-28 object-cover" />
+                        </span> 
+                  <span className="text-sm font-semibold text-slate-800">KupujemProdajem</span>
+                </span>
+              </label>
+              <label className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.publishFb)}
+                  onChange={(event) => handlePublishToggle("publishFb", event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="flex items-center gap-2 font-semibold text-slate-800">
+                  <Facebook className="h-5 w-5 text-blue-600" />
+                  <span>Alati Mašine</span>
+                </span>
+              </label>
+              <label className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.publishFbProfile)}
+                  onChange={(event) => handlePublishToggle("publishFbProfile", event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="flex items-center gap-2 font-semibold text-slate-800">
+                  <Facebook className="h-5 w-5 text-blue-600" />
+                  <span>Kod Majstora</span>
+                </span>
+              </label>
+              <label className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.publishIg)}
+                  onChange={(event) => handlePublishToggle("publishIg", event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="flex items-center gap-2 font-semibold text-slate-800">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-tr from-pink-500 to-rose-500 text-white shadow-sm">
+                    <Instagram className="h-4 w-4" />
+                  </span>
+                  <span>kod.majstora</span>
+                </span>
+              </label>
+              <label className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.publishMarketplace)}
+                  onChange={(event) => handlePublishToggle("publishMarketplace", event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="flex items-center gap-2 font-semibold text-slate-800">
+                  <Facebook className="h-5 w-5 text-blue-600" />
+                  <span>Marketplace</span>
+                </span>
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <label className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.pickupAvailable)}
+                  onChange={(event) => handlePublishToggle("pickupAvailable", event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Lično preuzimanje
+              </label>
+            </div>
+          </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => publishNow("facebook")}
+                  disabled={publishing !== null}
+                >
+                  {publishing === "facebook" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Facebook className="h-4 w-4" />
+                  )}
+                  {publishing === "facebook" ? "Objavljivanje..." : "Okaci na Facebook"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => publishNow("instagram")}
+                  disabled={publishing !== null}
+                >
+                  {publishing === "instagram" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Instagram className="h-4 w-4" />
+                  )}
+                  {publishing === "instagram" ? "Objavljivanje..." : "Okaci na Instagram"}
+                </Button>
               </div>
               <div className="grid gap-2 sm:grid-cols-2 text-sm text-slate-600">
                 <div>

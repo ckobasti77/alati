@@ -8,6 +8,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import {
+  AlertCircle,
   ArrowUpRight,
   Check,
   CloudUpload,
@@ -20,6 +21,7 @@ import {
   Loader2,
   Plus,
   Search,
+  Share2,
   Tag,
   UserRound,
   X,
@@ -92,6 +94,8 @@ const productSchema = z
     publishKp: z.boolean().optional(),
     publishFb: z.boolean().optional(),
     publishIg: z.boolean().optional(),
+    publishFbProfile: z.boolean().optional(),
+    publishMarketplace: z.boolean().optional(),
     pickupAvailable: z.boolean().optional(),
     variants: z.array(variantSchema).optional(),
   })
@@ -181,6 +185,8 @@ const emptyProductForm = (): ProductFormValues => ({
   publishKp: false,
   publishFb: false,
   publishIg: false,
+  publishFbProfile: false,
+  publishMarketplace: false,
   pickupAvailable: false,
   variants: [],
 });
@@ -257,6 +263,8 @@ function ProductsContent() {
   const productType = useWatch({ control: form.control, name: "productType" }) as ProductFormValues["productType"];
   const variants = (useWatch({ control: form.control, name: "variants" }) ?? []) as VariantFormEntry[];
   const categoryIds = (useWatch({ control: form.control, name: "categoryIds" }) ?? []) as string[];
+  const publishFbSelected = Boolean(useWatch({ control: form.control, name: "publishFb" }));
+  const publishIgSelected = Boolean(useWatch({ control: form.control, name: "publishIg" }));
   const resolvedProductType = productType ?? "single";
   const normalizedVariants = resolvedProductType === "variant" && Array.isArray(variants) ? variants : [];
 
@@ -443,6 +451,8 @@ function ProductsContent() {
       publishKp: Boolean(values.publishKp),
       publishFb: Boolean(values.publishFb),
       publishIg: Boolean(values.publishIg),
+      publishFbProfile: Boolean(values.publishFbProfile),
+      publishMarketplace: Boolean(values.publishMarketplace),
       pickupAvailable: Boolean(values.pickupAvailable),
       categoryIds: (values.categoryIds ?? []).filter(Boolean),
       images: buildImagePayload(images),
@@ -651,6 +661,9 @@ function ProductsContent() {
   const getMainImage = useCallback((product: Product) => {
     const images = product.images ?? [];
     return images.find((image) => image.isMain) ?? images[0];
+  }, []);
+  const hasSocialMainImage = useCallback((product: Product) => {
+    return Boolean(product.adImage?.url ?? product.adImage?.storageId);
   }, []);
 
   const seedInitialVariant = () => {
@@ -1153,6 +1166,8 @@ function ProductsContent() {
       publishKp: product.publishKp ?? false,
       publishFb: product.publishFb ?? false,
       publishIg: product.publishIg ?? false,
+      publishFbProfile: product.publishFbProfile ?? false,
+      publishMarketplace: product.publishMarketplace ?? false,
       pickupAvailable: product.pickupAvailable ?? false,
       variants: mappedVariants,
     });
@@ -1523,58 +1538,127 @@ function ProductsContent() {
                 )}
               />
             </div>
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                <FormField
+                  name="publishKp"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+                      <input
+                        id="publish-kp"
+                        type="checkbox"
+                        checked={!!field.value}
+                        onChange={(event) => field.onChange(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <FormLabel htmlFor="publish-kp" className="m-0 flex items-center gap-2 cursor-pointer">
+                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white shadow-sm ring-1 ring-slate-200">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src="/kp.png" alt="KP" className="h-7 w-7 object-contain" />
+                        </span>
+                        <span className="text-sm font-semibold text-slate-800">KupujemProdajem</span>
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  name="publishFb"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+                      <input
+                        id="publish-fb"
+                        type="checkbox"
+                        checked={!!field.value}
+                        onChange={(event) => field.onChange(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <FormLabel
+                        htmlFor="publish-fb"
+                        className="m-0 flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      >
+                        <Facebook className="h-5 w-5 text-blue-600" />
+                        <span>Alati Mašine</span>
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  name="publishFbProfile"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+                      <input
+                        id="publish-fb-profile"
+                        type="checkbox"
+                        checked={!!field.value}
+                        onChange={(event) => field.onChange(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <FormLabel
+                        htmlFor="publish-fb-profile"
+                        className="m-0 flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      >
+                        <Facebook className="h-5 w-5 text-blue-600" />
+                        <span>Kod Majstora</span>
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  name="publishIg"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+                      <input
+                        id="publish-ig"
+                        type="checkbox"
+                        checked={!!field.value}
+                        onChange={(event) => field.onChange(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <FormLabel
+                        htmlFor="publish-ig"
+                        className="m-0 flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      >
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-tr from-pink-500 to-rose-500 text-white shadow-sm">
+                          <Instagram className="h-4 w-4" />
+                        </span>
+                        <span>kod.majstora</span>
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  name="publishMarketplace"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+                      <input
+                        id="publish-marketplace"
+                        type="checkbox"
+                        checked={!!field.value}
+                        onChange={(event) => field.onChange(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <FormLabel
+                        htmlFor="publish-marketplace"
+                        className="m-0 flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      >
+                        <Facebook className="h-5 w-5 text-blue-600" />
+                        <span>Marketplace</span>
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+              </div>
+              {!editingProduct && (publishFbSelected || publishIgSelected) ? (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-sm">
+                  <AlertCircle className="mt-0.5 h-4 w-4" />
+                  <p className="leading-snug">
+                    Kada cekiras Facebook ili Instagram ovde, posle cuvanja novog proizvoda objava ide automatski na stranice Alati Mašine i
+                    kod.majstora.
+                  </p>
+                </div>
+              ) : null}
+            </div>
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-              <FormField
-                name="publishKp"
-                render={({ field }) => (
-                  <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
-                    <input
-                      id="publish-kp"
-                      type="checkbox"
-                      checked={!!field.value}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <FormLabel htmlFor="publish-kp" className="m-0 cursor-pointer">
-                      Objavi na KP
-                    </FormLabel>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                name="publishFb"
-                render={({ field }) => (
-                  <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
-                    <input
-                      id="publish-fb"
-                      type="checkbox"
-                      checked={!!field.value}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <FormLabel htmlFor="publish-fb" className="m-0 cursor-pointer">
-                      Objavi na Facebook
-                    </FormLabel>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                name="publishIg"
-                render={({ field }) => (
-                  <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
-                    <input
-                      id="publish-ig"
-                      type="checkbox"
-                      checked={!!field.value}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <FormLabel htmlFor="publish-ig" className="m-0 cursor-pointer">
-                      Objavi na Instagram
-                    </FormLabel>
-                  </FormItem>
-                )}
-              />
               <FormField
                 name="pickupAvailable"
                 render={({ field }) => (
@@ -2199,6 +2283,7 @@ function ProductsContent() {
                   .map((id) => categoryMap.get(id))
                   .filter(Boolean) as Category[];
                 const isVariantProduct = (product.variants ?? []).length > 0;
+                const hasSocialImage = hasSocialMainImage(product);
                 return (
                   <div
                     key={product._id}
@@ -2219,6 +2304,12 @@ function ProductsContent() {
                           <span className="absolute left-1 top-1 inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
                             <Layers className="h-3 w-3" />
                             Tipski
+                          </span>
+                        ) : null}
+                        {hasSocialImage ? (
+                          <span className="absolute right-1 top-1 inline-flex items-center gap-1 rounded-full bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold text-slate-800 shadow">
+                            <Share2 className="h-3 w-3 text-blue-600" />
+                            Social
                           </span>
                         ) : null}
                         {product.publishIg || product.publishFb ? (
@@ -2321,6 +2412,7 @@ function ProductsContent() {
                   .map((id) => categoryMap.get(id))
                   .filter(Boolean) as Category[];
                 const isVariantProduct = (product.variants ?? []).length > 0;
+                const hasSocialImage = hasSocialMainImage(product);
                 return (
                   <button
                     key={product._id}
@@ -2341,10 +2433,16 @@ function ProductsContent() {
                       </div>
                     )}
                     <div className="absolute inset-0 z-0 bg-black/35" />
-                    <div className="absolute right-2 top-2 z-20">
+                    <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-2">
                       <span className="inline-flex items-center rounded-full bg-white/95 px-3 py-1 text-sm font-bold text-slate-900 shadow">
                         {getDisplayPrice(product)}
                       </span>
+                      {hasSocialImage ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow">
+                          <Share2 className="h-4 w-4 text-blue-600" />
+                          Social
+                        </span>
+                      ) : null}
                     </div>
                     {isVariantProduct ? (
                       <span className="absolute left-2 top-2 z-20 inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-3 py-1 text-sm font-bold text-white shadow-lg">
@@ -2372,7 +2470,7 @@ function ProductsContent() {
                     </div>
                     <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pr-16 pb-6 pt-8 text-left">
                       {productCategories.length > 0 ? (
-                        <div className="mb-1 flex flex-wrap gap-1 text-[11px] font-semibold text-slate-200">
+                        <div className="mb-1 flex flex-wrap gap-1 text-[11px] font-semibold text-slate-200 -translate-y-5">
                           {productCategories.slice(0, 2).map((category) => (
                             <span key={category._id} className="rounded-full bg-white/20 px-2 py-0.5 backdrop-blur">
                               {category.name}
@@ -2380,7 +2478,7 @@ function ProductsContent() {
                           ))}
                         </div>
                       ) : null}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 -translate-y-5">
                         <p className="w-full truncate text-sm font-semibold text-white mb-1">{product.kpName ?? product.name}</p>
                         <ArrowUpRight className="h-4 w-4 shrink-0 text-white/80" />
                       </div>

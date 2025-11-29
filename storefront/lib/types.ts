@@ -40,6 +40,8 @@ export type PublicProduct = {
   publishKp?: boolean;
   publishFb?: boolean;
   publishIg?: boolean;
+  publishFbProfile?: boolean;
+  publishMarketplace?: boolean;
   pickupAvailable?: boolean;
   categoryIds?: string[];
   categories?: PublicCategory[];

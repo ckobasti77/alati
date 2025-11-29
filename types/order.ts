@@ -58,6 +58,8 @@ export interface Product {
   publishKp?: boolean;
   publishFb?: boolean;
   publishIg?: boolean;
+  publishFbProfile?: boolean;
+  publishMarketplace?: boolean;
   pickupAvailable?: boolean;
   images?: ProductImage[];
   adImage?: ProductAdImage;
