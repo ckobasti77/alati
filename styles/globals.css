@@ -7,14 +7,65 @@
 
 :root {
   color-scheme: light;
+  --page-bg: #f8fafc;
+  --panel-bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-rgb: 255, 255, 255;
+  --muted-surface: #f1f5f9;
+  --muted-surface-rgb: 241, 245, 249;
+  --muted-strong: #e2e8f0;
+  --muted-strong-rgb: 226, 232, 240;
+  --border-soft: #e2e8f0;
+  --border-soft-rgb: 226, 232, 240;
+  --border-strong: #cbd5e1;
+  --border-strong-rgb: 203, 213, 225;
+  --text-primary: #0f172a;
+  --text-secondary: #1f2937;
+  --text-muted: #475569;
+  --text-soft: #64748b;
+  --text-faint: #94a3b8;
+  --text-ghost: #e2e8f0;
+  --accent: #1d4ed8;
+  --accent-strong: #1e40af;
+  --accent-soft: #e0f2fe;
+  --shadow-soft: 0 14px 45px -24px rgba(15, 23, 42, 0.25);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page-bg: #0b1224;
+  --panel-bg: #0f1a33;
+  --surface: #111d3f;
+  --surface-rgb: 17, 29, 63;
+  --muted-surface: #0f1d3a;
+  --muted-surface-rgb: 15, 29, 58;
+  --muted-strong: #1a2b52;
+  --muted-strong-rgb: 26, 43, 82;
+  --border-soft: #24355a;
+  --border-soft-rgb: 36, 53, 90;
+  --border-strong: #2f4476;
+  --border-strong-rgb: 47, 68, 118;
+  --text-primary: #e6edff;
+  --text-secondary: #d1dbf6;
+  --text-muted: #a8bce3;
+  --text-soft: #8fa6d3;
+  --text-faint: #6e85b5;
+  --text-ghost: #c7d6f2;
+  --accent: #63a4ff;
+  --accent-strong: #7ab6ff;
+  --accent-soft: #172c55;
+  --shadow-soft: 0 20px 60px -30px rgba(5, 11, 26, 0.75);
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
-  @apply border-slate-200;
+  border-color: var(--border-soft);
 }
 
 h1,
@@ -23,9 +74,144 @@ h3,
 h4,
 h5,
 h6 {
-  @apply font-semibold text-slate-900;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-:root[data-theme="dark"] body {
-  @apply bg-slate-950 text-slate-100;
+.bg-white {
+  background-color: var(--surface);
+}
+
+.bg-white\/95 {
+  background-color: rgba(var(--surface-rgb), 0.95);
+}
+
+.bg-white\/90 {
+  background-color: rgba(var(--surface-rgb), 0.9);
+}
+
+.bg-white\/80 {
+  background-color: rgba(var(--surface-rgb), 0.8);
+}
+
+.bg-white\/75 {
+  background-color: rgba(var(--surface-rgb), 0.75);
+}
+
+.bg-white\/60 {
+  background-color: rgba(var(--surface-rgb), 0.6);
+}
+
+.bg-white\/20 {
+  background-color: rgba(var(--surface-rgb), 0.2);
+}
+
+.bg-slate-50 {
+  background-color: var(--muted-surface);
+}
+
+.bg-slate-50\/50 {
+  background-color: rgba(var(--muted-surface-rgb), 0.5);
+}
+
+.bg-slate-50\/60 {
+  background-color: rgba(var(--muted-surface-rgb), 0.6);
+}
+
+.bg-slate-50\/70 {
+  background-color: rgba(var(--muted-surface-rgb), 0.7);
+}
+
+.bg-slate-50\/80 {
+  background-color: rgba(var(--muted-surface-rgb), 0.8);
+}
+
+.bg-slate-100 {
+  background-color: var(--muted-surface);
+}
+
+.bg-slate-200 {
+  background-color: var(--muted-strong);
+}
+
+.hover\:bg-slate-50:hover {
+  background-color: var(--muted-surface);
+}
+
+.hover\:bg-slate-100:hover {
+  background-color: var(--muted-surface);
+}
+
+.hover\:bg-slate-200:hover {
+  background-color: var(--muted-strong);
+}
+
+.hover\:bg-white:hover {
+  background-color: var(--surface);
+}
+
+.text-slate-900,
+.text-slate-800 {
+  color: var(--text-primary);
+}
+
+.text-slate-700 {
+  color: var(--text-secondary);
+}
+
+.text-slate-600 {
+  color: var(--text-muted);
+}
+
+.text-slate-500 {
+  color: var(--text-soft);
+}
+
+.text-slate-400 {
+  color: var(--text-faint);
+}
+
+.text-slate-200 {
+  color: var(--text-ghost);
+}
+
+.hover\:text-slate-900:hover,
+.hover\:text-slate-800:hover {
+  color: var(--text-primary);
+}
+
+.hover\:text-slate-700:hover {
+  color: var(--text-secondary);
+}
+
+.border-slate-200 {
+  border-color: var(--border-soft);
+}
+
+.border-slate-200\/80 {
+  border-color: rgba(var(--border-soft-rgb), 0.8);
+}
+
+.border-slate-200\/70 {
+  border-color: rgba(var(--border-soft-rgb), 0.7);
+}
+
+.border-slate-300 {
+  border-color: var(--border-strong);
+}
+
+.ring-slate-200 {
+  --tw-ring-color: var(--border-soft);
+}
+
+.ring-slate-400 {
+  --tw-ring-color: var(--border-strong);
+}
+
+.ring-offset-background {
+  --tw-ring-offset-color: var(--surface);
+}
+
+.shadow-soft {
+  box-shadow: var(--shadow-soft);
 }

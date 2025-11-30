@@ -24,13 +24,24 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const themeScript = `(() => {
+    try {
+      const stored = window.localStorage.getItem("alati-theme");
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)")?.matches;
+      const theme = stored === "dark" || stored === "light" ? stored : (prefersDark ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.style.colorScheme = theme;
+    } catch (error) {}
+  })();`;
+
   return (
-    <html lang="sr">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-slate-50 text-slate-900 antialiased`}
-      >
+    <html lang="sr" data-theme="light" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}>
         <Providers>
-          <div className="min-h-screen bg-slate-100">
+          <div className="min-h-screen" style={{ backgroundColor: "var(--panel-bg)" }}>
             <AppHeader />
             <main className="mx-auto px-6 py-8">{children}</main>
           </div>

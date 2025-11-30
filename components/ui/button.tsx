@@ -11,13 +11,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600",
+          "bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)] focus-visible:ring-[var(--accent)]",
         secondary:
-          "bg-slate-100 text-slate-900 hover:bg-slate-200 focus-visible:ring-slate-400",
+          "bg-slate-100 text-slate-900 hover:bg-slate-200 focus-visible:ring-[var(--accent-soft)]",
         ghost:
-          "bg-transparent hover:bg-slate-100 text-slate-900 focus-visible:ring-slate-200",
+          "bg-transparent text-slate-900 hover:bg-slate-100 focus-visible:ring-[var(--border-soft)]",
         outline:
-          "border border-slate-300 bg-white hover:bg-slate-50 focus-visible:ring-slate-200",
+          "border border-slate-300 bg-white hover:bg-slate-50 focus-visible:ring-[var(--border-soft)]",
         destructive:
           "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600",
       },

@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-client";
 import Image from "next/image";
 import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ThemeToggle } from "./ThemeToggle";
 
 const navLinks = [
   { href: "/", label: "Kontrolna tabla" },
@@ -54,7 +55,7 @@ export function AppHeader() {
   );
 
   return (
-    <header className="border-b border-slate-200 bg-white">
+    <header className="border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 md:px-6">
         <div className="flex items-center gap-3">
           <button
@@ -67,9 +68,15 @@ export function AppHeader() {
           </button>
           <Image src="/logo.png" width={64} height={64} alt="logo" className="shrink-0" />
         </div>
+
+        <div className="md:hidden">
+          <ThemeToggle withLabel={false} />
+        </div>
+
         <div className="hidden flex-1 items-center justify-between gap-6 md:flex">
           {status === "authenticated" ? navigation : null}
-          <div className="flex items-center gap-2 text-sm text-slate-600">
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <ThemeToggle />
             {status === "checking" ? (
               <span className="text-slate-500">Provera naloga...</span>
             ) : status === "authenticated" && user ? (
@@ -109,9 +116,12 @@ export function AppHeader() {
                   <span className="font-semibold">{user?.username}</span>
                   {user?.role === "admin" ? <span className="text-[11px] text-amber-600">Admin</span> : null}
                 </div>
-                <Button size="sm" variant="outline" onClick={logout}>
-                  Odjava
-                </Button>
+                <div className="flex items-center gap-2">
+                  <ThemeToggle withLabel={false} />
+                  <Button size="sm" variant="outline" onClick={logout}>
+                    Odjava
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
