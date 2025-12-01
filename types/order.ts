@@ -67,6 +67,13 @@ export interface Product {
   updatedAt: number;
 }
 
+export interface ProductStats {
+  productId: string;
+  salesCount: number;
+  revenue: number;
+  profit: number;
+}
+
 export type OrderStage = "poruceno" | "poslato" | "stiglo" | "legle_pare";
 export type TransportMode = "Kol" | "Joe" | "Posta" | "Bex" | "Aks";
 

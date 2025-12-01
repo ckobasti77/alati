@@ -272,6 +272,47 @@ export const list = query({
   },
 });
 
+export const stats = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
+      .collect();
+
+    const statsMap = new Map<
+      Id<"products">,
+      { salesCount: number; revenue: number; profit: number }
+    >();
+
+    orders.forEach((order) => {
+      if (!order.productId) return;
+      if (order.stage !== "legle_pare") return;
+      const key = order.productId;
+      const current = statsMap.get(key) ?? {
+        salesCount: 0,
+        revenue: 0,
+        profit: 0,
+      };
+      const prodajno = order.prodajnaCena * order.kolicina;
+      const nabavno = order.nabavnaCena * order.kolicina;
+      const transport = order.transportCost ?? 0;
+      current.salesCount += order.kolicina;
+      current.revenue += prodajno;
+      current.profit += prodajno - nabavno - transport;
+      statsMap.set(key, current);
+    });
+
+    return Array.from(statsMap.entries()).map(([productId, data]) => ({
+      productId,
+      salesCount: data.salesCount,
+      revenue: data.revenue,
+      profit: data.profit,
+    }));
+  },
+});
+
 async function toPublicProduct(ctx: { storage: any }, product: Doc<"products">) {
   const images = await Promise.all(
     (product.images ?? []).map(async (image) => ({

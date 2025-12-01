@@ -21,6 +21,7 @@ import {
   Loader2,
   Plus,
   Search,
+  ShoppingBag,
   Share2,
   Tag,
   UserRound,
@@ -47,10 +48,11 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
-import type { Category, Product } from "@/types/order";
+import type { Category, Product, ProductStats } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 
@@ -153,6 +155,8 @@ type DraftAdImage = {
 
 type SocialPlatform = "facebook" | "instagram";
 
+type SortOption = "created_desc" | "price_desc" | "price_asc" | "sales_desc" | "profit_desc";
+
 const generateId = () => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -215,6 +219,7 @@ function ProductsContent() {
   const [isAdDragActive, setIsAdDragActive] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
   const [isMobile, setIsMobile] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>("created_desc");
   const [productSearch, setProductSearch] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
@@ -237,6 +242,7 @@ function ProductsContent() {
     [],
   );
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
+  const productStats = useConvexQuery<ProductStats[]>("products:stats", { token: sessionToken });
   const createProduct = useConvexMutation("products:create");
   const updateProduct = useConvexMutation("products:update");
   const removeProduct = useConvexMutation<{ id: string; token: string }>("products:remove");
@@ -608,6 +614,13 @@ function ProductsContent() {
   };
 
   const items = useMemo(() => products ?? [], [products]);
+  const statsMap = useMemo(() => {
+    const map = new Map<string, ProductStats>();
+    (productStats ?? []).forEach((entry) => {
+      map.set(String(entry.productId), entry);
+    });
+    return map;
+  }, [productStats]);
   const categoryMap = useMemo(() => {
     const map = new Map<string, Category>();
     (categories ?? []).forEach((category) => {
@@ -651,12 +664,18 @@ function ProductsContent() {
     const list = product.variants ?? [];
     return list.find((variant) => variant.isDefault) ?? list[0];
   }, []);
-  const getDisplayPrice = useCallback(
+  const getProductPrice = useCallback(
     (product: Product) => {
       const primary = getPrimaryVariant(product);
-      return formatCurrency(primary?.prodajnaCena ?? product.prodajnaCena, "EUR");
+      return primary?.prodajnaCena ?? product.prodajnaCena;
     },
     [getPrimaryVariant],
+  );
+  const getDisplayPrice = useCallback(
+    (product: Product) => {
+      return formatCurrency(getProductPrice(product), "EUR");
+    },
+    [getProductPrice],
   );
   const getMainImage = useCallback((product: Product) => {
     const images = product.images ?? [];
@@ -665,6 +684,28 @@ function ProductsContent() {
   const hasSocialMainImage = useCallback((product: Product) => {
     return Boolean(product.adImage?.url ?? product.adImage?.storageId);
   }, []);
+  const getSalesCount = useCallback(
+    (product: Product) => statsMap.get(String(product._id))?.salesCount ?? 0,
+    [statsMap],
+  );
+  const getProfit = useCallback((product: Product) => statsMap.get(String(product._id))?.profit ?? 0, [statsMap]);
+  const sortedProducts = useMemo(() => {
+    const list = [...filteredProducts];
+    const byPriceAsc = (a: Product, b: Product) => getProductPrice(a) - getProductPrice(b);
+    switch (sortBy) {
+      case "price_asc":
+        return list.sort(byPriceAsc);
+      case "price_desc":
+        return list.sort((a, b) => byPriceAsc(b, a));
+      case "sales_desc":
+        return list.sort((a, b) => getSalesCount(b) - getSalesCount(a));
+      case "profit_desc":
+        return list.sort((a, b) => getProfit(b) - getProfit(a));
+      case "created_desc":
+      default:
+        return list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    }
+  }, [filteredProducts, getProductPrice, sortBy, getSalesCount, getProfit]);
 
   const seedInitialVariant = () => {
     const entry = createVariantFormEntry({
@@ -709,9 +750,23 @@ function ProductsContent() {
     form.setValue("variants", next, { shouldDirty: true, shouldValidate: true });
   };
 
+  const handleAddVariantFromSingle = () => {
+    const current = (form.getValues("variants") ?? []) as VariantFormEntry[];
+    const shouldBeDefault = current.length === 0 || !current.some((variant) => variant.isDefault);
+    const entry = createVariantFormEntry({
+      isDefault: shouldBeDefault,
+      nabavnaCena: shouldBeDefault ? form.getValues("nabavnaCena") : "",
+      prodajnaCena: shouldBeDefault ? form.getValues("prodajnaCena") : "",
+    });
+    const next = [...current, entry];
+    form.setValue("productType", "variant", { shouldDirty: true, shouldValidate: true });
+    form.setValue("variants", next, { shouldDirty: true, shouldValidate: true });
+  };
+
   const handleRemoveVariant = (id: string) => {
     const current = (form.getValues("variants") ?? []) as VariantFormEntry[];
     if (current.length === 1) {
+      form.setValue("productType", "single", { shouldDirty: true, shouldValidate: true });
       form.setValue("variants", [], { shouldDirty: true, shouldValidate: true });
       setVariantImages((prev) => {
         const copy = { ...prev };
@@ -731,6 +786,9 @@ function ProductsContent() {
       next[0] = { ...next[0], isDefault: true };
     }
     form.setValue("variants", next, { shouldDirty: true, shouldValidate: true });
+    if (next.length === 0) {
+      form.setValue("productType", "single", { shouldDirty: true, shouldValidate: true });
+    }
     setVariantImages((prev) => {
       const copy = { ...prev };
       const removed = copy[id];
@@ -1731,7 +1789,7 @@ function ProductsContent() {
                 </FormItem>
               )}
             />
-            {resolvedProductType === "variant" && (
+            {resolvedProductType === "variant" ? (
               <div className="space-y-4">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -1971,12 +2029,24 @@ function ProductsContent() {
                         )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
                 {variantsError && normalizedVariants.length > 0 && (
                   <p className="text-sm text-red-600">{variantsError}</p>
                 )}
+              </div>
+            ) : (
+              <div className="space-y-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <FormLabel>Tipovi proizvoda</FormLabel>
+                    <p className="text-sm text-slate-500">Dodaj tip i proizvod se automatski prebacuje na tipski.</p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={handleAddVariantFromSingle}>
+                    Dodaj tip
+                  </Button>
+                </div>
               </div>
             )}
             <div className="space-y-3">
@@ -2225,7 +2295,7 @@ function ProductsContent() {
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <CardTitle>
-              Lista proizvoda ({hasProductSearch ? `${filteredProducts.length} od ${items.length}` : items.length})
+              Lista proizvoda ({hasProductSearch ? `${sortedProducts.length} od ${items.length}` : items.length})
             </CardTitle>
             <p className="text-sm text-slate-500">
               {viewMode === "list"
@@ -2233,18 +2303,32 @@ function ProductsContent() {
                 : "Klikni na karticu da otvoris pregled proizvoda."}
             </p>
           </div>
-          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
-            <div className="relative w-full md:w-64">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={productSearch}
-                onChange={(event) => {
-                  setProductSearch(event.target.value);
-                }}
-                placeholder="Pretrazi proizvode"
-                className="pl-9"
-                aria-label="Pretraga proizvoda"
-              />
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:gap-3">
+            <div className="flex flex-col gap-2 md:w-auto md:flex-row md:items-center md:gap-2">
+              <div className="relative w-full md:w-64">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={productSearch}
+                  onChange={(event) => {
+                    setProductSearch(event.target.value);
+                  }}
+                  placeholder="Pretrazi proizvode"
+                  className="pl-9"
+                  aria-label="Pretraga proizvoda"
+                />
+              </div>
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
+                <SelectTrigger className="md:w-56 text-slate-100" aria-label="Sortiranje proizvoda">
+                  <SelectValue className="text-slate-100 data-placeholder:text-slate-400" placeholder="Sortiraj" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="created_desc">Najnovije</SelectItem>
+                  <SelectItem value="price_desc">Cena (vise prvo)</SelectItem>
+                  <SelectItem value="price_asc">Cena (manje prvo)</SelectItem>
+                  <SelectItem value="sales_desc">Najvise prodaja</SelectItem>
+                  <SelectItem value="profit_desc">Najveci profit</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1 md:flex">
               <Button
@@ -2271,19 +2355,20 @@ function ProductsContent() {
           </div>
         </CardHeader>
         <CardContent className="pb-6">
-          {filteredProducts.length === 0 ? (
+          {sortedProducts.length === 0 ? (
             <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
               {items.length === 0 ? "Dodaj prvi proizvod." : "Nema proizvoda koji odgovaraju pretrazi."}
             </div>
           ) : viewMode === "list" && !isMobile ? (
             <div className="space-y-2">
-              {filteredProducts.map((product) => {
+              {sortedProducts.map((product) => {
                 const mainImage = getMainImage(product);
                 const productCategories = (product.categoryIds ?? [])
                   .map((id) => categoryMap.get(id))
                   .filter(Boolean) as Category[];
                 const isVariantProduct = (product.variants ?? []).length > 0;
                 const hasSocialImage = hasSocialMainImage(product);
+                const salesCount = getSalesCount(product);
                 return (
                   <div
                     key={product._id}
@@ -2351,6 +2436,10 @@ function ProductsContent() {
                           <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-white shadow">
                             {getDisplayPrice(product)}
                           </span>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
+                            <ShoppingBag className="h-3.5 w-3.5" />
+                            Prodato: {salesCount}
+                          </span>
                           {isVariantProduct ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
                               <Layers className="h-3.5 w-3.5" />
@@ -2406,13 +2495,14 @@ function ProductsContent() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {filteredProducts.map((product) => {
+              {sortedProducts.map((product) => {
                 const mainImage = getMainImage(product);
                 const productCategories = (product.categoryIds ?? [])
                   .map((id) => categoryMap.get(id))
                   .filter(Boolean) as Category[];
                 const isVariantProduct = (product.variants ?? []).length > 0;
                 const hasSocialImage = hasSocialMainImage(product);
+                const salesCount = getSalesCount(product);
                 return (
                   <button
                     key={product._id}
@@ -2436,6 +2526,10 @@ function ProductsContent() {
                     <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-2">
                       <span className="inline-flex items-center rounded-full bg-white/95 px-3 py-1 text-sm font-bold text-slate-900 shadow">
                         {getDisplayPrice(product)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow">
+                        <ShoppingBag className="h-4 w-4" />
+                        Prodato: {salesCount}
                       </span>
                       {hasSocialImage ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow">
