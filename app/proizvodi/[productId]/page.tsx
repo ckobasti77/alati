@@ -288,9 +288,8 @@ function ProductDetailsContent() {
   const isLoading = queryResult === undefined;
 
   useEffect(() => {
-    if (queryResult !== undefined) {
-      setProduct(queryResult);
-    }
+    if (queryResult === undefined) return;
+    setProduct(queryResult ? normalizeProductImages(queryResult) : null);
   }, [queryResult]);
 
   useEffect(() => {
@@ -415,7 +414,7 @@ function ProductDetailsContent() {
   const applyUpdate = async (updater: (current: ProductWithUrls) => ProductWithUrls, successMessage?: string) => {
     if (!product) return;
     const previous = product;
-    const next = updater(previous);
+    const next = normalizeProductImages(updater(previous));
     setProduct(next);
     try {
       await updateProduct(buildUpdatePayload(next));
@@ -547,12 +546,33 @@ function ProductDetailsContent() {
     }
   };
 
-  const ensureMainImage = (list: (ProductImage & { url?: string | null })[] = []) => {
+  function ensureMainImage(
+    list: (ProductImage & { url?: string | null })[] = [],
+    preferredMainId?: string,
+  ) {
     if (list.length === 0) return [];
-    if (list.some((image) => image.isMain)) return list;
-    const [first, ...rest] = list;
-    return [{ ...first, isMain: true }, ...rest];
-  };
+    const next = [...list];
+    if (preferredMainId) {
+      const preferredIndex = next.findIndex((image) => image.storageId === preferredMainId);
+      if (preferredIndex > 0) {
+        const [preferred] = next.splice(preferredIndex, 1);
+        next.unshift(preferred);
+      }
+    }
+    return next.map((image, index) => ({ ...image, isMain: index === 0 }));
+  }
+
+  function normalizeProductImages(current: ProductWithUrls): ProductWithUrls {
+    return {
+      ...current,
+      images: current.images ? ensureMainImage(current.images) : current.images,
+      variants:
+        current.variants?.map((variant) => ({
+          ...variant,
+          images: variant.images ? ensureMainImage(variant.images) : variant.images,
+        })) ?? current.variants,
+    };
+  }
 
   const handleBaseFieldSave = async (
     field: "name" | "kpName" | "opisKp" | "opisFbInsta" | "nabavnaCena" | "prodajnaCena",
@@ -939,10 +959,7 @@ function ProductDetailsContent() {
         if (item.origin.type === "product") {
           const images = current.images ?? [];
           if (images.length === 0) return current;
-          return {
-            ...current,
-            images: images.map((image) => ({ ...image, isMain: image.storageId === item.storageId })),
-          };
+          return { ...current, images: ensureMainImage(images, item.storageId) };
         }
         if (item.origin.type !== "variant") return current;
         const variants = current.variants ?? [];
@@ -954,10 +971,7 @@ function ProductDetailsContent() {
             if (variant.id !== variantId) return variant;
             const variantImages = variant.images ?? [];
             if (variantImages.length === 0) return variant;
-            return {
-              ...variant,
-              images: variantImages.map((image) => ({ ...image, isMain: image.storageId === item.storageId })),
-            };
+            return { ...variant, images: ensureMainImage(variantImages, item.storageId) };
           }),
         };
       },
@@ -1219,14 +1233,7 @@ function ProductDetailsContent() {
       await applyUpdate(
         (current) => {
           const baseImages = current.images ?? [];
-          let hasMain = baseImages.some((image) => image.isMain);
-          const merged = [...baseImages, ...additions].map((image, index) => {
-            if (!hasMain && (index === 0 || additions.includes(image))) {
-              hasMain = true;
-              return { ...image, isMain: true };
-            }
-            return image;
-          });
+          const merged = ensureMainImage([...baseImages, ...additions]);
           return { ...current, images: merged };
         },
         "Slike dodate.",
