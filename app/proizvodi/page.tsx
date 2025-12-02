@@ -468,7 +468,12 @@ function ProductsContent() {
 
     try {
       if (editingProduct) {
-        await updateProduct({ id: editingProduct._id, ...payload });
+        await updateProduct({
+          id: editingProduct._id,
+          expectedUpdatedAt: editingProduct.updatedAt ?? Date.now(),
+          updatedAt: Date.now(),
+          ...payload,
+        });
         toast.success("Proizvod je azuriran.");
       } else {
         const productId = await createProduct(payload);

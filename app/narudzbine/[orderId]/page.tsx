@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, Check, Copy, Loader2, PenLine, X } from "lucide-react";
 import { toast } from "sonner";
@@ -95,6 +95,7 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
     setIsSaving(true);
     try {
       await onSave(draft);
@@ -107,6 +108,12 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
   };
 
   const displayValue = formatter ? formatter(value) : valueAsString || "-";
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    void handleSave();
+  };
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/80 p-4 shadow-sm">
@@ -124,7 +131,13 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
                 className="w-full text-sm"
               />
             ) : (
-              <Input ref={inputRef} value={draft} onChange={(event) => setDraft(event.target.value)} className="text-sm" />
+              <Input
+                ref={inputRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={handleInputKeyDown}
+                className="text-sm"
+              />
             )
           ) : (
             <p className="text-base font-semibold text-slate-900">{displayValue}</p>

@@ -484,6 +484,8 @@ export const update = mutation({
     variants: v.optional(v.array(productVariantArg)),
     images: v.optional(v.array(productImageArg)),
     adImage: v.optional(v.union(v.null(), productAdImageArg)),
+    expectedUpdatedAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
@@ -499,6 +501,11 @@ export const update = mutation({
     const opis = args.opis?.trim();
     const opisKp = args.opisKp?.trim();
     const opisFbInsta = args.opisFbInsta?.trim();
+    const expectedUpdatedAt = args.expectedUpdatedAt ?? product.updatedAt;
+    if (expectedUpdatedAt < product.updatedAt) {
+      throw new Error("Proizvod je u medjuvremenu promenjen. Osvezi stranicu i pokusaj ponovo.");
+    }
+    const nextUpdatedAt = args.updatedAt ?? Date.now();
     const resolvedKpName = kpName === undefined ? product.kpName ?? product.name : kpName || fbName;
     const resolvedOpisFb = opisFbInsta === undefined ? product.opisFbInsta ?? product.opis : opisFbInsta || undefined;
     const resolvedOpisKp = opisKp === undefined ? product.opisKp : opisKp || undefined;
@@ -552,7 +559,7 @@ export const update = mutation({
       publishFbProfile,
       publishMarketplace,
       pickupAvailable,
-      updatedAt: Date.now(),
+      updatedAt: nextUpdatedAt,
     });
     await Promise.all(
       removedImages.map(async (image) => {

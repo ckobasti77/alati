@@ -5,8 +5,15 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, MoveRight, Shield, Sparkles, Truck } from "lucide-react";
 import { ThemeToggle } from "../../../components/ThemeToggle";
 import { formatCurrency } from "../../../lib/format";
-import type { PublicProduct } from "../../../lib/types";
+import type { PublicImage, PublicProduct } from "../../../lib/types";
 import { useConvexQuery } from "../../../lib/convex";
+
+const ensureMainImage = (list: PublicImage[] = []) => {
+  if (list.length === 0) return list;
+  const hasMain = list.some((image) => image.isMain);
+  if (hasMain) return list;
+  return list.map((image, index) => ({ ...image, isMain: index === 0 }));
+};
 
 export default function ProductPage() {
   const params = useParams();
@@ -38,9 +45,9 @@ export default function ProductPage() {
   const gallery = useMemo(() => {
     if (!product) return [];
     if (selectedVariant && selectedVariant.images && selectedVariant.images.length > 0) {
-      return selectedVariant.images;
+      return ensureMainImage(selectedVariant.images);
     }
-    return product.images ?? [];
+    return ensureMainImage(product.images ?? []);
   }, [product, selectedVariant]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {

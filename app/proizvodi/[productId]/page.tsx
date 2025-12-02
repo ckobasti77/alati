@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent as ReactDragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent as ReactDragEvent,
+  type KeyboardEvent,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -131,6 +140,7 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
     setIsSaving(true);
     try {
       await onSave(draft);
@@ -143,6 +153,12 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
   };
 
   const displayValue = formatter ? formatter(value) : valueAsString || "-";
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    void handleSave();
+  };
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/80 p-4 shadow-sm">
@@ -164,6 +180,7 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
                 ref={inputRef}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={handleInputKeyDown}
                 className="text-sm"
               />
             )
@@ -349,7 +366,10 @@ function ProductDetailsContent() {
     return list.filter((category) => category.name.toLowerCase().includes(needle));
   }, [categories, categorySearch]);
 
-  const buildUpdatePayload = (current: ProductWithUrls) => {
+  const buildUpdatePayload = (
+    current: ProductWithUrls,
+    options?: { expectedUpdatedAt?: number; updatedAt?: number },
+  ) => {
     const variants = current.variants?.map((variant) => ({
       id: variant.id,
       label: variant.label,
@@ -408,23 +428,32 @@ function ProductDetailsContent() {
             uploadedAt: current.adImage.uploadedAt,
           }
         : null,
+      expectedUpdatedAt: options?.expectedUpdatedAt ?? current.updatedAt,
+      updatedAt: options?.updatedAt ?? current.updatedAt,
     };
   };
 
   const applyUpdate = async (updater: (current: ProductWithUrls) => ProductWithUrls, successMessage?: string) => {
     if (!product) return;
     const previous = product;
-    const next = normalizeProductImages(updater(previous));
+    const expectedUpdatedAt = previous.updatedAt ?? Date.now();
+    const optimisticUpdatedAt = Date.now();
+    const draft = updater(previous);
+    const next = normalizeProductImages({ ...draft, updatedAt: optimisticUpdatedAt });
     setProduct(next);
     try {
-      await updateProduct(buildUpdatePayload(next));
+      await updateProduct(buildUpdatePayload(next, { expectedUpdatedAt, updatedAt: optimisticUpdatedAt }));
       if (successMessage) {
         toast.success(successMessage);
       }
     } catch (error) {
       console.error(error);
       setProduct(previous);
-      toast.error("Cuvanje nije uspelo.");
+      const message =
+        error instanceof Error && error.message.toLowerCase().includes("medjuvremenu promenjen")
+          ? "Proizvod je u medjuvremenu promenjen. Osvezi stranicu i probaj ponovo."
+          : "Cuvanje nije uspelo.";
+      toast.error(message);
       throw error;
     }
   };
