@@ -11,7 +11,10 @@ import {
   AlertCircle,
   ArrowUpRight,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CloudUpload,
+  Download,
   Facebook,
   Images,
   Instagram,
@@ -24,6 +27,7 @@ import {
   ShoppingBag,
   Share2,
   Tag,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -34,6 +38,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -52,7 +57,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
-import type { Category, Product, ProductStats } from "@/types/order";
+import type { Category, InboxImage, Product, ProductStats, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 
@@ -82,6 +87,13 @@ const variantSchema = z.object({
   isDefault: z.boolean(),
 });
 
+const supplierOfferSchema = z.object({
+  id: z.string().optional(),
+  supplierId: z.string({ required_error: "Dobavljac je obavezan." }).min(1, "Dobavljac je obavezan."),
+  price: priceField("Cena dobavljaca"),
+  variantId: z.string().optional(),
+});
+
 const productSchema = z
   .object({
     productType: z.enum(["single", "variant"]),
@@ -91,6 +103,7 @@ const productSchema = z
     nabavnaCenaIsReal: z.boolean().optional(),
     prodajnaCena: priceField("Prodajna cena"),
     categoryIds: z.array(z.string()).optional(),
+    supplierOffers: z.array(supplierOfferSchema).optional(),
     opisKp: z.string().optional(),
     opisFbInsta: z.string().optional(),
     publishKp: z.boolean().optional(),
@@ -124,6 +137,8 @@ const productSchema = z
 type ProductFormValues = z.infer<typeof productSchema>;
 
 type VariantFormEntry = z.infer<typeof variantSchema>;
+
+type SupplierOfferFormEntry = z.infer<typeof supplierOfferSchema>;
 
 type DraftImage = {
   storageId: string;
@@ -176,6 +191,51 @@ const createVariantFormEntry = (
   isDefault: options.isDefault ?? false,
 });
 
+type NormalizedSupplierOffer = {
+  supplierId: string;
+  price: number;
+  variantId?: string;
+};
+
+const normalizeSupplierOffersInput = (
+  offers: SupplierOfferFormEntry[] = [],
+  variants: VariantFormEntry[] = [],
+  includeVariants = false,
+): NormalizedSupplierOffer[] => {
+  const allowedVariantIds = new Set(includeVariants ? variants.map((variant) => variant.id) : []);
+  const seen = new Set<string>();
+  const normalized: NormalizedSupplierOffer[] = [];
+
+  offers.forEach((offer) => {
+    const supplierId = offer.supplierId?.trim();
+    if (!supplierId) return;
+    const price = parsePrice(offer.price);
+    if (!Number.isFinite(price) || price < 0) return;
+    const variantId = includeVariants && offer.variantId && allowedVariantIds.has(offer.variantId) ? offer.variantId : undefined;
+    const key = `${supplierId}-${variantId ?? "base"}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push({ supplierId, price, variantId });
+  });
+
+  return normalized;
+};
+
+const pickBestSupplierOffer = (offers: NormalizedSupplierOffer[], variantId?: string) => {
+  if (!offers.length) return null;
+  const exact = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
+  const fallback = offers.filter((offer) => !offer.variantId);
+  const pool = exact.length > 0 ? exact : fallback;
+  if (!pool.length) return null;
+  let best: { supplierId: string; price: number } | null = null;
+  pool.forEach((offer) => {
+    if (best === null || offer.price < best.price) {
+      best = { supplierId: offer.supplierId, price: offer.price };
+    }
+  });
+  return best;
+};
+
 const emptyProductForm = (): ProductFormValues => ({
   productType: "single",
   kpName: "",
@@ -183,6 +243,7 @@ const emptyProductForm = (): ProductFormValues => ({
   nabavnaCena: "",
   nabavnaCenaIsReal: true,
   prodajnaCena: "",
+  supplierOffers: [],
   categoryIds: [],
   opisKp: "",
   opisFbInsta: "",
@@ -194,6 +255,9 @@ const emptyProductForm = (): ProductFormValues => ({
   pickupAvailable: false,
   variants: [],
 });
+
+const productFocusOrder: (keyof ProductFormValues)[] = ["kpName", "name", "nabavnaCena", "prodajnaCena", "opisKp", "opisFbInsta"];
+const variantFocusOrder: (keyof VariantFormEntry)[] = ["label", "nabavnaCena", "prodajnaCena", "opis"];
 
 export default function ProductsPage() {
   return (
@@ -229,9 +293,16 @@ function ProductsContent() {
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isUploadingCategoryIcon, setIsUploadingCategoryIcon] = useState(false);
   const [hasSeededCategories, setHasSeededCategories] = useState(false);
+  const [newSupplierName, setNewSupplierName] = useState("");
+  const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
+  const [hasSeededSuppliers, setHasSeededSuppliers] = useState(false);
+  const [isUploadingInboxImages, setIsUploadingInboxImages] = useState(false);
+  const [inboxPreviewIndex, setInboxPreviewIndex] = useState<number | null>(null);
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
   const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
   const productUploadInputRef = useRef<HTMLInputElement | null>(null);
   const adImageInputRef = useRef<HTMLInputElement | null>(null);
+  const inboxUploadInputRef = useRef<HTMLInputElement | null>(null);
   const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
   const dialogScrollRef = useRef<HTMLDivElement | null>(null);
@@ -247,6 +318,8 @@ function ProductsContent() {
   const updateProduct = useConvexMutation("products:update");
   const removeProduct = useConvexMutation<{ id: string; token: string }>("products:remove");
   const categories = useConvexQuery<Category[]>("categories:list", { token: sessionToken });
+  const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
+  const inboxImages = useConvexQuery<InboxImage[]>("inboxImages:list", { token: sessionToken });
   const createCategory = useConvexMutation<
     {
       token: string;
@@ -256,6 +329,17 @@ function ProductsContent() {
     string
   >("categories:create");
   const ensureDefaultCategories = useConvexMutation<{ token: string }, { created: number }>("categories:ensureDefaults");
+  const createSupplier = useConvexMutation<{ token: string; name: string }, string>("suppliers:create");
+  const removeSupplier = useConvexMutation<{ token: string; id: string }>("suppliers:remove");
+  const ensureDefaultSuppliers = useConvexMutation<{ token: string }, { created: number }>("suppliers:ensureDefaults");
+  const addInboxImage = useConvexMutation<{
+    token: string;
+    storageId: string;
+    fileName?: string;
+    contentType?: string;
+    uploadedAt?: number;
+  }>("inboxImages:add");
+  const deleteInboxImage = useConvexMutation<{ token: string; id: string }>("inboxImages:remove");
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
 
   const form = useForm<ProductFormValues>({
@@ -265,14 +349,30 @@ function ProductsContent() {
   });
   useEffect(() => {
     form.register("productType");
+    form.register("supplierOffers");
   }, [form]);
   const productType = useWatch({ control: form.control, name: "productType" }) as ProductFormValues["productType"];
   const variants = (useWatch({ control: form.control, name: "variants" }) ?? []) as VariantFormEntry[];
   const categoryIds = (useWatch({ control: form.control, name: "categoryIds" }) ?? []) as string[];
+  const supplierOffersField =
+    (useWatch({ control: form.control, name: "supplierOffers" }) ?? []) as SupplierOfferFormEntry[];
   const publishFbSelected = Boolean(useWatch({ control: form.control, name: "publishFb" }));
   const publishIgSelected = Boolean(useWatch({ control: form.control, name: "publishIg" }));
   const resolvedProductType = productType ?? "single";
   const normalizedVariants = resolvedProductType === "variant" && Array.isArray(variants) ? variants : [];
+  const normalizedSupplierOffers = useMemo(
+    () => normalizeSupplierOffersInput(supplierOffersField, normalizedVariants, resolvedProductType === "variant"),
+    [supplierOffersField, normalizedVariants, resolvedProductType],
+  );
+  const supplierMap = useMemo(
+    () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
+    [suppliers],
+  );
+  const bestSupplierForVariant = useCallback(
+    (variantId?: string) => pickBestSupplierOffer(normalizedSupplierOffers, variantId),
+    [normalizedSupplierOffers],
+  );
+  const hasSupplierOffers = supplierOffersField.length > 0;
 
   useEffect(() => {
     if (hasSeededCategories) return;
@@ -284,6 +384,17 @@ function ProductsContent() {
       setHasSeededCategories(false);
     });
   }, [categories, ensureDefaultCategories, hasSeededCategories, sessionToken]);
+
+  useEffect(() => {
+    if (hasSeededSuppliers) return;
+    if (suppliers === undefined) return;
+    if (suppliers.length > 0) return;
+    setHasSeededSuppliers(true);
+    ensureDefaultSuppliers({ token: sessionToken }).catch((error) => {
+      console.error(error);
+      setHasSeededSuppliers(false);
+    });
+  }, [ensureDefaultSuppliers, hasSeededSuppliers, sessionToken, suppliers]);
 
   useEffect(() => {
     const media = typeof window !== "undefined" ? window.matchMedia("(max-width: 768px)") : null;
@@ -299,6 +410,14 @@ function ProductsContent() {
       setViewMode("grid");
     }
   }, [isMobile]);
+
+  useEffect(() => {
+    if (supplierOffersField.length > 0) {
+      setShowSupplierForm(true);
+    } else {
+      setShowSupplierForm(false);
+    }
+  }, [supplierOffersField.length]);
 
   const resetForm = () => {
     form.reset(emptyProductForm());
@@ -425,16 +544,25 @@ function ProductsContent() {
     const baseNabavna = parsePrice(values.nabavnaCena);
     const baseNabavnaIsReal = values.nabavnaCenaIsReal ?? true;
     const baseProdajna = parsePrice(values.prodajnaCena);
+    const variantEntries = (values.variants ?? []) as VariantFormEntry[];
+    const normalizedOffers = normalizeSupplierOffersInput(
+      (values.supplierOffers ?? []) as SupplierOfferFormEntry[],
+      variantEntries,
+      isVariantProduct,
+    );
+    const resolveBestOffer = (variantId?: string) => pickBestSupplierOffer(normalizedOffers, variantId);
     const variants =
-      isVariantProduct && (values.variants ?? []).length > 0
-        ? values.variants?.map((variant, index) => {
+      isVariantProduct && variantEntries.length > 0
+        ? variantEntries.map((variant, index) => {
             const imagesForVariant = variantImages[variant.id] ?? [];
             const mappedImages = buildImagePayload(imagesForVariant);
+            const bestOffer = resolveBestOffer(variant.id);
+            const nabavnaCena = bestOffer?.price ?? parsePrice(variant.nabavnaCena);
             return {
               id: variant.id || generateId(),
               label: variant.label.trim() || `Tip ${index + 1}`,
-              nabavnaCena: parsePrice(variant.nabavnaCena),
-              nabavnaCenaIsReal: variant.nabavnaCenaIsReal ?? true,
+              nabavnaCena,
+              nabavnaCenaIsReal: bestOffer ? true : variant.nabavnaCenaIsReal ?? true,
               prodajnaCena: parsePrice(variant.prodajnaCena),
               opis: variant.opis?.trim() ? variant.opis.trim() : undefined,
               isDefault: variant.isDefault,
@@ -443,14 +571,18 @@ function ProductsContent() {
           })
         : undefined;
     const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
+    const bestOfferForProduct = resolveBestOffer(defaultVariant?.id);
     const fbName = values.name.trim();
     const kpName = values.kpName.trim() || fbName;
     const payload = {
       token: sessionToken,
       name: fbName,
       kpName,
-      nabavnaCena: defaultVariant?.nabavnaCena ?? baseNabavna,
-      nabavnaCenaIsReal: values.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? baseNabavnaIsReal,
+      nabavnaCena: bestOfferForProduct?.price ?? defaultVariant?.nabavnaCena ?? baseNabavna,
+      nabavnaCenaIsReal:
+        bestOfferForProduct?.price !== undefined
+          ? true
+          : values.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? baseNabavnaIsReal,
       prodajnaCena: defaultVariant?.prodajnaCena ?? baseProdajna,
       opisKp: values.opisKp?.trim() ? values.opisKp.trim() : undefined,
       opisFbInsta: values.opisFbInsta?.trim() ? values.opisFbInsta.trim() : undefined,
@@ -463,6 +595,7 @@ function ProductsContent() {
       categoryIds: (values.categoryIds ?? []).filter(Boolean),
       images: buildImagePayload(images),
       variants,
+      supplierOffers: normalizedOffers.length ? normalizedOffers : undefined,
       adImage: buildAdImagePayload(adImage),
     };
 
@@ -502,6 +635,44 @@ function ProductsContent() {
     } catch (error) {
       console.error(error);
       toast.error("Brisanje nije uspelo.");
+    }
+  };
+
+  const handleCreateSupplierEntry = async () => {
+    const name = newSupplierName.trim();
+    if (!name) {
+      toast.error("Unesi naziv dobavljaca.");
+      return;
+    }
+    if (isCreatingSupplier) return;
+    setIsCreatingSupplier(true);
+    try {
+      await createSupplier({ token: sessionToken, name });
+      setNewSupplierName("");
+      toast.success("Dobavljac je dodat.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message ?? "Nije moguce dodati dobavljaca.");
+    } finally {
+      setIsCreatingSupplier(false);
+    }
+  };
+
+  const handleRemoveSupplierEntry = async (id: string, usage?: { products?: number; orders?: number }) => {
+    const productsUsing = usage?.products ?? 0;
+    const ordersUsing = usage?.orders ?? 0;
+    if (productsUsing > 0 || ordersUsing > 0) {
+      toast.error("Dobavljac je vezan za proizvode ili narudzbine.");
+      return;
+    }
+    const confirmed = window.confirm("Da li sigurno zelis da obrises ovog dobavljaca?");
+    if (!confirmed) return;
+    try {
+      await removeSupplier({ token: sessionToken, id });
+      toast.success("Dobavljac je obrisan.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message ?? "Brisanje dobavljaca nije uspelo.");
     }
   };
 
@@ -682,6 +853,31 @@ function ProductsContent() {
     },
     [getProductPrice],
   );
+  const getBestSupplier = useCallback(
+    (product: Product) => {
+      const offers = product.supplierOffers ?? [];
+      if (!offers.length) return null;
+      const primary = getPrimaryVariant(product);
+      const pool = primary
+        ? offers.filter((offer) => (offer.variantId ?? null) === (primary.id ?? null) || !offer.variantId)
+        : offers.filter((offer) => !offer.variantId);
+      const relevant = pool.length > 0 ? pool : offers;
+      if (!relevant.length) return null;
+      let best = relevant[0];
+      relevant.forEach((offer) => {
+        if (offer.price < best.price) {
+          best = offer;
+        }
+      });
+      const supplier = supplierMap.get(String(best.supplierId));
+      return {
+        supplierId: String(best.supplierId),
+        supplierName: supplier?.name,
+        price: best.price,
+      };
+    },
+    [getPrimaryVariant, supplierMap],
+  );
   const getMainImage = useCallback((product: Product) => {
     const images = product.images ?? [];
     return images.find((image) => image.isMain) ?? images[0];
@@ -711,6 +907,83 @@ function ProductsContent() {
         return list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     }
   }, [filteredProducts, getProductPrice, sortBy, getSalesCount, getProfit]);
+  const defaultVariantEntry =
+    resolvedProductType === "variant"
+      ? normalizedVariants.find((variant) => variant.isDefault) ?? normalizedVariants[0]
+      : undefined;
+  const bestFormOffer = useMemo(
+    () => bestSupplierForVariant(resolvedProductType === "variant" ? defaultVariantEntry?.id : undefined),
+    [bestSupplierForVariant, defaultVariantEntry?.id, resolvedProductType],
+  );
+  const bestFormSupplierName = bestFormOffer ? supplierMap.get(bestFormOffer.supplierId)?.name : undefined;
+  const inboxList = inboxImages ?? [];
+  const inboxPreviewImage = inboxPreviewIndex !== null ? inboxList[inboxPreviewIndex] : undefined;
+
+  const focusProductField = useCallback(
+    (fieldName: string) => {
+      const targetName = String(fieldName);
+      requestAnimationFrame(() => {
+        try {
+          form.setFocus(targetName as any, { shouldSelect: true });
+          return;
+        } catch {
+          // fall through to DOM lookup
+        }
+        const scope: ParentNode = dialogScrollRef.current ?? document;
+        const node =
+          scope.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${targetName}"]`) ??
+          document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${targetName}"]`);
+        if (node) {
+          node.focus();
+          if ("select" in node && typeof node.select === "function") {
+            node.select();
+          }
+        }
+      });
+    },
+    [form],
+  );
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const timer = window.setTimeout(() => focusProductField("kpName"), 0);
+    return () => window.clearTimeout(timer);
+  }, [focusProductField, isModalOpen]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    if (form.formState.submitCount === 0 && Object.keys(form.formState.errors).length === 0) return;
+    const errors = form.formState.errors;
+    let target: string | null = productFocusOrder.find((field) => errors[field]) ?? null;
+    if (!target) {
+      const variantErrors = errors.variants;
+      if (Array.isArray(variantErrors)) {
+        const variantIndex = variantErrors.findIndex((entry) => entry);
+        if (variantIndex >= 0) {
+          const entry = variantErrors[variantIndex] as Record<string, unknown> | undefined;
+          const variantHit = variantFocusOrder.find((field) => entry?.[field]);
+          target = `variants.${variantIndex}.${variantHit ?? "label"}`;
+        }
+      } else if (variantErrors) {
+        target = "variants";
+      }
+    }
+    if (!target) return;
+    const timer = window.setTimeout(() => focusProductField(target as string), 0);
+    return () => window.clearTimeout(timer);
+  }, [focusProductField, form.formState.errors, form.formState.submitCount, isModalOpen]);
+
+  useEffect(() => {
+    if (!hasSupplierOffers) return;
+    if (!bestFormOffer) return;
+    const currentValue = form.getValues("nabavnaCena");
+    if (parsePrice(currentValue) !== bestFormOffer.price) {
+      form.setValue("nabavnaCena", String(bestFormOffer.price), { shouldDirty: true, shouldValidate: true });
+    }
+    if (form.getValues("nabavnaCenaIsReal") !== true) {
+      form.setValue("nabavnaCenaIsReal", true, { shouldDirty: true, shouldValidate: true });
+    }
+  }, [bestFormOffer, form, hasSupplierOffers]);
 
   const seedInitialVariant = () => {
     const entry = createVariantFormEntry({
@@ -727,6 +1000,8 @@ function ProductsContent() {
     form.setValue("productType", type, { shouldDirty: true, shouldValidate: true });
     if (type === "single") {
       form.setValue("variants", [], { shouldDirty: true, shouldValidate: true });
+      const baseOffers = (form.getValues("supplierOffers") ?? []).filter((offer) => !offer.variantId);
+      form.setValue("supplierOffers", baseOffers, { shouldDirty: true, shouldValidate: true });
       setVariantImages((previous) => {
         Object.values(previous).forEach((list) =>
           list.forEach((image) => {
@@ -791,6 +1066,8 @@ function ProductsContent() {
       next[0] = { ...next[0], isDefault: true };
     }
     form.setValue("variants", next, { shouldDirty: true, shouldValidate: true });
+    const filteredOffers = (form.getValues("supplierOffers") ?? []).filter((offer) => offer.variantId !== id);
+    form.setValue("supplierOffers", filteredOffers, { shouldDirty: true, shouldValidate: true });
     if (next.length === 0) {
       form.setValue("productType", "single", { shouldDirty: true, shouldValidate: true });
     }
@@ -820,6 +1097,8 @@ function ProductsContent() {
   const handleClearVariants = () => {
     form.setValue("productType", "single", { shouldDirty: true, shouldValidate: true });
     form.setValue("variants", [], { shouldDirty: true, shouldValidate: true });
+    const baseOffers = (form.getValues("supplierOffers") ?? []).filter((offer) => !offer.variantId);
+    form.setValue("supplierOffers", baseOffers, { shouldDirty: true, shouldValidate: true });
     setVariantImages((prev) => {
       Object.values(prev).forEach((list) =>
         list.forEach((image) => {
@@ -830,6 +1109,43 @@ function ProductsContent() {
       );
       return {};
     });
+  };
+
+  const setSupplierOffersField = (updater: (prev: SupplierOfferFormEntry[]) => SupplierOfferFormEntry[]) => {
+    const current = (form.getValues("supplierOffers") ?? []) as SupplierOfferFormEntry[];
+    const next = updater(current);
+    form.setValue("supplierOffers", next, { shouldDirty: true, shouldValidate: true });
+  };
+
+  const handleAddSupplierOffer = (variantId?: string) => {
+    if (!suppliers || suppliers.length === 0) {
+      toast.error("Dodaj bar jednog dobavljaca pre dodavanja ponude.");
+      return;
+    }
+    const scopedVariantId = resolvedProductType === "variant" ? variantId : undefined;
+    setSupplierOffersField((prev) => [
+      ...prev,
+      {
+        id: generateId(),
+        supplierId: suppliers[0]._id,
+        price: "",
+        variantId: scopedVariantId,
+      },
+    ]);
+  };
+
+  const handleUpdateSupplierOffer = (
+    rowId: string,
+    field: "supplierId" | "price" | "variantId",
+    value: string | undefined,
+  ) => {
+    setSupplierOffersField((prev) =>
+      prev.map((entry) => (entry.id === rowId ? { ...entry, [field]: value ?? "" } : entry)),
+    );
+  };
+
+  const handleRemoveSupplierOffer = (rowId: string) => {
+    setSupplierOffersField((prev) => prev.filter((entry) => entry.id !== rowId));
   };
 
   const uploadAdImage = async (file: File) => {
@@ -885,6 +1201,97 @@ function ProductsContent() {
       await uploadAdImage(file);
     }
     setIsAdDragActive(false);
+  };
+
+  const uploadInboxImages = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    if (isUploadingInboxImages) {
+      toast.info("Otpremanje slika je vec u toku.");
+      return;
+    }
+    const imagesOnly = Array.from(files).filter(
+      (file) => file.type?.startsWith("image/") || /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name),
+    );
+    if (imagesOnly.length === 0) {
+      toast.error("Izaberi fajlove tipa slike.");
+      return;
+    }
+    setIsUploadingInboxImages(true);
+    try {
+      for (const file of imagesOnly) {
+        const uploadUrl = await generateUploadUrl({ token: sessionToken });
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!response.ok) {
+          throw new Error("Upload nije uspeo.");
+        }
+        const result = await response.json();
+        if (!result?.storageId) {
+          throw new Error("Nedostaje ID fajla.");
+        }
+        await addInboxImage({
+          token: sessionToken,
+          storageId: result.storageId as string,
+          fileName: file.name,
+          contentType: file.type,
+          uploadedAt: Date.now(),
+        });
+      }
+      toast.success("Slike su dodate u inbox za ubacivanje.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Otpremanje slika nije uspelo.");
+    } finally {
+      setIsUploadingInboxImages(false);
+      if (inboxUploadInputRef.current) {
+        inboxUploadInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleInboxFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    await uploadInboxImages(files);
+    event.target.value = "";
+  };
+
+  const handleDeleteInboxImage = async (id: string) => {
+    const confirmed = window.confirm("Obrisi ovu sliku iz inboxa?");
+    if (!confirmed) return;
+    try {
+      await deleteInboxImage({ token: sessionToken, id });
+      if (inboxPreviewIndex !== null) {
+        const nextCount = (inboxImages?.length ?? 0) - 1;
+        if (nextCount <= 0) {
+          setInboxPreviewIndex(null);
+        } else {
+          setInboxPreviewIndex((prev) => {
+            if (prev === null) return null;
+            return Math.min(prev, nextCount - 1);
+          });
+        }
+      }
+      toast.success("Slika je obrisana.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Nije moguce obrisati sliku.");
+    }
+  };
+
+  const handleOpenInboxPreview = (index: number) => {
+    setInboxPreviewIndex(index);
+  };
+
+  const handleCloseInboxPreview = () => setInboxPreviewIndex(null);
+
+  const handleStepInboxPreview = (direction: 1 | -1) => {
+    const list = inboxImages ?? [];
+    if (inboxPreviewIndex === null || list.length === 0) return;
+    const nextIndex = (inboxPreviewIndex + direction + list.length) % list.length;
+    setInboxPreviewIndex(nextIndex);
   };
 
   const handleAdDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -1216,6 +1623,13 @@ function ProductsContent() {
         isDefault: variant.isDefault ?? index === 0,
       };
     });
+    const mappedSupplierOffers =
+      product.supplierOffers?.map((offer) => ({
+        id: generateId(),
+        supplierId: offer.supplierId,
+        price: offer.price.toString(),
+        variantId: offer.variantId,
+      })) ?? [];
     form.reset({
       productType: (product.variants ?? []).length > 0 ? "variant" : "single",
       kpName: product.kpName ?? product.name,
@@ -1223,6 +1637,7 @@ function ProductsContent() {
       nabavnaCena: product.nabavnaCena.toString(),
       nabavnaCenaIsReal: product.nabavnaCenaIsReal ?? true,
       prodajnaCena: product.prodajnaCena.toString(),
+      supplierOffers: mappedSupplierOffers,
       categoryIds: product.categoryIds ?? [],
       opisKp: product.opisKp ?? "",
       opisFbInsta: product.opisFbInsta ?? product.opis ?? "",
@@ -1746,54 +2161,212 @@ function ProductsContent() {
                 render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel>Nabavna cena (EUR)</FormLabel>
-                    <Input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="npr. 11.90"
-                      value={field.value}
-                      onChange={(event) => field.onChange(event.target.value)}
-                    />
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                    <div className="space-y-2">
+                      <Input
+                        ref={field.ref}
+                        name={field.name}
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="npr. 11.90"
+                        value={hasSupplierOffers ? bestFormOffer?.price ?? field.value : field.value}
+                        disabled={hasSupplierOffers}
+                        onChange={(event) => field.onChange(event.target.value)}
+                        onBlur={field.onBlur}
+                      />
+                      {hasSupplierOffers ? (
+                        <div className="flex flex-wrap gap-2">
+                          {normalizedSupplierOffers.map((offer) => {
+                            const supplierName = supplierMap.get(offer.supplierId)?.name ?? "Dobavljac";
+                            const isBest = bestFormOffer && offer.price === bestFormOffer.price;
+                            return (
+                              <span
+                                key={`${offer.supplierId}-${offer.variantId ?? "base"}`}
+                                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[12px] font-semibold shadow ${
+                                  isBest
+                                    ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200"
+                                    : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
+                                }`}
+                              >
+                                {supplierName}
+                                <span className="text-xs font-bold">{formatCurrency(offer.price, "EUR")}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      <FormMessage>{fieldState.error?.message}</FormMessage>
+                    </div>
                   </FormItem>
                 )}
               />
-              <FormField
-                name="prodajnaCena"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                    <FormLabel>Prodajna cena (EUR)</FormLabel>
+            <FormField
+              name="prodajnaCena"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel>Prodajna cena (EUR)</FormLabel>
                     <Input
+                      ref={field.ref}
+                      name={field.name}
                       type="text"
                       inputMode="decimal"
                       placeholder="npr. 15.50"
                       value={field.value}
                       onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
                     />
                     <FormMessage>{fieldState.error?.message}</FormMessage>
                   </FormItem>
                 )}
               />
             </div>
-            <FormField
-              name="nabavnaCenaIsReal"
-              render={({ field }) => (
-                <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                  <input
-                    id="nabavna-is-real"
-                    type="checkbox"
-                    checked={field.value ?? true}
-                    onChange={(event) => field.onChange(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div className="flex flex-col">
-                    <FormLabel htmlFor="nabavna-is-real" className="m-0 cursor-pointer">
-                      Prava nabavna cena
-                    </FormLabel>
-                    <p className="text-xs text-slate-500">Odznači ako je cena procenjena.</p>
-                  </div>
-                </FormItem>
+            {!hasSupplierOffers && (
+              <FormField
+                name="nabavnaCenaIsReal"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                    <input
+                      id="nabavna-is-real"
+                      type="checkbox"
+                      checked={field.value ?? true}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="flex flex-col">
+                      <FormLabel htmlFor="nabavna-is-real" className="m-0 cursor-pointer">
+                        Prava nabavna cena
+                      </FormLabel>
+                      <p className="text-xs text-slate-500">Odznači ako je cena procenjena.</p>
+                    </div>
+                  </FormItem>
+                )}
+              />
+            )}
+            <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <FormLabel>Dobavljaci i nabavne ponude</FormLabel>
+                  <p className="text-xs text-slate-600">Najniza ponuda postaje prava nabavna cena proizvoda.</p>
+                </div>
+                {!showSupplierForm && supplierOffersField.length === 0 ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowSupplierForm(true)}
+                    disabled={suppliers === undefined}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Dodaj dobavljaca
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleAddSupplierOffer(defaultVariantEntry?.id)}
+                    disabled={suppliers === undefined}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Dodaj dobavljaca
+                  </Button>
+                )}
+              </div>
+              {suppliers === undefined ? (
+                <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
+              ) : suppliers.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  Dodaj dobavljace u kartici ispod, pa ih povezi sa proizvodima.
+                </p>
+              ) : showSupplierForm || supplierOffersField.length > 0 ? (
+                <div className="space-y-2">
+                  {supplierOffersField.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-blue-200 bg-white px-3 py-2 text-sm text-slate-600">
+                      Nema vezanih dobavljaca. Najnizu cenu iz ponude dobavljaca cuvamo kao nabavnu cenu.
+                    </div>
+                  ) : (
+                    supplierOffersField.map((offer) => {
+                      const rowId = offer.id ?? `${offer.supplierId}-${offer.variantId ?? "base"}`;
+                      return (
+                        <div
+                          key={rowId}
+                          className="rounded-md border border-blue-200 bg-white px-3 py-3 shadow-sm ring-1 ring-blue-50"
+                        >
+                          <div className="grid gap-3 md:grid-cols-12 md:items-end">
+                            <div className="md:col-span-4 space-y-1">
+                              <FormLabel className="text-xs text-slate-500">Dobavljac</FormLabel>
+                              <Select
+                                value={offer.supplierId}
+                                onValueChange={(value) => handleUpdateSupplierOffer(rowId, "supplierId", value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Izaberi dobavljaca" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {suppliers.map((supplier) => (
+                                    <SelectItem key={supplier._id} value={supplier._id}>
+                                      {supplier.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {resolvedProductType === "variant" ? (
+                              <div className="md:col-span-4 space-y-1">
+                                <FormLabel className="text-xs text-slate-500">Vazi za</FormLabel>
+                                <Select
+                                  value={offer.variantId ?? "base"}
+                                  onValueChange={(value) =>
+                                    handleUpdateSupplierOffer(rowId, "variantId", value === "base" ? undefined : value)
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Svi tipovi" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="base">Svi tipovi</SelectItem>
+                                    {normalizedVariants.map((variant) => (
+                                      <SelectItem key={variant.id} value={variant.id}>
+                                        {variant.label || "Tip"}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            ) : null}
+                            <div
+                              className={`space-y-1 ${resolvedProductType === "variant" ? "md:col-span-3" : "md:col-span-6"}`}
+                            >
+                              <FormLabel className="text-xs text-slate-500">Cena (EUR)</FormLabel>
+                              <Input
+                                value={offer.price}
+                                inputMode="decimal"
+                                placeholder="npr. 10.50"
+                                onChange={(event) => handleUpdateSupplierOffer(rowId, "price", event.target.value)}
+                              />
+                            </div>
+                            <div className="md:col-span-1 flex justify-end">
+                              <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveSupplierOffer(rowId)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              ) : null}
+              {bestFormOffer ? (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  Najniza nabavna: {formatCurrency(bestFormOffer.price, "EUR")}{" "}
+                  {bestFormSupplierName ? `(${bestFormSupplierName})` : ""}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Kada dodelis dobavljaca, ova cena ce biti oznacena kao prava nabavna cena.
+                </p>
               )}
-            />
+            </div>
             {resolvedProductType === "variant" ? (
               <div className="space-y-4">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -1868,11 +2441,14 @@ function ProductsContent() {
                             <FormItem>
                               <FormLabel>Nabavna cena (EUR)</FormLabel>
                               <Input
+                                ref={field.ref}
+                                name={field.name}
                                 type="text"
                                 inputMode="decimal"
                                 placeholder="npr. 120.00"
                                 value={field.value}
                                 onChange={(event) => field.onChange(event.target.value)}
+                                onBlur={field.onBlur}
                               />
                               <FormMessage>{fieldState.error?.message}</FormMessage>
                             </FormItem>
@@ -1884,16 +2460,19 @@ function ProductsContent() {
                             <FormItem>
                               <FormLabel>Prodajna cena (EUR)</FormLabel>
                                 <Input
+                                  ref={field.ref}
+                                  name={field.name}
                                   type="text"
                                   inputMode="decimal"
                                   placeholder="npr. 150.00"
                                   value={field.value}
                                   onChange={(event) => field.onChange(event.target.value)}
+                                  onBlur={field.onBlur}
                                 />
-                              <FormMessage>{fieldState.error?.message}</FormMessage>
-                            </FormItem>
-                          )}
-                        />
+                                <FormMessage>{fieldState.error?.message}</FormMessage>
+                              </FormItem>
+                            )}
+                          />
                         <FormField
                           name={`variants.${index}.nabavnaCenaIsReal` as const}
                           render={({ field }) => (
@@ -2296,6 +2875,155 @@ function ProductsContent() {
         </DialogContent>
       </Dialog>
 
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle>Dobavljaci</CardTitle>
+            <p className="text-sm text-slate-500">Dodaj ili obrisi dobavljace. Ne mozes obrisati vezane za proizvode.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                value={newSupplierName}
+                onChange={(event) => setNewSupplierName(event.target.value)}
+                placeholder="npr. Petrit"
+              />
+              <Button
+                type="button"
+                onClick={handleCreateSupplierEntry}
+                disabled={isCreatingSupplier || !newSupplierName.trim()}
+                className="gap-2"
+              >
+                {isCreatingSupplier ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Dodaj
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {suppliers === undefined ? (
+                <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
+              ) : suppliers.length === 0 ? (
+                <p className="text-sm text-slate-500">Nema dobavljaca. Dodaj Petrit i Menad za pocetak.</p>
+              ) : (
+                suppliers.map((supplier) => {
+                  const usageProducts = supplier.usage?.products ?? 0;
+                  const usageOrders = supplier.usage?.orders ?? 0;
+                  const isLocked = usageProducts > 0 || usageOrders > 0;
+                  return (
+                    <div
+                      key={supplier._id}
+                      className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">{supplier.name}</p>
+                        <p className="text-xs text-slate-500">
+                          Proizvodi: {usageProducts} | Narudzbine: {usageOrders}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isLocked ? <Badge variant="secondary">Vezan</Badge> : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={isLocked}
+                          onClick={() => handleRemoveSupplierEntry(supplier._id, supplier.usage)}
+                        >
+                          Obrisi
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Slike za ubacivanje</CardTitle>
+            <p className="text-sm text-slate-500">Privremeni inbox za slike proizvoda koji tek treba da se dodaju.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-slate-600">
+                Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom.
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inboxUploadInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="sr-only"
+                  onChange={handleInboxFilesSelected}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => inboxUploadInputRef.current?.click()}
+                  disabled={isUploadingInboxImages}
+                >
+                  {isUploadingInboxImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+                  Dodaj slike
+                </Button>
+              </div>
+            </div>
+            {inboxImages === undefined ? (
+              <p className="text-sm text-slate-500">Ucitavanje slika...</p>
+            ) : inboxList.length === 0 ? (
+              <p className="text-sm text-slate-500">Nema slika u inboxu. Dodaj ih da ih kasnije rasporedis.</p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {inboxList.map((image, index) => {
+                  const safeUrl = image.url ?? "";
+                  return (
+                    <div
+                      key={image._id}
+                      className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={safeUrl}
+                        alt={image.fileName ?? "Inbox slika"}
+                        className="h-full w-full cursor-pointer object-cover transition duration-200 group-hover:scale-[1.02]"
+                        onClick={() => handleOpenInboxPreview(index)}
+                      />
+                      <div className="absolute inset-0 flex items-start justify-between p-2">
+                        <span className="rounded-full bg-white/90 px-2 py-1 text-[11px] font-semibold text-slate-700 shadow">
+                          {image.fileName ?? "Slika"}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {safeUrl ? (
+                            <a
+                              href={safeUrl}
+                              download={image.fileName ?? "slika.jpg"}
+                              className="inline-flex items-center justify-center rounded-full bg-white/90 p-1 text-slate-700 shadow hover:bg-white"
+                              title="Preuzmi"
+                            >
+                              <Download className="h-4 w-4" />
+                            </a>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-full bg-white/90 p-1 text-red-600 shadow hover:bg-white"
+                            onClick={() => handleDeleteInboxImage(image._id)}
+                            title="Obrisi"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -2374,6 +3102,7 @@ function ProductsContent() {
                 const isVariantProduct = (product.variants ?? []).length > 0;
                 const hasSocialImage = hasSocialMainImage(product);
                 const salesCount = getSalesCount(product);
+                const bestSupplier = getBestSupplier(product);
                 return (
                   <div
                     key={product._id}
@@ -2441,6 +3170,14 @@ function ProductsContent() {
                           <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-white shadow">
                             {getDisplayPrice(product)}
                           </span>
+                          {bestSupplier ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 shadow ring-1 ring-emerald-100">
+                              {formatCurrency(bestSupplier.price, "EUR")}
+                              {bestSupplier.supplierName ? (
+                                <span className="text-[10px] font-medium text-emerald-700/90">- {bestSupplier.supplierName}</span>
+                              ) : null}
+                            </span>
+                          ) : null}
                           <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
                             <ShoppingBag className="h-3.5 w-3.5" />
                             Prodato: {salesCount}
@@ -2508,6 +3245,7 @@ function ProductsContent() {
                 const isVariantProduct = (product.variants ?? []).length > 0;
                 const hasSocialImage = hasSocialMainImage(product);
                 const salesCount = getSalesCount(product);
+                const bestSupplier = getBestSupplier(product);
                 return (
                   <button
                     key={product._id}
@@ -2532,6 +3270,11 @@ function ProductsContent() {
                       <span className="inline-flex items-center rounded-full bg-white/95 px-3 py-1 text-sm font-bold text-slate-900 shadow">
                         {getDisplayPrice(product)}
                       </span>
+                      {bestSupplier ? (
+                        <span className="inline-flex items-center rounded-full bg-emerald-50/95 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 shadow">
+                          {formatCurrency(bestSupplier.price, "EUR")} {bestSupplier.supplierName ? `(${bestSupplier.supplierName})` : ""}
+                        </span>
+                      ) : null}
                       <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow">
                         <ShoppingBag className="h-4 w-4" />
                         Prodato: {salesCount}
@@ -2589,6 +3332,79 @@ function ProductsContent() {
           )}
         </CardContent>
       </Card>
+
+      {inboxPreviewImage ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={handleCloseInboxPreview}
+        >
+          <div className="relative w-full max-w-5xl">
+            <div className="absolute left-3 top-1/2 flex -translate-y-1/2 gap-2">
+              <button
+                type="button"
+                className="rounded-full bg-white/80 p-2 text-slate-800 shadow"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleStepInboxPreview(-1);
+                }}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                className="rounded-full bg-white/80 p-2 text-slate-800 shadow"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleStepInboxPreview(1);
+                }}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+            <div
+              className="relative max-h-[90vh] overflow-hidden rounded-2xl bg-black/50 p-3 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="truncate text-sm font-semibold text-slate-100">
+                  {inboxPreviewImage.fileName ?? "Inbox slika"}
+                </div>
+                <div className="flex items-center gap-2">
+                  {inboxPreviewImage.url ? (
+                    <a
+                      href={inboxPreviewImage.url}
+                      download={inboxPreviewImage.fileName ?? "slika.jpg"}
+                      className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-slate-800 shadow"
+                    >
+                      <Download className="h-4 w-4" />
+                      Preuzmi
+                    </a>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => handleDeleteInboxImage(inboxPreviewImage._id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Obrisi
+                  </Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={handleCloseInboxPreview}>
+                    Zatvori
+                  </Button>
+                </div>
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={inboxPreviewImage.url ?? ""}
+                alt={inboxPreviewImage.fileName ?? "Inbox slika"}
+                className="mx-auto max-h-[78vh] w-full rounded-xl object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {previewImage && (
         <div

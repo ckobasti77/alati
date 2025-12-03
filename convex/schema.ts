@@ -51,6 +51,15 @@ export default defineSchema({
     nabavnaCena: v.number(),
     nabavnaCenaIsReal: v.optional(v.boolean()),
     prodajnaCena: v.number(),
+    supplierOffers: v.optional(
+      v.array(
+        v.object({
+          supplierId: v.id("suppliers"),
+          price: v.number(),
+          variantId: v.optional(v.string()),
+        }),
+      ),
+    ),
     categoryIds: v.optional(v.array(v.id("categories"))),
     variants: v.optional(
       v.array(
@@ -117,6 +126,7 @@ export default defineSchema({
     userId: v.optional(v.id("users")),
     stage: v.union(v.literal("poruceno"), v.literal("poslato"), v.literal("stiglo"), v.literal("legle_pare")),
     productId: v.optional(v.id("products")),
+    supplierId: v.optional(v.id("suppliers")),
     variantId: v.optional(v.string()),
     variantLabel: v.optional(v.string()),
     title: v.string(),
@@ -137,4 +147,19 @@ export default defineSchema({
   })
     .index("by_kreiranoAt", ["kreiranoAt"])
     .index("by_user_kreiranoAt", ["userId", "kreiranoAt"]),
+  suppliers: defineTable({
+    userId: v.optional(v.id("users")),
+    name: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_name", ["userId", "name"])
+    .index("by_user_createdAt", ["userId", "createdAt"]),
+  inboxImages: defineTable({
+    userId: v.optional(v.id("users")),
+    storageId: v.id("_storage"),
+    fileName: v.optional(v.string()),
+    contentType: v.optional(v.string()),
+    uploadedAt: v.number(),
+  }).index("by_user_uploadedAt", ["userId", "uploadedAt"]),
 });

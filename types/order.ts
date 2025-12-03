@@ -17,6 +17,33 @@ export interface ProductAdImage {
   uploadedAt?: number;
 }
 
+export interface Supplier {
+  _id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  usage?: {
+    products: number;
+    orders: number;
+  };
+}
+
+export interface SupplierOffer {
+  supplierId: string;
+  supplierName?: string;
+  price: number;
+  variantId?: string;
+}
+
+export interface InboxImage {
+  _id: string;
+  storageId: string;
+  fileName?: string;
+  contentType?: string;
+  url?: string | null;
+  uploadedAt: number;
+}
+
 export interface ProductVariant {
   id: string;
   label: string;
@@ -49,6 +76,7 @@ export interface Product {
   nabavnaCena: number;
   nabavnaCenaIsReal?: boolean;
   prodajnaCena: number;
+  supplierOffers?: SupplierOffer[];
   variants?: ProductVariant[];
   categoryIds?: string[];
   categories?: Category[];
@@ -82,6 +110,7 @@ export interface Order {
   userId: string;
   stage: OrderStage;
   productId?: string;
+  supplierId?: string;
   variantId?: string;
   variantLabel?: string;
   title: string;

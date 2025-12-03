@@ -39,7 +39,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
-import type { Category, Product, ProductAdImage, ProductImage, ProductVariant } from "@/types/order";
+import type { Category, Product, ProductAdImage, ProductImage, ProductVariant, Supplier } from "@/types/order";
 
 type ProductWithUrls = Omit<Product, "images" | "variants" | "adImage"> & {
   images?: (ProductImage & { url?: string | null })[];
@@ -258,6 +258,7 @@ function ProductDetailsContent() {
   const adUploadInputId = useMemo(() => `ad-upload-${productId}`, [productId]);
   const queryResult = useConvexQuery<ProductWithUrls | null>("products:get", { token: sessionToken, id: productId });
   const categories = useConvexQuery<Category[]>("categories:list", { token: sessionToken });
+  const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
   const updateProduct = useConvexMutation("products:update");
   const createCategory = useConvexMutation<
     {
@@ -299,6 +300,11 @@ function ProductDetailsContent() {
   const [newVariantProdajna, setNewVariantProdajna] = useState("");
   const [newVariantIsDefault, setNewVariantIsDefault] = useState(false);
   const [newVariantNabavnaIsReal, setNewVariantNabavnaIsReal] = useState(true);
+  const supplierMap = useMemo(
+    () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
+    [suppliers],
+  );
+  const [supplierEdits, setSupplierEdits] = useState<Record<string, string>>({});
   const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -365,6 +371,49 @@ function ProductDetailsContent() {
     if (!needle) return list;
     return list.filter((category) => category.name.toLowerCase().includes(needle));
   }, [categories, categorySearch]);
+  const supplierOffers = useMemo(() => product?.supplierOffers ?? [], [product]);
+  const bestSupplierOffer = useMemo(() => {
+    if (!supplierOffers.length) return null;
+    return supplierOffers.reduce((best, offer) => {
+      if (!best || offer.price < best.price) return offer;
+      return best;
+    }, supplierOffers[0] as (typeof supplierOffers)[number]);
+  }, [supplierOffers]);
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    supplierOffers.forEach((offer) => {
+      const key = `${offer.supplierId}-${offer.variantId ?? "base"}`;
+      map[key] = String(offer.price);
+    });
+    setSupplierEdits(map);
+  }, [supplierOffers]);
+
+  const supplierOfferKey = (offer: { supplierId: string; variantId?: string }) =>
+    `${offer.supplierId}-${offer.variantId ?? "base"}`;
+
+  const handleSupplierPriceChange = (key: string, value: string) => {
+    setSupplierEdits((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSupplierPriceSave = async (offer: { supplierId: string; variantId?: string }) => {
+    const key = supplierOfferKey(offer);
+    const raw = supplierEdits[key] ?? "";
+    const parsed = parsePrice(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast.error("Unesi ispravnu cenu za dobavljaca.");
+      return;
+    }
+    const updatedAt = Date.now();
+    await applyUpdate(
+      (current) => {
+        const nextOffers = (current.supplierOffers ?? []).map((item) =>
+          supplierOfferKey(item) === key ? { ...item, price: parsed } : item,
+        );
+        return { ...current, supplierOffers: nextOffers as any, updatedAt };
+      },
+      "Cena dobavljaca sacuvana.",
+    );
+  };
 
   const buildUpdatePayload = (
     current: ProductWithUrls,
@@ -419,6 +468,11 @@ function ProductDetailsContent() {
         contentType: image.contentType,
         publishFb: image.publishFb ?? true,
         publishIg: image.publishIg ?? true,
+      })),
+      supplierOffers: current.supplierOffers?.map((offer) => ({
+        supplierId: offer.supplierId as any,
+        price: offer.price,
+        variantId: offer.variantId,
       })),
       adImage: current.adImage
         ? {
@@ -2057,24 +2111,109 @@ function ProductDetailsContent() {
               onSave={(val) => handleBaseFieldSave("prodajnaCena", val)}
             />
             <div className="space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3">
-              <InlineField
-                label="Nabavna cena (EUR)"
-                value={product.nabavnaCena}
-                formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
-                onSave={(val) => handleBaseFieldSave("nabavnaCena", val)}
-              />
-              <label className="flex items-center justify-between gap-3 rounded-lg bg-white/80 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm shadow-slate-100">
-                <div className="flex flex-col">
-                  <span>{baseNabavnaIsReal ? "Prava nabavna cena" : "Procenjena nabavna cena"}</span>
-                  <span className="text-xs font-normal text-slate-500">Check ako je cifra 100% sigurna.</span>
+              {supplierOffers.length === 0 ? (
+                <>
+                  <InlineField
+                    label="Nabavna cena (EUR)"
+                    value={product.nabavnaCena}
+                    formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
+                    onSave={(val) => handleBaseFieldSave("nabavnaCena", val)}
+                  />
+                  <label className="flex items-center justify-between gap-3 rounded-lg bg-white/80 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm shadow-slate-100">
+                    <div className="flex flex-col">
+                      <span>{baseNabavnaIsReal ? "Prava nabavna cena" : "Procenjena nabavna cena"}</span>
+                      <span className="text-xs font-normal text-slate-500">Check ako je cifra 100% sigurna.</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={baseNabavnaIsReal}
+                      onChange={(event) => handleBasePurchaseRealityToggle(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </label>
+                </>
+              ) : supplierOffers.length === 1 ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Nabavna cena</p>
+                      <p className="text-lg font-semibold text-slate-900">
+                        {formatCurrency(supplierOffers[0].price, "EUR")}
+                      </p>
+                    </div>
+                    <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {supplierMap.get(supplierOffers[0].supplierId)?.name ?? "Dobavljac"}
+                    </div>
+                  </div>
+                  {(() => {
+                    const offer = supplierOffers[0];
+                    const key = supplierOfferKey(offer);
+                    const editValue = supplierEdits[key] ?? String(offer.price);
+                    const isChanged = parsePrice(editValue) !== offer.price;
+                    return (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={editValue}
+                          inputMode="decimal"
+                          className="h-9"
+                          onChange={(event) => handleSupplierPriceChange(key, event.target.value)}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!isChanged}
+                          onClick={() => handleSupplierPriceSave(offer)}
+                        >
+                          Sacuvaj
+                        </Button>
+                      </div>
+                    );
+                  })()}
                 </div>
-                <input
-                  type="checkbox"
-                  checked={baseNabavnaIsReal}
-                  onChange={(event) => handleBasePurchaseRealityToggle(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-              </label>
+              ) : (
+                <div className="space-y-2">
+                  {supplierOffers.map((offer) => {
+                    const supplierName = supplierMap.get(offer.supplierId)?.name ?? "Dobavljac";
+                    const isBest = bestSupplierOffer && offer.price === bestSupplierOffer.price;
+                    const key = supplierOfferKey(offer);
+                    const editValue = supplierEdits[key] ?? String(offer.price);
+                    const isChanged = parsePrice(editValue) !== offer.price;
+                    return (
+                      <div
+                        key={`${offer.supplierId}-${offer.variantId ?? "base"}`}
+                        className={`rounded-lg border px-3 py-2 text-sm shadow-sm ${
+                          isBest
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                            : "border-slate-200 bg-white text-slate-800"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <span className="font-semibold">{supplierName}</span>
+                          <span className="font-bold">{formatCurrency(offer.price, "EUR")}</span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Input
+                            value={editValue}
+                            inputMode="decimal"
+                            className="h-9"
+                            onChange={(event) => handleSupplierPriceChange(key, event.target.value)}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!isChanged}
+                            onClick={() => handleSupplierPriceSave(offer)}
+                          >
+                            Sacuvaj
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">

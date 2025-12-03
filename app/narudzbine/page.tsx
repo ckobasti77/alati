@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
@@ -19,7 +19,7 @@ import { myProfitShare, profit, ukupnoNabavno, ukupnoProdajno } from "@/lib/calc
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { cn } from "@/lib/utils";
-import type { Order, OrderListResponse, OrderStage, Product, ProductVariant } from "@/types/order";
+import type { Order, OrderListResponse, OrderStage, Product, ProductVariant, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 
@@ -41,6 +41,7 @@ const orderSchema = z.object({
   productId: z
     .string({ required_error: "Proizvod je obavezan." })
     .min(1, "Proizvod je obavezan."),
+  supplierId: z.string().optional(),
   variantId: z.string().optional(),
   customerName: z.string().min(3, "Ime i prezime porucioca je obavezno."),
   address: z.string().min(5, "Adresa je obavezna."),
@@ -78,6 +79,7 @@ type OrderFormValues = z.infer<typeof orderSchema>;
 const defaultFormValues: OrderFormValues = {
   stage: "poruceno",
   productId: "",
+  supplierId: "",
   variantId: "",
   customerName: "",
   address: "",
@@ -88,6 +90,19 @@ const defaultFormValues: OrderFormValues = {
   myProfitPercent: undefined,
   note: "",
 };
+
+const orderFocusOrder: (keyof OrderFormValues)[] = [
+  "productId",
+  "variantId",
+  "supplierId",
+  "customerName",
+  "address",
+  "phone",
+  "transportCost",
+  "transportMode",
+  "myProfitPercent",
+  "note",
+];
 
 function RichTextSnippet({ text, className }: { text?: string | null; className?: string }) {
   if (!text || text.trim().length === 0) return null;
@@ -113,6 +128,32 @@ const getProductVariants = (product?: Product): ProductVariant[] => {
 const composeVariantLabel = (product: Product, variant?: ProductVariant) => {
   if (!variant) return product.name;
   return `${product.name} - ${variant.label}`;
+};
+
+const resolveSupplierOptions = (product?: Product, variantId?: string) => {
+  if (!product) return [];
+  const offers = product.supplierOffers ?? [];
+  if (!offers.length) return [];
+  const exact = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
+  const fallback = offers.filter((offer) => !offer.variantId);
+  const pool = exact.length ? exact : fallback.length ? fallback : offers;
+  const seen = new Set<string>();
+  return pool
+    .filter((offer) => {
+      const key = String(offer.supplierId);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((offer) => ({ supplierId: String(offer.supplierId), price: offer.price }));
+};
+
+const pickBestSupplier = (options: { supplierId: string; price: number; supplierName?: string }[]) => {
+  if (!options.length) return null;
+  return options.reduce((best, option) => {
+    if (!best || option.price < best.price) return option;
+    return best;
+  }, null as { supplierId: string; price: number; supplierName?: string } | null);
 };
 
 const StageBadge = ({ stage }: { stage: OrderStage }) => {
@@ -148,6 +189,7 @@ function OrdersContent() {
   const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const productInputRef = useRef<HTMLInputElement | null>(null);
 
   const list = useConvexQuery<OrderListResponse>("orders:list", {
     token: sessionToken,
@@ -159,6 +201,7 @@ function OrdersContent() {
   const createOrder = useConvexMutation("orders:create");
   const updateOrder = useConvexMutation("orders:update");
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
+  const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
 
   const items = useMemo<Order[]>(() => list?.items ?? [], [list]);
   const orderEntries = useMemo(
@@ -190,6 +233,10 @@ function OrdersContent() {
       });
     });
   }, [products, productSearch]);
+  const supplierMap = useMemo(
+    () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
+    [suppliers],
+  );
   const isProductsLoading = products === undefined;
   const isOrdersLoading = list === undefined;
 
@@ -200,6 +247,7 @@ function OrdersContent() {
   });
   const productIdValue = useWatch({ control: form.control, name: "productId" });
   const variantIdValue = useWatch({ control: form.control, name: "variantId" });
+  const supplierIdValue = useWatch({ control: form.control, name: "supplierId" });
   const selectedProduct = useMemo(
     () => (products ?? []).find((item) => item._id === productIdValue),
     [products, productIdValue],
@@ -215,6 +263,50 @@ function OrdersContent() {
     }
     return variants.find((variant) => variant.isDefault) ?? variants[0];
   }, [selectedProduct, variantIdValue]);
+  const supplierOptions = useMemo(
+    () => resolveSupplierOptions(selectedProduct, variantIdValue || undefined),
+    [selectedProduct, variantIdValue],
+  );
+  const supplierOptionsWithNames = useMemo(
+    () =>
+      supplierOptions.map((option) => ({
+        ...option,
+        supplierName: supplierMap.get(option.supplierId)?.name,
+      })),
+    [supplierMap, supplierOptions],
+  );
+  const bestSupplierOption = useMemo(() => pickBestSupplier(supplierOptionsWithNames), [supplierOptionsWithNames]);
+
+  const focusOrderField = useCallback(
+    (fieldName: keyof OrderFormValues | string) => {
+      const targetName = String(fieldName);
+      requestAnimationFrame(() => {
+        try {
+          form.setFocus(targetName as any, { shouldSelect: true });
+          return;
+        } catch {
+          // fall through to DOM query
+        }
+        const fromRef = productInputRef.current && productInputRef.current.name === targetName ? productInputRef.current : null;
+        const node =
+          fromRef ??
+          document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${targetName}"]`);
+        if (node) {
+          node.focus();
+          if ("select" in node && typeof node.select === "function") {
+            node.select();
+          }
+        }
+      });
+    },
+    [form],
+  );
+
+  const getOrderErrorTarget = useCallback(() => {
+    const errors = form.formState.errors;
+    const hit = orderFocusOrder.find((field) => errors[field]);
+    return hit ?? null;
+  }, [form.formState.errors]);
 
   useEffect(() => {
     if (!productIdValue || !selectedProduct || selectedVariants.length === 0) {
@@ -232,6 +324,36 @@ function OrdersContent() {
       }
     }
   }, [form, productIdValue, selectedProduct, selectedVariants, setProductInput, variantIdValue]);
+
+  useEffect(() => {
+    if (supplierOptionsWithNames.length === 0) {
+      form.setValue("supplierId", "", { shouldDirty: true, shouldValidate: true });
+      return;
+    }
+    if (supplierOptionsWithNames.length === 1) {
+      form.setValue("supplierId", supplierOptionsWithNames[0].supplierId, { shouldDirty: true, shouldValidate: true });
+      return;
+    }
+    const hasCurrent = supplierOptionsWithNames.some((option) => option.supplierId === supplierIdValue);
+    if (!hasCurrent) {
+      form.setValue("supplierId", "", { shouldDirty: true, shouldValidate: true });
+    }
+  }, [form, supplierIdValue, supplierOptionsWithNames]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const timer = window.setTimeout(() => focusOrderField("productId"), 0);
+    return () => window.clearTimeout(timer);
+  }, [focusOrderField, isModalOpen]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    if (form.formState.submitCount === 0 && Object.keys(form.formState.errors).length === 0) return;
+    const target = getOrderErrorTarget();
+    if (!target) return;
+    const timer = window.setTimeout(() => focusOrderField(target), 0);
+    return () => window.clearTimeout(timer);
+  }, [focusOrderField, form.formState.errors, form.formState.submitCount, getOrderErrorTarget, isModalOpen]);
 
   const resetOrderForm = (options?: { closeModal?: boolean }) => {
     form.reset(defaultFormValues);
@@ -269,14 +391,30 @@ function OrdersContent() {
       }
       const resolvedTitle = composeVariantLabel(product, variant);
       const pickup = Boolean(values.pickup);
+      const supplierOptionsLocal = resolveSupplierOptions(product, variant?.id);
+      const supplierOptionsWithNamesLocal = supplierOptionsLocal.map((option) => ({
+        ...option,
+        supplierName: supplierMap.get(option.supplierId)?.name,
+      }));
+      const bestSupplierLocal = pickBestSupplier(supplierOptionsWithNamesLocal);
+      const supplierId =
+        values.supplierId ||
+        (supplierOptionsWithNamesLocal.length === 1 ? supplierOptionsWithNamesLocal[0].supplierId : undefined);
+      const supplierPrice =
+        supplierId
+          ? supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ??
+            bestSupplierLocal?.price
+          : bestSupplierLocal?.price;
+      const nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? product.nabavnaCena;
       const payload = {
         stage: values.stage,
         productId: product._id,
+        supplierId: supplierId || undefined,
         variantId: variant?.id,
         variantLabel: variant ? composeVariantLabel(product, variant) : undefined,
         title: resolvedTitle,
         kolicina: 1,
-        nabavnaCena: variant?.nabavnaCena ?? product.nabavnaCena,
+        nabavnaCena,
         prodajnaCena: variant?.prodajnaCena ?? product.prodajnaCena,
         transportCost: pickup ? 0 : values.transportCost,
         transportMode: pickup ? undefined : values.transportMode,
@@ -327,6 +465,7 @@ function OrdersContent() {
         id: order._id,
         stage: nextStage,
         productId: order.productId,
+        supplierId: order.supplierId,
         variantId: order.variantId,
         variantLabel: order.variantLabel,
         title: order.title,
@@ -409,6 +548,11 @@ function OrdersContent() {
                   <FormLabel>Proizvod</FormLabel>
                   <div className="relative">
                     <Input
+                      ref={(node) => {
+                        productInputRef.current = node;
+                        field.ref(node);
+                      }}
+                      name={field.name}
                       value={productInput}
                       placeholder={isProductsLoading ? "Ucitavanje..." : "Pretrazi proizvod"}
                       disabled={isProductsLoading || (products?.length ?? 0) === 0}
@@ -430,7 +574,8 @@ function OrdersContent() {
                         setProductMenuOpen(true);
                         setProductSearch("");
                       }}
-                      onBlur={() => {
+                      onBlur={(event) => {
+                        field.onBlur();
                         setTimeout(() => setProductMenuOpen(false), 150);
                       }}
                     />
@@ -609,9 +754,10 @@ function OrdersContent() {
                           >
                             <input
                               type="radio"
-                              name="variantId"
+                              name={field.name}
                               value={variant.id}
                               checked={isActive}
+                              ref={index === 0 ? field.ref : undefined}
                               onChange={() => {
                                 field.onChange(variant.id);
                                 if (selectedProduct) {
@@ -620,6 +766,7 @@ function OrdersContent() {
                                 setProductMenuOpen(false);
                                 setExpandedProductId(null);
                               }}
+                              onBlur={field.onBlur}
                               className="sr-only"
                             />
                             <span className="font-medium text-slate-800">{composedLabel}</span>
@@ -639,6 +786,37 @@ function OrdersContent() {
                 )}
               />
             )}
+            {selectedProduct && supplierOptionsWithNames.length > 0 ? (
+              <FormField
+                name="supplierId"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                <FormLabel>Dobavljac</FormLabel>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  ref={field.ref}
+                  name={field.name}
+                  value={field.value ?? ""}
+                  onChange={(event) => field.onChange(event.target.value)}
+                  onBlur={field.onBlur}
+                >
+                      <option value="">
+                        {bestSupplierOption
+                          ? `Najpovoljniji (${formatCurrency(bestSupplierOption.price, "EUR")})`
+                          : "Najpovoljniji"}
+                      </option>
+                      {supplierOptionsWithNames.map((option) => (
+                        <option key={option.supplierId} value={option.supplierId}>
+                          {(option.supplierName ?? "Dobavljac") + " - " + formatCurrency(option.price, "EUR")}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-500">Ako ne izaberes, racunamo najpovoljniju ponudu.</p>
+                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                  </FormItem>
+                )}
+              />
+            ) : null}
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 name="customerName"
@@ -676,19 +854,22 @@ function OrdersContent() {
                 name="myProfitPercent"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Moj procenat profita</FormLabel>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={1}
-                        placeholder="npr. 40"
-                        value={field.value ?? ""}
-                        onChange={(event) =>
-                          field.onChange(event.target.value === "" ? undefined : Number(event.target.value))
-                        }
-                      />
+                <FormLabel>Moj procenat profita</FormLabel>
+                <div className="flex items-center gap-2">
+                  <Input
+                    ref={field.ref}
+                    name={field.name}
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    placeholder="npr. 40"
+                    value={field.value ?? ""}
+                    onChange={(event) =>
+                      field.onChange(event.target.value === "" ? undefined : Number(event.target.value))
+                    }
+                    onBlur={field.onBlur}
+                  />
                       <span className="text-sm text-slate-500">%</span>
                     </div>
                     <p className="text-xs text-slate-500">
@@ -702,23 +883,26 @@ function OrdersContent() {
                 name="transportCost"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Trosak transporta</FormLabel>
-                    <Input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="npr. 15 ili 15.5"
-                      value={field.value ?? ""}
-                      onChange={(event) => {
-                        const normalized = event.target.value.replace(",", ".").trim();
-                        if (normalized === "") {
-                          field.onChange(undefined);
-                          return;
-                        }
-                        const parsed = Number(normalized);
-                        if (Number.isNaN(parsed)) return;
-                        field.onChange(parsed);
-                      }}
-                    />
+                <FormLabel>Trosak transporta</FormLabel>
+                <Input
+                  ref={field.ref}
+                  name={field.name}
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="npr. 15 ili 15.5"
+                  value={field.value ?? ""}
+                  onChange={(event) => {
+                    const normalized = event.target.value.replace(",", ".").trim();
+                    if (normalized === "") {
+                      field.onChange(undefined);
+                      return;
+                    }
+                    const parsed = Number(normalized);
+                    if (Number.isNaN(parsed)) return;
+                    field.onChange(parsed);
+                  }}
+                  onBlur={field.onBlur}
+                />
                     <p className="text-xs text-slate-500">Unesi trosak transporta u EUR (prihvata decimale).</p>
                     <FormMessage>{fieldState.error?.message}</FormMessage>
                   </FormItem>
@@ -728,12 +912,15 @@ function OrdersContent() {
                 name="transportMode"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Nacin transporta</FormLabel>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                      value={field.value ?? ""}
-                      onChange={(event) => field.onChange(event.target.value || undefined)}
-                    >
+                <FormLabel>Nacin transporta</FormLabel>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  ref={field.ref}
+                  name={field.name}
+                  value={field.value ?? ""}
+                  onChange={(event) => field.onChange(event.target.value || undefined)}
+                  onBlur={field.onBlur}
+                >
                       <option value="">Izaberi</option>
                       {transportModes.map((mode) => (
                         <option key={mode} value={mode}>
@@ -752,9 +939,12 @@ function OrdersContent() {
                   <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-3">
                     <input
                       id="pickup"
+                      ref={field.ref}
+                      name={field.name}
                       type="checkbox"
                       checked={!!field.value}
                       onChange={(event) => field.onChange(event.target.checked)}
+                      onBlur={field.onBlur}
                       className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
                     <div className="space-y-0.5">

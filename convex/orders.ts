@@ -39,6 +39,33 @@ const normalizeTransportMode = (mode?: (typeof transportModes)[number]) => {
   return transportModes.includes(mode) ? mode : undefined;
 };
 
+const resolveSupplierPrice = (
+  product: any,
+  variantId?: string,
+  supplierId?: string,
+) => {
+  const offers = product?.supplierOffers ?? [];
+  if (!Array.isArray(offers) || offers.length === 0) {
+    return { supplierId: undefined, price: undefined as number | undefined };
+  }
+  const exact = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
+  const fallback = offers.filter((offer) => !offer.variantId);
+  const pool = exact.length > 0 ? exact : fallback;
+  if (!pool.length) {
+    return { supplierId: undefined, price: undefined as number | undefined };
+  }
+  const hasIncoming = supplierId ? pool.find((offer) => String(offer.supplierId) === String(supplierId)) : undefined;
+  const resolvedSupplierId = hasIncoming
+    ? hasIncoming.supplierId
+    : pool.length === 1
+      ? pool[0].supplierId
+      : undefined;
+  const price = hasIncoming
+    ? hasIncoming.price
+    : pool.reduce((min, offer) => Math.min(min, offer.price), Number.POSITIVE_INFINITY);
+  return { supplierId: resolvedSupplierId, price: Number.isFinite(price) ? price : undefined };
+};
+
 const formatVariantLabel = (productName: string, variantLabel?: string) => {
   if (!variantLabel) return undefined;
   const trimmed = variantLabel.trim();
@@ -184,6 +211,7 @@ export const create = mutation({
     token: v.string(),
     stage: stageSchema,
     productId: v.optional(v.id("products")),
+    supplierId: v.optional(v.id("suppliers")),
     variantId: v.optional(v.string()),
     variantLabel: v.optional(v.string()),
     title: v.string(),
@@ -204,8 +232,11 @@ export const create = mutation({
     const now = Date.now();
 
     let title = args.title.trim();
+    let nabavnaCena = args.nabavnaCena;
+    let prodajnaCena = args.prodajnaCena;
     const kolicina = Math.max(args.kolicina ?? 1, 1);
     let productId = args.productId;
+    let supplierId = args.supplierId;
     let variantId = args.variantId;
     let variantLabel = args.variantLabel?.trim();
     const customerName = args.customerName.trim();
@@ -222,6 +253,7 @@ export const create = mutation({
       if (product && product.userId === user._id) {
         if (!title) title = product.name;
         const productVariants = product.variants ?? [];
+        let resolvedVariant: { id: string; nabavnaCena: number; prodajnaCena: number } | undefined;
         if (productVariants.length > 0) {
           const foundVariant = variantId
             ? productVariants.find((variant) => variant.id === variantId)
@@ -234,13 +266,20 @@ export const create = mutation({
           const formattedIncoming = formatVariantLabel(product.name, variantLabel);
           const fallbackLabel = normalizedVariant ? formatVariantLabel(product.name, normalizedVariant.label) : undefined;
           variantLabel = formattedIncoming ?? fallbackLabel;
+          resolvedVariant = normalizedVariant;
         } else {
           variantId = variantLabel = undefined;
         }
+        prodajnaCena = resolvedVariant?.prodajnaCena ?? product.prodajnaCena;
+        const supplierChoice = resolveSupplierPrice(product, variantId, supplierId);
+        supplierId = supplierChoice.supplierId ?? supplierId;
+        nabavnaCena = supplierChoice.price ?? resolvedVariant?.nabavnaCena ?? product.nabavnaCena;
       } else {
         productId = undefined;
         variantId = undefined;
         variantLabel = undefined;
+        supplierId = undefined;
+        prodajnaCena = args.prodajnaCena;
       }
     }
 
@@ -252,12 +291,13 @@ export const create = mutation({
       userId: user._id,
       stage,
       productId,
+      supplierId,
       variantId,
       variantLabel,
       title,
       kolicina,
-      nabavnaCena: args.nabavnaCena,
-      prodajnaCena: args.prodajnaCena,
+      nabavnaCena,
+      prodajnaCena,
       napomena: args.napomena?.trim() || undefined,
       transportCost,
       transportMode,
@@ -277,6 +317,7 @@ export const update = mutation({
     id: v.id("orders"),
     stage: stageSchema,
     productId: v.optional(v.id("products")),
+    supplierId: v.optional(v.id("suppliers")),
     variantId: v.optional(v.string()),
     variantLabel: v.optional(v.string()),
     title: v.string(),
@@ -302,8 +343,11 @@ export const update = mutation({
       throw new Error("Neautorizovan pristup narudzbini.");
     }
     let title = args.title.trim();
+    let nabavnaCena = args.nabavnaCena;
+    let prodajnaCena = args.prodajnaCena;
     const kolicina = Math.max(args.kolicina ?? 1, 1);
     let productId = args.productId;
+    let supplierId = args.supplierId;
     let variantId = args.variantId;
     let variantLabel = args.variantLabel?.trim();
     const customerName = args.customerName.trim();
@@ -319,6 +363,7 @@ export const update = mutation({
       if (product && product.userId === user._id) {
         if (!title) title = product.name;
         const productVariants = product.variants ?? [];
+        let resolvedVariant: { id: string; nabavnaCena: number; prodajnaCena: number } | undefined;
         if (productVariants.length > 0) {
           const foundVariant = variantId ? productVariants.find((variant) => variant.id === variantId) : undefined;
           let normalizedVariant = foundVariant;
@@ -329,14 +374,21 @@ export const update = mutation({
           const formattedIncoming = formatVariantLabel(product.name, variantLabel);
           const fallbackLabel = normalizedVariant ? formatVariantLabel(product.name, normalizedVariant.label) : undefined;
           variantLabel = formattedIncoming ?? fallbackLabel;
+          resolvedVariant = normalizedVariant;
         } else {
           variantId = undefined;
           variantLabel = undefined;
         }
+        prodajnaCena = resolvedVariant?.prodajnaCena ?? product.prodajnaCena;
+        const supplierChoice = resolveSupplierPrice(product, variantId, supplierId);
+        supplierId = supplierChoice.supplierId ?? supplierId;
+        nabavnaCena = supplierChoice.price ?? resolvedVariant?.nabavnaCena ?? product.nabavnaCena;
       } else {
         productId = undefined;
         variantId = undefined;
         variantLabel = undefined;
+        supplierId = undefined;
+        prodajnaCena = args.prodajnaCena;
       }
     }
 
@@ -349,12 +401,13 @@ export const update = mutation({
     await ctx.db.patch(args.id, {
       stage,
       productId,
+      supplierId,
       variantId,
       variantLabel,
       title,
       kolicina,
-      nabavnaCena: args.nabavnaCena,
-      prodajnaCena: args.prodajnaCena,
+      nabavnaCena,
+      prodajnaCena,
       napomena: args.napomena?.trim() || undefined,
       transportCost,
       transportMode,

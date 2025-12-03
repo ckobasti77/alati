@@ -13,7 +13,7 @@ import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { myProfitShare, profit, ukupnoNabavno, ukupnoProdajno } from "@/lib/calc";
-import type { OrderStage, OrderWithProduct, ProductVariant } from "@/types/order";
+import type { OrderStage, OrderWithProduct, ProductVariant, Supplier } from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -230,6 +230,11 @@ function OrderDetails({ orderId }: { orderId: string }) {
     token: sessionToken,
     id: orderId,
   });
+  const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
+  const supplierMap = useMemo(
+    () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
+    [suppliers],
+  );
 
   const [order, setOrder] = useState<OrderWithProduct | null>(null);
   const isLoading = queryResult === undefined;
@@ -245,6 +250,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
     id: current._id,
     stage: current.stage,
     productId: current.productId,
+    supplierId: current.supplierId,
     variantId: current.variantId,
     variantLabel: current.variantLabel,
     title: current.title,
@@ -404,6 +410,19 @@ function OrderDetails({ orderId }: { orderId: string }) {
     }
     return variants.find((variant) => variant.isDefault) ?? variants[0];
   }, [order]);
+  const supplierOptions = useMemo(
+    () => resolveSupplierOptions(order?.product, order?.variantId),
+    [order?.product, order?.variantId],
+  );
+  const supplierOptionsWithNames = useMemo(
+    () =>
+      supplierOptions.map((option) => ({
+        ...option,
+        supplierName: supplierMap.get(option.supplierId)?.name,
+      })),
+    [supplierMap, supplierOptions],
+  );
+  const bestSupplierOption = useMemo(() => pickBestSupplier(supplierOptionsWithNames), [supplierOptionsWithNames]);
 
   const prodajnoUkupno = order ? ukupnoProdajno(order.kolicina, order.prodajnaCena) : 0;
   const nabavnoUkupno = order ? ukupnoNabavno(order.kolicina, order.nabavnaCena) : 0;
@@ -422,6 +441,27 @@ function OrderDetails({ orderId }: { orderId: string }) {
     } finally {
       setIsUpdatingStage(false);
     }
+  };
+
+  const handleSupplierUpdate = async (supplierId?: string) => {
+    if (!order) return;
+    const options = supplierOptionsWithNames;
+    const best = pickBestSupplier(options);
+    const targetSupplierId = supplierId || (options.length === 1 ? options[0].supplierId : undefined);
+    const supplierPrice =
+      targetSupplierId
+        ? options.find((option) => option.supplierId === targetSupplierId)?.price ?? best?.price
+        : best?.price;
+    const baseNabavna = variantFromProduct?.nabavnaCena ?? order.product?.nabavnaCena ?? order.nabavnaCena;
+    const nextNabavna = supplierPrice ?? baseNabavna;
+    await applyOrderUpdate(
+      (current) => ({
+        ...current,
+        supplierId: targetSupplierId,
+        nabavnaCena: nextNabavna,
+      }),
+      "Dobavljac sacuvan.",
+    );
   };
 
   if (isLoading) {
@@ -545,16 +585,44 @@ function OrderDetails({ orderId }: { orderId: string }) {
                 </p>
               </div>
             </div>
-              ) : (
-                <p className="text-sm text-slate-600">Narudzbina nije vezana za proizvod. Naslov: {order.title}</p>
-              )}
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <InlineField label="Naziv narudzbine" value={order.title} onSave={(val) => handleOrderFieldSave("title", val)} />
-                <InlineField
-                  label="Kolicina"
-                  value={order.kolicina}
-                  onSave={(val) => handleOrderFieldSave("kolicina", val)}
-                />
+          ) : (
+            <p className="text-sm text-slate-600">Narudzbina nije vezana za proizvod. Naslov: {order.title}</p>
+          )}
+          {supplierOptionsWithNames.length > 0 ? (
+            <div className="mt-3 space-y-1">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Dobavljac</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  value={order.supplierId ?? ""}
+                  onChange={(event) => handleSupplierUpdate(event.target.value || undefined)}
+                >
+                  <option value="">
+                    {bestSupplierOption
+                      ? `Najpovoljniji (${formatCurrency(bestSupplierOption.price, "EUR")})`
+                      : "Najpovoljniji"}
+                  </option>
+                  {supplierOptionsWithNames.map((option) => (
+                    <option key={option.supplierId} value={option.supplierId}>
+                      {(option.supplierName ?? "Dobavljac") + " - " + formatCurrency(option.price, "EUR")}
+                    </option>
+                  ))}
+                </select>
+                {order.supplierId ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => handleSupplierUpdate(undefined)}>
+                    Ponisti
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <InlineField label="Naziv narudzbine" value={order.title} onSave={(val) => handleOrderFieldSave("title", val)} />
+            <InlineField
+              label="Kolicina"
+              value={order.kolicina}
+              onSave={(val) => handleOrderFieldSave("kolicina", val)}
+            />
                 <InlineField
                   label="Oznaka tipa / varijante"
                   value={order.variantLabel ?? variantFromProduct?.label ?? ""}

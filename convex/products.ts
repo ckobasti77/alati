@@ -43,6 +43,51 @@ const productVariantArg = v.object({
   ),
 });
 
+const supplierOfferArg = v.object({
+  supplierId: v.id("suppliers"),
+  price: v.number(),
+  variantId: v.optional(v.string()),
+});
+
+type SupplierOffer = {
+  supplierId: Id<"suppliers">;
+  price: number;
+  variantId?: string;
+};
+
+function normalizeSupplierOffers(
+  incoming?: SupplierOffer[],
+  options?: { variants?: { id: string }[] },
+) {
+  if (!incoming || incoming.length === 0) return undefined;
+  const allowedVariantIds = new Set(options?.variants?.map((variant) => variant.id));
+  const seen = new Set<string>();
+  const normalized: SupplierOffer[] = [];
+
+  incoming.forEach((offer) => {
+    const variantId = offer.variantId?.trim() || undefined;
+    if (variantId && allowedVariantIds.size > 0 && !allowedVariantIds.has(variantId)) {
+      return;
+    }
+    const price = Number.isFinite(offer.price) ? Math.max(offer.price, 0) : 0;
+    const key = `${offer.supplierId}-${variantId ?? "base"}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push({ supplierId: offer.supplierId, price, variantId });
+  });
+
+  return normalized.length ? normalized : undefined;
+}
+
+function resolveSupplierPrice(offers: SupplierOffer[] | undefined, variantId?: string) {
+  if (!offers || offers.length === 0) return undefined;
+  const exactMatches = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
+  const fallbackMatches = offers.filter((offer) => !offer.variantId);
+  const pool = exactMatches.length > 0 ? exactMatches : fallbackMatches;
+  if (pool.length === 0) return undefined;
+  return pool.reduce((min, offer) => Math.min(min, offer.price), Number.POSITIVE_INFINITY);
+}
+
 function normalizeImages(
   images: Doc<"products">["images"],
   incoming: {
@@ -402,6 +447,7 @@ export const create = mutation({
     nabavnaCena: v.number(),
     nabavnaCenaIsReal: v.optional(v.boolean()),
     prodajnaCena: v.number(),
+    supplierOffers: v.optional(v.array(supplierOfferArg)),
     categoryIds: v.optional(v.array(v.id("categories"))),
     opis: v.optional(v.string()),
     opisKp: v.optional(v.string()),
@@ -431,18 +477,27 @@ export const create = mutation({
     const pickupAvailable = Boolean(args.pickupAvailable);
     const images = normalizeImages(undefined, args.images);
     const variants = normalizeVariants(args.variants);
-    const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
-    const nabavnaCenaIsReal = args.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? true;
+    const supplierOffers = normalizeSupplierOffers(args.supplierOffers, { variants });
+    const variantsWithSupplierPrices = variants?.map((variant) => {
+      const supplierPrice = resolveSupplierPrice(supplierOffers, variant.id);
+      if (supplierPrice === undefined) return variant;
+      return { ...variant, nabavnaCena: supplierPrice, nabavnaCenaIsReal: true };
+    });
+    const defaultVariant = variantsWithSupplierPrices?.find((variant) => variant.isDefault) ?? variantsWithSupplierPrices?.[0];
+    const supplierPrice = resolveSupplierPrice(supplierOffers, defaultVariant?.id);
+    const nabavnaCenaIsReal =
+      supplierPrice !== undefined ? true : args.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? true;
     const adImage = normalizeAdImage(undefined, args.adImage);
     const categoryIds = normalizeCategoryIds(args.categoryIds);
     const productId = await ctx.db.insert("products", {
       userId: user._id,
       name: fbName,
       kpName,
-      nabavnaCena: defaultVariant?.nabavnaCena ?? args.nabavnaCena,
+      nabavnaCena: supplierPrice ?? defaultVariant?.nabavnaCena ?? args.nabavnaCena,
       nabavnaCenaIsReal,
       prodajnaCena: defaultVariant?.prodajnaCena ?? args.prodajnaCena,
-      variants,
+      supplierOffers,
+      variants: variantsWithSupplierPrices,
       images,
       adImage,
       opis: opisFbInsta ? opisFbInsta : undefined,
@@ -471,6 +526,7 @@ export const update = mutation({
     nabavnaCena: v.number(),
     nabavnaCenaIsReal: v.optional(v.boolean()),
     prodajnaCena: v.number(),
+    supplierOffers: v.optional(v.array(supplierOfferArg)),
     categoryIds: v.optional(v.array(v.id("categories"))),
     opis: v.optional(v.string()),
     opisKp: v.optional(v.string()),
@@ -518,9 +574,21 @@ export const update = mutation({
     const pickupAvailable = args.pickupAvailable ?? product.pickupAvailable ?? false;
     const images = normalizeImages(product.images, args.images);
     const variants = normalizeVariants(args.variants, product.variants);
-    const defaultVariant = variants?.find((variant) => variant.isDefault) ?? variants?.[0];
+    const supplierOffers =
+      args.supplierOffers === undefined
+        ? normalizeSupplierOffers(product.supplierOffers as SupplierOffer[] | undefined, { variants })
+        : normalizeSupplierOffers(args.supplierOffers, { variants });
+    const variantsWithSupplierPrices = variants?.map((variant) => {
+      const supplierPrice = resolveSupplierPrice(supplierOffers, variant.id);
+      if (supplierPrice === undefined) return variant;
+      return { ...variant, nabavnaCena: supplierPrice, nabavnaCenaIsReal: true };
+    });
+    const defaultVariant = variantsWithSupplierPrices?.find((variant) => variant.isDefault) ?? variantsWithSupplierPrices?.[0];
+    const supplierPrice = resolveSupplierPrice(supplierOffers, defaultVariant?.id);
     const nabavnaCenaIsReal =
-      args.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? product.nabavnaCenaIsReal ?? true;
+      supplierPrice !== undefined
+        ? true
+        : args.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? product.nabavnaCenaIsReal ?? true;
     const adImage = normalizeAdImage(product.adImage, args.adImage);
     const categoryIds =
       args.categoryIds === undefined ? product.categoryIds : normalizeCategoryIds(args.categoryIds) ?? [];
@@ -532,7 +600,7 @@ export const update = mutation({
       (product.variants ?? []).flatMap((variant) => (variant.images ?? []).map((image) => [image.storageId, variant.id])),
     );
     const nextVariantImageSet = new Set(
-      (variants ?? []).flatMap((variant) => (variant.images ?? []).map((image) => image.storageId)),
+      (variantsWithSupplierPrices ?? []).flatMap((variant) => (variant.images ?? []).map((image) => image.storageId)),
     );
     prevVariantImageMap.forEach((_, storageId) => {
       if (!nextVariantImageSet.has(storageId)) {
@@ -543,10 +611,11 @@ export const update = mutation({
     await ctx.db.patch(args.id, {
       name: fbName,
       kpName: resolvedKpName,
-      nabavnaCena: defaultVariant?.nabavnaCena ?? args.nabavnaCena,
+      nabavnaCena: supplierPrice ?? defaultVariant?.nabavnaCena ?? args.nabavnaCena,
       nabavnaCenaIsReal,
       prodajnaCena: defaultVariant?.prodajnaCena ?? args.prodajnaCena,
-      variants,
+      supplierOffers,
+      variants: variantsWithSupplierPrices,
       images,
       adImage,
       opis: resolvedOpisLegacy,

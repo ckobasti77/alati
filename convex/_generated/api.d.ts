@@ -12,12 +12,14 @@ import type * as auth from "../auth.js";
 import type * as categories from "../categories.js";
 import type * as client from "../client.js";
 import type * as images from "../images.js";
+import type * as inboxImages from "../inboxImages.js";
 import type * as maintenance from "../maintenance.js";
 import type * as orders from "../orders.js";
 import type * as products from "../products.js";
 import type * as sales from "../sales.js";
 import type * as social from "../social.js";
 import type * as socialTokens from "../socialTokens.js";
+import type * as suppliers from "../suppliers.js";
 
 import type {
   ApiFromModules,
@@ -38,12 +40,14 @@ declare const fullApi: ApiFromModules<{
   categories: typeof categories;
   client: typeof client;
   images: typeof images;
+  inboxImages: typeof inboxImages;
   maintenance: typeof maintenance;
   orders: typeof orders;
   products: typeof products;
   sales: typeof sales;
   social: typeof social;
   socialTokens: typeof socialTokens;
+  suppliers: typeof suppliers;
 }>;
 declare const fullApiWithMounts: typeof fullApi;
 
