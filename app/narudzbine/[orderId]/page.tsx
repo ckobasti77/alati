@@ -13,7 +13,7 @@ import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { myProfitShare, profit, ukupnoNabavno, ukupnoProdajno } from "@/lib/calc";
-import type { OrderStage, OrderWithProduct, ProductVariant, Supplier } from "@/types/order";
+import type { OrderStage, OrderWithProduct, Product, ProductVariant, Supplier } from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -27,6 +27,37 @@ const stageLabels = stageOptions.reduce((acc, item) => {
   acc[item.value] = { label: item.label, tone: item.tone };
   return acc;
 }, {} as Record<OrderStage, { label: string; tone: string }>);
+
+const getProductVariants = (product?: Product): ProductVariant[] => {
+  if (!product) return [];
+  return product.variants ?? [];
+};
+
+const resolveSupplierOptions = (product?: Product, variantId?: string) => {
+  if (!product) return [];
+  const offers = product.supplierOffers ?? [];
+  if (!offers.length) return [];
+  const exact = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
+  const fallback = offers.filter((offer) => !offer.variantId);
+  const pool = exact.length ? exact : fallback.length ? fallback : offers;
+  const seen = new Set<string>();
+  return pool
+    .filter((offer) => {
+      const key = String(offer.supplierId);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((offer) => ({ supplierId: String(offer.supplierId), price: offer.price }));
+};
+
+const pickBestSupplier = (options: { supplierId: string; price: number; supplierName?: string }[]) => {
+  if (!options.length) return null;
+  return options.reduce((best, option) => {
+    if (!best || option.price < best.price) return option;
+    return best;
+  }, null as { supplierId: string; price: number; supplierName?: string } | null);
+};
 
 const StageBadge = ({ stage }: { stage: OrderStage }) => {
   const meta = stageLabels[stage] ?? { label: stage, tone: "" };
@@ -401,8 +432,8 @@ function OrderDetails({ orderId }: { orderId: string }) {
   };
 
   const variantFromProduct: ProductVariant | undefined = useMemo(() => {
-    if (!order?.product) return undefined;
-    const variants = order.product.variants ?? [];
+    if (!order) return undefined;
+    const variants = getProductVariants(order?.product);
     if (variants.length === 0) return undefined;
     if (order.variantId) {
       const match = variants.find((variant) => variant.id === order.variantId);

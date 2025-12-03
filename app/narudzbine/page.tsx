@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -103,6 +103,39 @@ const orderFocusOrder: (keyof OrderFormValues)[] = [
   "myProfitPercent",
   "note",
 ];
+
+const collectErrorPaths = (node: unknown, prefix = ""): string[] => {
+  if (!node) return [];
+  const paths: string[] = [];
+  const entries = Array.isArray(node) ? Array.from(node.entries()) : Object.entries(node as Record<string, unknown>);
+  for (const [rawKey, value] of entries) {
+    if (!value) continue;
+    const key = String(rawKey);
+    if (key === "ref" || key === "types") continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const hasMessage = "message" in (value as Record<string, unknown>) || "type" in (value as Record<string, unknown>);
+      const nested = collectErrorPaths(value, path);
+      if (hasMessage || nested.length === 0) {
+        paths.push(path);
+      }
+      paths.push(...nested);
+    } else {
+      paths.push(path);
+    }
+  }
+  return paths;
+};
+
+const findFirstErrorPath = (errors: FieldErrors | undefined, priority: string[] = []) => {
+  if (!errors) return null;
+  const paths = collectErrorPaths(errors);
+  if (paths.length === 0) return null;
+  const preferred = priority
+    .map((prefix) => paths.find((path) => path === prefix || path.startsWith(`${prefix}.`)))
+    .find((path): path is string => Boolean(path));
+  return preferred ?? paths[0];
+};
 
 function RichTextSnippet({ text, className }: { text?: string | null; className?: string }) {
   if (!text || text.trim().length === 0) return null;
@@ -290,10 +323,11 @@ function OrdersContent() {
         const fromRef = productInputRef.current && productInputRef.current.name === targetName ? productInputRef.current : null;
         const node =
           fromRef ??
-          document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${targetName}"]`);
+          document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${targetName}"]`) ??
+          document.querySelector<HTMLElement>(`[data-focus-target="${targetName}"]`);
         if (node) {
           node.focus();
-          if ("select" in node && typeof node.select === "function") {
+          if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
             node.select();
           }
         }
@@ -303,9 +337,7 @@ function OrdersContent() {
   );
 
   const getOrderErrorTarget = useCallback(() => {
-    const errors = form.formState.errors;
-    const hit = orderFocusOrder.find((field) => errors[field]);
-    return hit ?? null;
+    return findFirstErrorPath(form.formState.errors, orderFocusOrder);
   }, [form.formState.errors]);
 
   useEffect(() => {
@@ -376,10 +408,12 @@ function OrdersContent() {
     const product = (products ?? []).find((item) => item._id === values.productId);
     if (!product) {
       toast.error("Nije moguce pronaci izabran proizvod.");
+      focusOrderField("productId");
       return;
     }
     if ((product.variants ?? []).length > 0 && !values.variantId) {
       toast.error("Odaberi tip proizvoda.");
+      focusOrderField("variantId");
       return;
     }
 
@@ -742,7 +776,7 @@ function OrdersContent() {
                       Odaberi tacno koji tip proizvoda je prodat. Podrazumevani tip se popunjava automatski, ali mozes da ga promenis.
                     </p>
                     <div className="grid gap-2 md:grid-cols-2">
-                      {selectedVariants.map((variant) => {
+                      {selectedVariants.map((variant, index) => {
                         const isActive = field.value === variant.id;
                         const composedLabel = selectedProduct ? composeVariantLabel(selectedProduct, variant) : variant.label;
                         return (

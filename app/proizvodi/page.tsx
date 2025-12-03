@@ -3,7 +3,7 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -259,6 +259,39 @@ const emptyProductForm = (): ProductFormValues => ({
 const productFocusOrder: (keyof ProductFormValues)[] = ["kpName", "name", "nabavnaCena", "prodajnaCena", "opisKp", "opisFbInsta"];
 const variantFocusOrder: (keyof VariantFormEntry)[] = ["label", "nabavnaCena", "prodajnaCena", "opis"];
 
+const collectErrorPaths = (node: unknown, prefix = ""): string[] => {
+  if (!node) return [];
+  const paths: string[] = [];
+  const entries = Array.isArray(node) ? Array.from(node.entries()) : Object.entries(node as Record<string, unknown>);
+  for (const [rawKey, value] of entries) {
+    if (!value) continue;
+    const key = String(rawKey);
+    if (key === "ref" || key === "types") continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const hasMessage = "message" in (value as Record<string, unknown>) || "type" in (value as Record<string, unknown>);
+      const nested = collectErrorPaths(value, path);
+      if (hasMessage || nested.length === 0) {
+        paths.push(path);
+      }
+      paths.push(...nested);
+    } else {
+      paths.push(path);
+    }
+  }
+  return paths;
+};
+
+const findFirstErrorPath = (errors: FieldErrors | undefined, priority: string[] = []) => {
+  if (!errors) return null;
+  const paths = collectErrorPaths(errors);
+  if (paths.length === 0) return null;
+  const preferred = priority
+    .map((prefix) => paths.find((path) => path === prefix || path.startsWith(`${prefix}.`)))
+    .find((path): path is string => Boolean(path));
+  return preferred ?? paths[0];
+};
+
 export default function ProductsPage() {
   return (
     <RequireAuth>
@@ -360,7 +393,7 @@ function ProductsContent() {
   const publishIgSelected = Boolean(useWatch({ control: form.control, name: "publishIg" }));
   const resolvedProductType = productType ?? "single";
   const normalizedVariants = resolvedProductType === "variant" && Array.isArray(variants) ? variants : [];
-  const normalizedSupplierOffers = useMemo(
+  const normalizedSupplierOffers = useMemo<NormalizedSupplierOffer[]>(
     () => normalizeSupplierOffersInput(supplierOffersField, normalizedVariants, resolvedProductType === "variant"),
     [supplierOffersField, normalizedVariants, resolvedProductType],
   );
@@ -369,7 +402,8 @@ function ProductsContent() {
     [suppliers],
   );
   const bestSupplierForVariant = useCallback(
-    (variantId?: string) => pickBestSupplierOffer(normalizedSupplierOffers, variantId),
+    (variantId?: string): { supplierId: string; price: number } | null =>
+      pickBestSupplierOffer(normalizedSupplierOffers, variantId),
     [normalizedSupplierOffers],
   );
   const hasSupplierOffers = supplierOffersField.length > 0;
@@ -545,12 +579,13 @@ function ProductsContent() {
     const baseNabavnaIsReal = values.nabavnaCenaIsReal ?? true;
     const baseProdajna = parsePrice(values.prodajnaCena);
     const variantEntries = (values.variants ?? []) as VariantFormEntry[];
-    const normalizedOffers = normalizeSupplierOffersInput(
+    const normalizedOffers: NormalizedSupplierOffer[] = normalizeSupplierOffersInput(
       (values.supplierOffers ?? []) as SupplierOfferFormEntry[],
       variantEntries,
       isVariantProduct,
     );
-    const resolveBestOffer = (variantId?: string) => pickBestSupplierOffer(normalizedOffers, variantId);
+    const resolveBestOffer = (variantId?: string): { supplierId: string; price: number } | null =>
+      pickBestSupplierOffer(normalizedOffers, variantId);
     const variants =
       isVariantProduct && variantEntries.length > 0
         ? variantEntries.map((variant, index) => {
@@ -932,10 +967,12 @@ function ProductsContent() {
         const scope: ParentNode = dialogScrollRef.current ?? document;
         const node =
           scope.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${targetName}"]`) ??
-          document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${targetName}"]`);
+          scope.querySelector<HTMLElement>(`[data-focus-target="${targetName}"]`) ??
+          document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${targetName}"]`) ??
+          document.querySelector<HTMLElement>(`[data-focus-target="${targetName}"]`);
         if (node) {
           node.focus();
-          if ("select" in node && typeof node.select === "function") {
+          if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
             node.select();
           }
         }
@@ -953,21 +990,11 @@ function ProductsContent() {
   useEffect(() => {
     if (!isModalOpen) return;
     if (form.formState.submitCount === 0 && Object.keys(form.formState.errors).length === 0) return;
-    const errors = form.formState.errors;
-    let target: string | null = productFocusOrder.find((field) => errors[field]) ?? null;
-    if (!target) {
-      const variantErrors = errors.variants;
-      if (Array.isArray(variantErrors)) {
-        const variantIndex = variantErrors.findIndex((entry) => entry);
-        if (variantIndex >= 0) {
-          const entry = variantErrors[variantIndex] as Record<string, unknown> | undefined;
-          const variantHit = variantFocusOrder.find((field) => entry?.[field]);
-          target = `variants.${variantIndex}.${variantHit ?? "label"}`;
-        }
-      } else if (variantErrors) {
-        target = "variants";
-      }
-    }
+    const target = findFirstErrorPath(form.formState.errors, [
+      ...productFocusOrder,
+      "supplierOffers",
+      "variants",
+    ]);
     if (!target) return;
     const timer = window.setTimeout(() => focusProductField(target as string), 0);
     return () => window.clearTimeout(timer);
@@ -2284,7 +2311,8 @@ function ProductsContent() {
                       Nema vezanih dobavljaca. Najnizu cenu iz ponude dobavljaca cuvamo kao nabavnu cenu.
                     </div>
                   ) : (
-                    supplierOffersField.map((offer) => {
+                    supplierOffersField.map((offer, index) => {
+                      const pathBase = `supplierOffers.${index}`;
                       const rowId = offer.id ?? `${offer.supplierId}-${offer.variantId ?? "base"}`;
                       return (
                         <div
@@ -2298,7 +2326,10 @@ function ProductsContent() {
                                 value={offer.supplierId}
                                 onValueChange={(value) => handleUpdateSupplierOffer(rowId, "supplierId", value)}
                               >
-                                <SelectTrigger>
+                                <SelectTrigger
+                                  name={`${pathBase}.supplierId`}
+                                  data-focus-target={`${pathBase}.supplierId`}
+                                >
                                   <SelectValue placeholder="Izaberi dobavljaca" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -2319,7 +2350,10 @@ function ProductsContent() {
                                     handleUpdateSupplierOffer(rowId, "variantId", value === "base" ? undefined : value)
                                   }
                                 >
-                                  <SelectTrigger>
+                                  <SelectTrigger
+                                    name={`${pathBase}.variantId`}
+                                    data-focus-target={`${pathBase}.variantId`}
+                                  >
                                     <SelectValue placeholder="Svi tipovi" />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -2338,6 +2372,7 @@ function ProductsContent() {
                             >
                               <FormLabel className="text-xs text-slate-500">Cena (EUR)</FormLabel>
                               <Input
+                                name={`${pathBase}.price`}
                                 value={offer.price}
                                 inputMode="decimal"
                                 placeholder="npr. 10.50"
@@ -2377,7 +2412,13 @@ function ProductsContent() {
                     </p>
                   </div>
                   {normalizedVariants.length === 0 ? (
-                    <Button type="button" variant="outline" size="sm" onClick={handleAddVariant}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddVariant}
+                      data-focus-target="variants"
+                    >
                       Dodaj tip
                     </Button>
                   ) : (
