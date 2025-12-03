@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -305,6 +306,11 @@ function ProductDetailsContent() {
     [suppliers],
   );
   const [supplierEdits, setSupplierEdits] = useState<Record<string, string>>({});
+  const [showAddSupplierForm, setShowAddSupplierForm] = useState(false);
+  const [newSupplierId, setNewSupplierId] = useState("");
+  const [newSupplierVariantId, setNewSupplierVariantId] = useState("base");
+  const [newSupplierPrice, setNewSupplierPrice] = useState("");
+  const [isSavingSupplierOffer, setIsSavingSupplierOffer] = useState(false);
   const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -371,6 +377,10 @@ function ProductDetailsContent() {
     if (!needle) return list;
     return list.filter((category) => category.name.toLowerCase().includes(needle));
   }, [categories, categorySearch]);
+  const variantMap = useMemo(
+    () => new Map((product?.variants ?? []).map((variant) => [variant.id, variant])),
+    [product?.variants],
+  );
   const supplierOffers = useMemo(() => product?.supplierOffers ?? [], [product]);
   const bestSupplierOffer = useMemo(() => {
     if (!supplierOffers.length) return null;
@@ -388,8 +398,80 @@ function ProductDetailsContent() {
     setSupplierEdits(map);
   }, [supplierOffers]);
 
+  useEffect(() => {
+    if (!showAddSupplierForm && supplierOffers.length === 0) {
+      setShowAddSupplierForm(true);
+    }
+  }, [showAddSupplierForm, supplierOffers]);
+
+  useEffect(() => {
+    if (!showAddSupplierForm) return;
+    if (newSupplierId && suppliers?.some((supplier) => supplier._id === newSupplierId)) return;
+    if (!suppliers || suppliers.length === 0) return;
+    setNewSupplierId(suppliers[0]._id);
+  }, [newSupplierId, showAddSupplierForm, suppliers]);
+
+  useEffect(() => {
+    const variants = product?.variants ?? [];
+    if (variants.length === 0 && newSupplierVariantId !== "base") {
+      setNewSupplierVariantId("base");
+      return;
+    }
+    if (newSupplierVariantId === "base") return;
+    const hasVariant = variants.some((variant) => variant.id === newSupplierVariantId);
+    if (!hasVariant) {
+      setNewSupplierVariantId("base");
+    }
+  }, [newSupplierVariantId, product]);
+
   const supplierOfferKey = (offer: { supplierId: string; variantId?: string }) =>
     `${offer.supplierId}-${offer.variantId ?? "base"}`;
+
+  const resolveSupplierPriceForVariant = (
+    offers: { price: number; variantId?: string }[] | undefined,
+    variantId?: string,
+  ) => {
+    if (!offers || offers.length === 0) return undefined;
+    const exactMatches = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
+    const fallbackMatches = offers.filter((offer) => !offer.variantId);
+    const pool = exactMatches.length > 0 ? exactMatches : fallbackMatches;
+    if (pool.length === 0) return undefined;
+    return pool.reduce((min, offer) => Math.min(min, offer.price), Number.POSITIVE_INFINITY);
+  };
+
+  const applySupplierOffersDraft = (
+    current: ProductWithUrls,
+    offers: { supplierId: string; price: number; variantId?: string }[],
+  ): ProductWithUrls => {
+    const seen = new Set<string>();
+    const normalized = offers.reduce<typeof offers>((list, offer) => {
+      const key = supplierOfferKey(offer);
+      if (seen.has(key)) return list;
+      seen.add(key);
+      const price = Number.isFinite(offer.price) ? Math.max(offer.price, 0) : 0;
+      const variantId = offer.variantId?.trim() || undefined;
+      list.push({ supplierId: offer.supplierId, price, variantId });
+      return list;
+    }, []);
+    const variants = (current.variants ?? []).map((variant) => {
+      const supplierPrice = resolveSupplierPriceForVariant(normalized, variant.id);
+      if (supplierPrice === undefined) return variant;
+      return { ...variant, nabavnaCena: supplierPrice, nabavnaCenaIsReal: true };
+    });
+    const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
+    const supplierPrice = resolveSupplierPriceForVariant(normalized, defaultVariant?.id);
+    const nabavnaCenaIsReal =
+      supplierPrice !== undefined
+        ? true
+        : current.nabavnaCenaIsReal ?? defaultVariant?.nabavnaCenaIsReal ?? true;
+    return {
+      ...current,
+      variants: variants.length ? variants : undefined,
+      supplierOffers: normalized as any,
+      nabavnaCena: supplierPrice ?? defaultVariant?.nabavnaCena ?? current.nabavnaCena,
+      nabavnaCenaIsReal,
+    };
+  };
 
   const handleSupplierPriceChange = (key: string, value: string) => {
     setSupplierEdits((prev) => ({ ...prev, [key]: value }));
@@ -409,9 +491,60 @@ function ProductDetailsContent() {
         const nextOffers = (current.supplierOffers ?? []).map((item) =>
           supplierOfferKey(item) === key ? { ...item, price: parsed } : item,
         );
-        return { ...current, supplierOffers: nextOffers as any, updatedAt };
+        return { ...applySupplierOffersDraft(current, nextOffers as any), updatedAt };
       },
       "Cena dobavljaca sacuvana.",
+    );
+  };
+
+  const handleAddSupplierOffer = async () => {
+    if (!product) return;
+    if (!newSupplierId) {
+      toast.error("Izaberi dobavljaca.");
+      return;
+    }
+    const parsed = parsePrice(newSupplierPrice);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast.error("Unesi ispravnu cenu za dobavljaca.");
+      return;
+    }
+    const variantId =
+      (product.variants ?? []).length > 0 && newSupplierVariantId !== "base" ? newSupplierVariantId : undefined;
+    setIsSavingSupplierOffer(true);
+    const updatedAt = Date.now();
+    const newKey = supplierOfferKey({ supplierId: newSupplierId, variantId });
+    try {
+      await applyUpdate(
+        (current) => {
+          const existing = current.supplierOffers ?? [];
+          const hasExisting = existing.some((item) => supplierOfferKey(item) === newKey);
+          const nextOffers = hasExisting
+            ? existing.map((item) => (supplierOfferKey(item) === newKey ? { ...item, price: parsed } : item))
+            : [...existing, { supplierId: newSupplierId as any, price: parsed, variantId }];
+          return { ...applySupplierOffersDraft(current, nextOffers as any), updatedAt };
+        },
+        "Ponuda dobavljaca sacuvana.",
+      );
+      setNewSupplierPrice("");
+    } catch (error) {
+      console.error(error);
+      toast.error("Dodavanje dobavljaca nije uspelo.");
+    } finally {
+      setIsSavingSupplierOffer(false);
+    }
+  };
+
+  const handleRemoveSupplierOffer = async (offer: { supplierId: string; variantId?: string }) => {
+    const key = supplierOfferKey(offer);
+    const confirmDelete = window.confirm("Da li sigurno zelis da uklonis ovog dobavljaca sa proizvoda?");
+    if (!confirmDelete) return;
+    const updatedAt = Date.now();
+    await applyUpdate(
+      (current) => {
+        const nextOffers = (current.supplierOffers ?? []).filter((item) => supplierOfferKey(item) !== key);
+        return { ...applySupplierOffersDraft(current, nextOffers as any), updatedAt };
+      },
+      "Ponuda dobavljaca uklonjena.",
     );
   };
 
@@ -2110,7 +2243,96 @@ function ProductDetailsContent() {
               formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
               onSave={(val) => handleBaseFieldSave("prodajnaCena", val)}
             />
-            <div className="space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3">
+            <div className="space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="space-y-0.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nabavka</p>
+                  <p className="text-xs text-slate-600">Najniza ponuda dobavljaca postaje prava nabavna cena.</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={showAddSupplierForm ? "ghost" : "outline"}
+                  className="gap-2"
+                  onClick={() => setShowAddSupplierForm((prev) => !prev)}
+                  disabled={suppliers === undefined}
+                >
+                  {showAddSupplierForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                  {showAddSupplierForm ? "Zatvori" : "Dodaj dobavljaca"}
+                </Button>
+              </div>
+
+              {showAddSupplierForm ? (
+                suppliers === undefined ? (
+                  <div className="rounded-md border border-dashed border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                    Ucitavanje dobavljaca...
+                  </div>
+                ) : suppliers.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                    Dodaj dobavljace na glavnoj listi pa ih povezi ovde.
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed border-blue-200 bg-white/90 px-3 py-3 shadow-sm">
+                    <div className="grid gap-3 md:grid-cols-12 md:items-end">
+                      <div className="space-y-1 md:col-span-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dobavljac</p>
+                        <Select value={newSupplierId} onValueChange={setNewSupplierId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Izaberi dobavljaca" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {suppliers.map((supplier) => (
+                              <SelectItem key={supplier._id} value={supplier._id}>
+                                {supplier.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {hasVariants ? (
+                        <div className="space-y-1 md:col-span-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vazi za</p>
+                          <Select value={newSupplierVariantId} onValueChange={(value) => setNewSupplierVariantId(value)}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Svi tipovi" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="base">Svi tipovi</SelectItem>
+                              {(product.variants ?? []).map((variant) => (
+                                <SelectItem key={variant.id} value={variant.id}>
+                                  {variant.label || "Tip"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ) : null}
+                      <div className={`space-y-1 ${hasVariants ? "md:col-span-3" : "md:col-span-6"}`}>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cena (EUR)</p>
+                        <Input
+                          value={newSupplierPrice}
+                          inputMode="decimal"
+                          placeholder="npr. 10.50"
+                          onChange={(event) => setNewSupplierPrice(event.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2 md:col-span-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="w-full gap-2"
+                          onClick={handleAddSupplierOffer}
+                          disabled={isSavingSupplierOffer || !newSupplierId}
+                        >
+                          {isSavingSupplierOffer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          Sacuvaj
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              ) : null}
+
               {supplierOffers.length === 0 ? (
                 <>
                   <InlineField
@@ -2134,15 +2356,35 @@ function ProductDetailsContent() {
                 </>
               ) : supplierOffers.length === 1 ? (
                 <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 shadow-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Nabavna cena</p>
-                      <p className="text-lg font-semibold text-slate-900">
-                        {formatCurrency(supplierOffers[0].price, "EUR")}
-                      </p>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Nabavna cena</p>
+                        <p className="text-lg font-semibold text-slate-900">
+                          {formatCurrency(supplierOffers[0].price, "EUR")}
+                        </p>
+                      </div>
+                      {hasVariants ? (
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
+                          {supplierOffers[0].variantId
+                            ? variantMap.get(supplierOffers[0].variantId)?.label ?? "Tip"
+                            : "Svi tipovi"}
+                        </span>
+                      ) : null}
                     </div>
-                    <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                      {supplierMap.get(supplierOffers[0].supplierId)?.name ?? "Dobavljac"}
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        {supplierMap.get(supplierOffers[0].supplierId)?.name ?? "Dobavljac"}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveSupplierOffer(supplierOffers[0])}
+                        title="Ukloni ponudu"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                   {(() => {
@@ -2179,6 +2421,11 @@ function ProductDetailsContent() {
                     const key = supplierOfferKey(offer);
                     const editValue = supplierEdits[key] ?? String(offer.price);
                     const isChanged = parsePrice(editValue) !== offer.price;
+                    const variantLabel = hasVariants
+                      ? offer.variantId
+                        ? variantMap.get(offer.variantId)?.label ?? "Tip"
+                        : "Svi tipovi"
+                      : null;
                     return (
                       <div
                         key={`${offer.supplierId}-${offer.variantId ?? "base"}`}
@@ -2189,8 +2436,26 @@ function ProductDetailsContent() {
                         }`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <span className="font-semibold">{supplierName}</span>
-                          <span className="font-bold">{formatCurrency(offer.price, "EUR")}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">{supplierName}</span>
+                            {variantLabel ? (
+                              <span className="rounded-full bg-white/70 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                                {variantLabel}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold">{formatCurrency(offer.price, "EUR")}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveSupplierOffer(offer)}
+                              title="Ukloni ponudu"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                         <div className="mt-2 flex items-center gap-2">
                           <Input
