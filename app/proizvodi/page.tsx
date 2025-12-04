@@ -334,6 +334,8 @@ function ProductsContent() {
   const [isUploadingInboxImages, setIsUploadingInboxImages] = useState(false);
   const [inboxPreviewIndex, setInboxPreviewIndex] = useState<number | null>(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [showSuppliersPanel, setShowSuppliersPanel] = useState(true);
+  const [showInboxPanel, setShowInboxPanel] = useState(true);
   const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
   const productUploadInputRef = useRef<HTMLInputElement | null>(null);
   const adImageInputRef = useRef<HTMLInputElement | null>(null);
@@ -964,6 +966,9 @@ function ProductsContent() {
   const bestFormSupplierName = bestFormOffer ? supplierMap.get(bestFormOffer.supplierId)?.name : undefined;
   const inboxList = inboxImages ?? [];
   const inboxPreviewImage = inboxPreviewIndex !== null ? inboxList[inboxPreviewIndex] : undefined;
+  const supplierCount = suppliers?.length ?? 0;
+  const inboxCount = inboxList.length;
+  const utilityPanelsCollapsed = !showSuppliersPanel && !showInboxPanel;
 
   const focusProductField = useCallback(
     (fieldName: string) => {
@@ -2925,172 +2930,224 @@ function ProductsContent() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Dobavljaci</CardTitle>
-            <p className="text-sm text-slate-500">Dodaj ili obrisi dobavljace. Ne mozes obrisati vezane za proizvode.</p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Input
-                value={newSupplierName}
-                onChange={(event) => setNewSupplierName(event.target.value)}
-                placeholder="npr. Petrit"
-              />
-              <Button
-                type="button"
-                onClick={handleCreateSupplierEntry}
-                disabled={isCreatingSupplier || !newSupplierName.trim()}
-                className="gap-2"
-              >
-                {isCreatingSupplier ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Dodaj
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {suppliers === undefined ? (
-                <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
-              ) : suppliers.length === 0 ? (
-                <p className="text-sm text-slate-500">Nema dobavljaca. Dodaj Petrit i Menad za pocetak.</p>
-              ) : (
-                suppliers.map((supplier) => {
-                  const usageProducts = supplier.usage?.products ?? 0;
-                  const usageOrders = supplier.usage?.orders ?? 0;
-                  const isLocked = usageProducts > 0 || usageOrders > 0;
-                  return (
-                    <div
-                      key={supplier._id}
-                      className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
+      {!utilityPanelsCollapsed ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-1">
+            {showSuppliersPanel ? (
+              <Card className="h-full">
+                <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle>Dobavljaci</CardTitle>
+                    <p className="text-sm text-slate-500">Dodaj ili obrisi dobavljace. Ne mozes obrisati vezane za proizvode.</p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowSuppliersPanel(false)}>
+                    Sakrij
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Input
+                      value={newSupplierName}
+                      onChange={(event) => setNewSupplierName(event.target.value)}
+                      placeholder="npr. Petrit"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleCreateSupplierEntry}
+                      disabled={isCreatingSupplier || !newSupplierName.trim()}
+                      className="gap-2"
                     >
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">{supplier.name}</p>
-                        <p className="text-xs text-slate-500">
-                          Proizvodi: {usageProducts} | Narudzbine: {usageOrders}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {isLocked ? <Badge variant="secondary">Vezan</Badge> : null}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          disabled={isLocked}
-                          onClick={() => handleRemoveSupplierEntry(supplier._id, supplier.usage)}
-                        >
-                          Obrisi
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Slike za ubacivanje</CardTitle>
-            <p className="text-sm text-slate-500">Privremeni inbox za slike proizvoda koji tek treba da se dodaju.</p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-slate-600">
-                Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom.
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  ref={inboxUploadInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="sr-only"
-                  onChange={handleInboxFilesSelected}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => inboxUploadInputRef.current?.click()}
-                  disabled={isUploadingInboxImages}
-                >
-                  {isUploadingInboxImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
-                  Dodaj slike
+                      {isCreatingSupplier ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Dodaj
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {suppliers === undefined ? (
+                      <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
+                    ) : suppliers.length === 0 ? (
+                      <p className="text-sm text-slate-500">Nema dobavljaca. Dodaj Petrit i Menad za pocetak.</p>
+                    ) : (
+                      suppliers.map((supplier) => {
+                        const usageProducts = supplier.usage?.products ?? 0;
+                        const usageOrders = supplier.usage?.orders ?? 0;
+                        const isLocked = usageProducts > 0 || usageOrders > 0;
+                        return (
+                          <div
+                            key={supplier._id}
+                            className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                          >
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{supplier.name}</p>
+                              <p className="text-xs text-slate-500">
+                                Proizvodi: {usageProducts} | Narudzbine: {usageOrders}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {isLocked ? <Badge variant="secondary">Vezan</Badge> : null}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={isLocked}
+                                onClick={() => handleRemoveSupplierEntry(supplier._id, supplier.usage)}
+                              >
+                                Obrisi
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="flex h-full items-center justify-between rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 shadow-sm">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Dobavljaci</p>
+                  <p className="text-xs text-slate-500">Ukupno {supplierCount}</p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={() => setShowSuppliersPanel(true)}>
+                  Otvori
                 </Button>
               </div>
-            </div>
-            {inboxImages === undefined ? (
-              <p className="text-sm text-slate-500">Ucitavanje slika...</p>
-            ) : inboxList.length === 0 ? (
-              <p className="text-sm text-slate-500">Nema slika u inboxu. Dodaj ih da ih kasnije rasporedis.</p>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {inboxList.map((image, index) => {
-                  const safeUrl = image.url ?? "";
-                  return (
-                    <div
-                      key={image._id}
-                      className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={safeUrl}
-                        alt={image.fileName ?? "Inbox slika"}
-                        className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
-                      />
-                      <div
-                        className="absolute inset-0 flex cursor-pointer flex-col justify-between bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 transition-opacity focus:opacity-100 focus-within:opacity-100 group-hover:opacity-100"
-                        role="button"
-                        tabIndex={0}
-                        aria-label="Otvori pregled slike"
-                        onClick={() => handleOpenInboxPreview(index)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            handleOpenInboxPreview(index);
-                          }
-                        }}
-                      >
-                        <div className="flex items-center justify-end gap-1 p-2">
-                          {safeUrl ? (
-                            <a
-                              href={safeUrl}
-                              download={image.fileName ?? "slika.jpg"}
-                              className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-slate-700 shadow hover:bg-white"
-                              title="Preuzmi"
-                              onClick={(event) => event.stopPropagation()}
-                              onKeyDown={(event) => event.stopPropagation()}
-                            >
-                              <Download className="h-4 w-4" />
-                            </a>
-                          ) : null}
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-red-600 shadow hover:bg-white"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleDeleteInboxImage(image._id);
-                            }}
-                            onKeyDown={(event) => event.stopPropagation()}
-                            title="Obrisi"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-center gap-2 pb-3 text-sm font-semibold text-white drop-shadow">
-                          <Images className="h-5 w-5" />
-                          <span>Klik za pregled</span>
-                        </div>
-                      </div>
+            )}
+          </div>
+
+          <div className="lg:col-span-2">
+            {showInboxPanel ? (
+              <Card className="h-full">
+                <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle>Slike za ubacivanje</CardTitle>
+                    <p className="text-sm text-slate-500">Privremeni inbox za slike proizvoda koji tek treba da se dodaju.</p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowInboxPanel(false)}>
+                    Sakrij
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-sm text-slate-600">
+                      Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom.
                     </div>
-                  );
-                })}
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={inboxUploadInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="sr-only"
+                        onChange={handleInboxFilesSelected}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => inboxUploadInputRef.current?.click()}
+                        disabled={isUploadingInboxImages}
+                      >
+                        {isUploadingInboxImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+                        Dodaj slike
+                      </Button>
+                    </div>
+                  </div>
+                  {inboxImages === undefined ? (
+                    <p className="text-sm text-slate-500">Ucitavanje slika...</p>
+                  ) : inboxList.length === 0 ? (
+                    <p className="text-sm text-slate-500">Nema slika u inboxu. Dodaj ih da ih kasnije rasporedis.</p>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                      {inboxList.map((image, index) => {
+                        const safeUrl = image.url ?? "";
+                        return (
+                          <div
+                            key={image._id}
+                            className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={safeUrl}
+                              alt={image.fileName ?? "Inbox slika"}
+                              className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                            />
+                            <div
+                              className="absolute inset-0 flex cursor-pointer flex-col justify-between bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 transition-opacity focus:opacity-100 focus-within:opacity-100 group-hover:opacity-100"
+                              role="button"
+                              tabIndex={0}
+                              aria-label="Otvori pregled slike"
+                              onClick={() => handleOpenInboxPreview(index)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  handleOpenInboxPreview(index);
+                                }
+                              }}
+                            >
+                              <div className="flex items-center justify-end gap-1 p-2">
+                                {safeUrl ? (
+                                  <a
+                                    href={safeUrl}
+                                    download={image.fileName ?? "slika.jpg"}
+                                    className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-slate-700 shadow hover:bg-white"
+                                    title="Preuzmi"
+                                    onClick={(event) => event.stopPropagation()}
+                                    onKeyDown={(event) => event.stopPropagation()}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </a>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-red-600 shadow hover:bg-white"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleDeleteInboxImage(image._id);
+                                  }}
+                                  onKeyDown={(event) => event.stopPropagation()}
+                                  title="Obrisi"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <div className="flex items-center justify-center gap-2 pb-3 text-sm font-semibold text-white drop-shadow">
+                                <Images className="h-5 w-5" />
+                                <span>Klik za pregled</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="flex h-full items-center justify-between rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 shadow-sm">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Slike za ubacivanje</p>
+                  <p className="text-xs text-slate-500">Ukupno {inboxCount}</p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={() => setShowInboxPanel(true)}>
+                  Otvori
+                </Button>
               </div>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paneli</span>
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setShowSuppliersPanel(true)}>
+            <UserRound className="h-4 w-4" />
+            Dobavljaci {supplierCount ? `(${supplierCount})` : ""}
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setShowInboxPanel(true)}>
+            <Images className="h-4 w-4" />
+            Slike {inboxCount ? `(${inboxCount})` : ""}
+          </Button>
+        </div>
+      )}
 
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

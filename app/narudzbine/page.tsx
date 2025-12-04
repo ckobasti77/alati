@@ -174,7 +174,7 @@ const resolveSupplierOptions = (product?: Product, variantId?: string) => {
   if (!offers.length) return [];
   const exact = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
   const fallback = offers.filter((offer) => !offer.variantId);
-  const pool = exact.length ? exact : fallback.length ? fallback : offers;
+  const pool = exact.length ? exact : fallback.length ? fallback : [];
   const seen = new Set<string>();
   return pool
     .filter((offer) => {
