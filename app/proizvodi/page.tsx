@@ -334,8 +334,8 @@ function ProductsContent() {
   const [isUploadingInboxImages, setIsUploadingInboxImages] = useState(false);
   const [inboxPreviewIndex, setInboxPreviewIndex] = useState<number | null>(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
-  const [showSuppliersPanel, setShowSuppliersPanel] = useState(true);
-  const [showInboxPanel, setShowInboxPanel] = useState(true);
+  const [showSuppliersPanel, setShowSuppliersPanel] = useState(false);
+  const [showInboxPanel, setShowInboxPanel] = useState(false);
   const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
   const productUploadInputRef = useRef<HTMLInputElement | null>(null);
   const adImageInputRef = useRef<HTMLInputElement | null>(null);
