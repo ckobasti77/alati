@@ -1297,8 +1297,6 @@ function ProductsContent() {
   };
 
   const handleDeleteInboxImage = async (id: string) => {
-    const confirmed = window.confirm("Obrisi ovu sliku iz inboxa?");
-    if (!confirmed) return;
     try {
       await deleteInboxImage({ token: sessionToken, id });
       if (inboxPreviewIndex !== null) {
