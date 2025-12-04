@@ -506,7 +506,7 @@ export const create = mutation({
     pickupAvailable: v.optional(v.boolean()),
     variants: v.optional(v.array(productVariantArg)),
     images: v.optional(v.array(productImageArg)),
-    adImage: v.optional(productAdImageArg),
+    adImage: v.optional(v.union(v.null(), productAdImageArg)),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
