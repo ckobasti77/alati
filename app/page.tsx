@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { myProfitShare, profit, ukupnoNabavno, ukupnoProdajno } from "@/lib/calc";
+import { orderTotals } from "@/lib/calc";
 import type { Order, OrdersSummary } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -87,11 +87,7 @@ function DashboardContent() {
             <>
               <div className="grid gap-3 md:hidden">
                 {rows.map((order) => {
-                  const prodajnoUkupno = ukupnoProdajno(order.kolicina, order.prodajnaCena);
-                  const nabavnoUkupno = ukupnoNabavno(order.kolicina, order.nabavnaCena);
-                  const transport = order.transportCost ?? 0;
-                  const prof = profit(prodajnoUkupno, nabavnoUkupno, transport);
-                  const moj = myProfitShare(prof, order.myProfitPercent ?? 0);
+                  const totals = orderTotals(order);
                   const shouldShowMyShare = order.stage === "legle_pare" && order.myProfitPercent !== undefined;
                   return (
                     <button
@@ -107,7 +103,7 @@ function DashboardContent() {
                           {order.variantLabel ? (
                             <p className="text-xs text-slate-500">Tip: {order.variantLabel}</p>
                           ) : null}
-                          <p className="text-xs text-slate-500">Kolicina: {order.kolicina}</p>
+                          <p className="text-xs text-slate-500">Kolicina: {totals.totalQty}</p>
                         </div>
                         <Badge variant="secondary" className="shrink-0">
                           {stageLabels[order.stage] ?? order.stage}
@@ -116,27 +112,27 @@ function DashboardContent() {
                       <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-700">
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-slate-400">Prodajno</p>
-                          <p className="font-semibold">{formatCurrency(prodajnoUkupno, "EUR")}</p>
+                          <p className="font-semibold">{formatCurrency(totals.totalProdajno, "EUR")}</p>
                         </div>
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-slate-400">Nabavno</p>
-                          <p className="font-semibold">{formatCurrency(nabavnoUkupno, "EUR")}</p>
+                          <p className="font-semibold">{formatCurrency(totals.totalNabavno, "EUR")}</p>
                         </div>
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-slate-400">Transport</p>
-                          <p className="font-semibold">{formatCurrency(transport, "EUR")}</p>
+                          <p className="font-semibold">{formatCurrency(totals.transport, "EUR")}</p>
                         </div>
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-slate-400">Profit</p>
-                          <p className={`font-semibold ${prof < 0 ? "text-red-600" : "text-slate-900"}`}>
-                            {formatCurrency(prof, "EUR")}
+                          <p className={`font-semibold ${totals.profit < 0 ? "text-red-600" : "text-slate-900"}`}>
+                            {formatCurrency(totals.profit, "EUR")}
                           </p>
                         </div>
                         <div className="col-span-2 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
                           <span className="text-[11px] uppercase tracking-wide text-slate-500">Moj deo</span>
                           {shouldShowMyShare ? (
                             <span className="text-sm font-semibold text-emerald-700">
-                              {formatCurrency(moj, "EUR")}{" "}
+                              {formatCurrency(totals.myShare, "EUR")}{" "}
                               <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
                             </span>
                           ) : (
@@ -165,11 +161,7 @@ function DashboardContent() {
                   </TableHeader>
                   <TableBody>
                     {rows.map((order) => {
-                      const prodajnoUkupno = ukupnoProdajno(order.kolicina, order.prodajnaCena);
-                      const nabavnoUkupno = ukupnoNabavno(order.kolicina, order.nabavnaCena);
-                      const transport = order.transportCost ?? 0;
-                      const prof = profit(prodajnoUkupno, nabavnoUkupno, transport);
-                      const moj = myProfitShare(prof, order.myProfitPercent ?? 0);
+                      const totals = orderTotals(order);
                       const shouldShowMyShare = order.stage === "legle_pare" && order.myProfitPercent !== undefined;
 
                       return (
@@ -185,17 +177,19 @@ function DashboardContent() {
                               <ArrowUpRight className="h-4 w-4 text-slate-400" />
                             </span>
                           </TableCell>
-                          <TableCell>{order.kolicina}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(transport, "EUR")}</TableCell>
+                          <TableCell>{totals.totalQty}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(totals.totalProdajno, "EUR")}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(totals.totalNabavno, "EUR")}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(totals.transport, "EUR")}</TableCell>
                           <TableCell className="text-right font-semibold">
-                            <span className={prof < 0 ? "text-red-600" : ""}>{formatCurrency(prof, "EUR")}</span>
+                            <span className={totals.profit < 0 ? "text-red-600" : ""}>
+                              {formatCurrency(totals.profit, "EUR")}
+                            </span>
                           </TableCell>
                           <TableCell className="text-right font-semibold text-emerald-700">
                             {shouldShowMyShare ? (
                               <span>
-                                {formatCurrency(moj, "EUR")}{" "}
+                                {formatCurrency(totals.myShare, "EUR")}{" "}
                                 <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
                               </span>
                             ) : (

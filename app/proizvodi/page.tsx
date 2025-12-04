@@ -55,8 +55,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { LoadingDots } from "@/components/LoadingDots";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
+import { useInfiniteItems } from "@/lib/useInfiniteItems";
 import type { Category, InboxImage, Product, ProductStats, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -942,6 +944,15 @@ function ProductsContent() {
         return list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     }
   }, [filteredProducts, getProductPrice, sortBy, getSalesCount, getProfit]);
+  const {
+    visibleItems: visibleProducts,
+    loaderRef: productsLoaderRef,
+    isLoadingMore: isLoadingMoreProducts,
+    hasMore: hasMoreProducts,
+  } = useInfiniteItems(sortedProducts, {
+    batchSize: 10,
+    resetDeps: [productSearch, sortBy, viewMode, isMobile ? "mobile" : "desktop"],
+  });
   const defaultVariantEntry =
     resolvedProductType === "variant"
       ? normalizedVariants.find((variant) => variant.isDefault) ?? normalizedVariants[0]
@@ -3028,32 +3039,50 @@ function ProductsContent() {
                       <img
                         src={safeUrl}
                         alt={image.fileName ?? "Inbox slika"}
-                        className="h-full w-full cursor-pointer object-cover transition duration-200 group-hover:scale-[1.02]"
-                        onClick={() => handleOpenInboxPreview(index)}
+                        className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
                       />
-                      <div className="absolute inset-0 flex items-start justify-between p-2">
-                        <span className="rounded-full bg-white/90 px-2 py-1 text-[11px] font-semibold text-slate-700 shadow">
-                          {image.fileName ?? "Slika"}
-                        </span>
-                        <div className="flex items-center gap-1">
+                      <div
+                        className="absolute inset-0 flex cursor-pointer flex-col justify-between bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 transition-opacity focus:opacity-100 focus-within:opacity-100 group-hover:opacity-100"
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Otvori pregled slike"
+                        onClick={() => handleOpenInboxPreview(index)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleOpenInboxPreview(index);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-end gap-1 p-2">
                           {safeUrl ? (
                             <a
                               href={safeUrl}
                               download={image.fileName ?? "slika.jpg"}
-                              className="inline-flex items-center justify-center rounded-full bg-white/90 p-1 text-slate-700 shadow hover:bg-white"
+                              className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-slate-700 shadow hover:bg-white"
                               title="Preuzmi"
+                              onClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => event.stopPropagation()}
                             >
                               <Download className="h-4 w-4" />
                             </a>
                           ) : null}
                           <button
                             type="button"
-                            className="inline-flex items-center justify-center rounded-full bg-white/90 p-1 text-red-600 shadow hover:bg-white"
-                            onClick={() => handleDeleteInboxImage(image._id)}
+                            className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-red-600 shadow hover:bg-white"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteInboxImage(image._id);
+                            }}
+                            onKeyDown={(event) => event.stopPropagation()}
                             title="Obrisi"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
+                        </div>
+                        <div className="flex items-center justify-center gap-2 pb-3 text-sm font-semibold text-white drop-shadow">
+                          <Images className="h-5 w-5" />
+                          <span>Klik za pregled</span>
                         </div>
                       </div>
                     </div>
@@ -3135,7 +3164,7 @@ function ProductsContent() {
             </div>
           ) : viewMode === "list" && !isMobile ? (
             <div className="space-y-2">
-              {sortedProducts.map((product) => {
+              {visibleProducts.map((product) => {
                 const mainImage = getMainImage(product);
                 const productCategories = (product.categoryIds ?? [])
                   .map((id) => categoryMap.get(id))
@@ -3278,7 +3307,7 @@ function ProductsContent() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {sortedProducts.map((product) => {
+              {visibleProducts.map((product) => {
                 const mainImage = getMainImage(product);
                 const productCategories = (product.categoryIds ?? [])
                   .map((id) => categoryMap.get(id))
@@ -3371,6 +3400,11 @@ function ProductsContent() {
               })}
             </div>
           )}
+          {sortedProducts.length > 0 ? (
+            <div ref={productsLoaderRef} className="flex justify-center">
+              <LoadingDots show={isLoadingMoreProducts && hasMoreProducts} />
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -3406,35 +3440,30 @@ function ProductsContent() {
               className="relative max-h-[90vh] overflow-hidden rounded-2xl bg-black/50 p-3 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="truncate text-sm font-semibold text-slate-100">
-                  {inboxPreviewImage.fileName ?? "Inbox slika"}
-                </div>
-                <div className="flex items-center gap-2">
-                  {inboxPreviewImage.url ? (
-                    <a
-                      href={inboxPreviewImage.url}
-                      download={inboxPreviewImage.fileName ?? "slika.jpg"}
-                      className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-slate-800 shadow"
-                    >
-                      <Download className="h-4 w-4" />
-                      Preuzmi
-                    </a>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    className="gap-1"
-                    onClick={() => handleDeleteInboxImage(inboxPreviewImage._id)}
+              <div className="mb-2 flex items-center justify-end gap-2">
+                {inboxPreviewImage.url ? (
+                  <a
+                    href={inboxPreviewImage.url}
+                    download={inboxPreviewImage.fileName ?? "slika.jpg"}
+                    className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-slate-800 shadow"
                   >
-                    <Trash2 className="h-4 w-4" />
-                    Obrisi
-                  </Button>
-                  <Button type="button" size="sm" variant="secondary" onClick={handleCloseInboxPreview}>
-                    Zatvori
-                  </Button>
-                </div>
+                    <Download className="h-4 w-4" />
+                    Preuzmi
+                  </a>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => handleDeleteInboxImage(inboxPreviewImage._id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Obrisi
+                </Button>
+                <Button type="button" size="sm" variant="secondary" onClick={handleCloseInboxPreview}>
+                  Zatvori
+                </Button>
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img

@@ -271,6 +271,7 @@ function ProductDetailsContent() {
   >("categories:create");
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
   const [product, setProduct] = useState<ProductWithUrls | null>(null);
+  const productRef = useRef<ProductWithUrls | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
   const [isGalleryDropActive, setIsGalleryDropActive] = useState(false);
@@ -318,7 +319,9 @@ function ProductDetailsContent() {
 
   useEffect(() => {
     if (queryResult === undefined) return;
-    setProduct(queryResult ? normalizeProductImages(queryResult) : null);
+    const normalized = queryResult ? normalizeProductImages(queryResult) : null;
+    productRef.current = normalized;
+    setProduct(normalized);
   }, [queryResult]);
 
   useEffect(() => {
@@ -621,12 +624,13 @@ function ProductDetailsContent() {
   };
 
   const applyUpdate = async (updater: (current: ProductWithUrls) => ProductWithUrls, successMessage?: string) => {
-    if (!product) return;
-    const previous = product;
+    const previous = productRef.current;
+    if (!previous) return;
     const expectedUpdatedAt = previous.updatedAt ?? Date.now();
     const optimisticUpdatedAt = Date.now();
     const draft = updater(previous);
     const next = normalizeProductImages({ ...draft, updatedAt: optimisticUpdatedAt });
+    productRef.current = next;
     setProduct(next);
     try {
       await updateProduct(buildUpdatePayload(next, { expectedUpdatedAt, updatedAt: optimisticUpdatedAt }));
@@ -635,6 +639,7 @@ function ProductDetailsContent() {
       }
     } catch (error) {
       console.error(error);
+      productRef.current = previous;
       setProduct(previous);
       const message =
         error instanceof Error && error.message.toLowerCase().includes("medjuvremenu promenjen")
@@ -853,7 +858,8 @@ function ProductDetailsContent() {
       toast.error("Nedostaje token za objavu. Prijavi se ponovo.");
       return;
     }
-    if (!product) {
+    const latestProduct = productRef.current;
+    if (!latestProduct) {
       toast.error("Proizvod nije ucitan.");
       return;
     }
@@ -864,7 +870,7 @@ function ProductDetailsContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform,
-          productId: product._id,
+          productId: latestProduct._id,
           token: sessionToken,
         }),
       });
@@ -876,7 +882,7 @@ function ProductDetailsContent() {
         platform === "facebook" ? "Objavljeno na Facebook stranici." : "Objavljeno na Instagram nalogu.",
       );
       const publishField: "publishFb" | "publishIg" = platform === "facebook" ? "publishFb" : "publishIg";
-      if (!product[publishField]) {
+      if (!latestProduct[publishField]) {
         try {
           await applyUpdate((current) => ({ ...current, [publishField]: true }));
         } catch (error) {

@@ -143,6 +143,21 @@ export default defineSchema({
     phone: v.string(),
     myProfitPercent: v.optional(v.number()),
     pickup: v.optional(v.boolean()),
+    items: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          productId: v.optional(v.id("products")),
+          supplierId: v.optional(v.id("suppliers")),
+          variantId: v.optional(v.string()),
+          variantLabel: v.optional(v.string()),
+          title: v.string(),
+          kolicina: v.number(),
+          nabavnaCena: v.number(),
+          prodajnaCena: v.number(),
+        }),
+      ),
+    ),
     kreiranoAt: v.number(),
   })
     .index("by_kreiranoAt", ["kreiranoAt"])

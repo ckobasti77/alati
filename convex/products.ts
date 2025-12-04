@@ -317,6 +317,39 @@ export const list = query({
   },
 });
 
+const normalizeOrderQuantity = (value?: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+  return Math.max(Math.round(parsed), 1);
+};
+
+const sanitizeOrderPrice = (value?: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return parsed;
+};
+
+const resolveOrderItems = (order: any) => {
+  const stored = order.items ?? [];
+  const normalized = stored
+    .map((item: any) => ({
+      productId: item.productId,
+      kolicina: normalizeOrderQuantity(item.kolicina),
+      nabavnaCena: sanitizeOrderPrice(item.nabavnaCena),
+      prodajnaCena: sanitizeOrderPrice(item.prodajnaCena),
+    }))
+    .filter((item: any) => item.kolicina > 0);
+  if (normalized.length > 0) return normalized;
+  return [
+    {
+      productId: order.productId,
+      kolicina: normalizeOrderQuantity(order.kolicina),
+      nabavnaCena: sanitizeOrderPrice(order.nabavnaCena),
+      prodajnaCena: sanitizeOrderPrice(order.prodajnaCena),
+    },
+  ];
+};
+
 export const stats = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
@@ -332,21 +365,27 @@ export const stats = query({
     >();
 
     orders.forEach((order) => {
-      if (!order.productId) return;
       if (order.stage !== "legle_pare") return;
-      const key = order.productId;
-      const current = statsMap.get(key) ?? {
-        salesCount: 0,
-        revenue: 0,
-        profit: 0,
-      };
-      const prodajno = order.prodajnaCena * order.kolicina;
-      const nabavno = order.nabavnaCena * order.kolicina;
-      const transport = order.transportCost ?? 0;
-      current.salesCount += order.kolicina;
-      current.revenue += prodajno;
-      current.profit += prodajno - nabavno - transport;
-      statsMap.set(key, current);
+      const items = resolveOrderItems(order);
+      const transport = order.pickup ? 0 : order.transportCost ?? 0;
+      const totalProdajno = items.reduce((sum, item) => sum + item.prodajnaCena * item.kolicina, 0);
+      items.forEach((item) => {
+        if (!item.productId) return;
+        const itemProdajno = item.prodajnaCena * item.kolicina;
+        const transportShare =
+          totalProdajno > 0 ? (transport * itemProdajno) / totalProdajno : transport / items.length;
+        const itemNabavno = item.nabavnaCena * item.kolicina;
+        const key = item.productId as Id<"products">;
+        const current = statsMap.get(key) ?? {
+          salesCount: 0,
+          revenue: 0,
+          profit: 0,
+        };
+        current.salesCount += item.kolicina;
+        current.revenue += itemProdajno;
+        current.profit += itemProdajno - itemNabavno - (Number.isFinite(transportShare) ? transportShare : 0);
+        statsMap.set(key, current);
+      });
     });
 
     return Array.from(statsMap.entries()).map(([productId, data]) => ({

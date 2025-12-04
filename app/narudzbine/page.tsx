@@ -6,7 +6,8 @@ import { useForm, useWatch, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
+import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,13 +16,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { myProfitShare, profit, ukupnoNabavno, ukupnoProdajno } from "@/lib/calc";
+import { orderTotals } from "@/lib/calc";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { cn } from "@/lib/utils";
 import type { Order, OrderListResponse, OrderStage, Product, ProductVariant, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
+import { Badge } from "@/components/ui/badge";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -38,11 +40,6 @@ const stageLabels = stageOptions.reduce((acc, item) => {
 
 const orderSchema = z.object({
   stage: z.enum(["poruceno", "poslato", "stiglo", "legle_pare"]),
-  productId: z
-    .string({ required_error: "Proizvod je obavezan." })
-    .min(1, "Proizvod je obavezan."),
-  supplierId: z.string().optional(),
-  variantId: z.string().optional(),
   customerName: z.string().min(3, "Ime i prezime porucioca je obavezno."),
   address: z.string().min(5, "Adresa je obavezna."),
   phone: z.string().min(5, "Broj telefona je obavezan."),
@@ -78,9 +75,6 @@ type OrderFormValues = z.infer<typeof orderSchema>;
 
 const defaultFormValues: OrderFormValues = {
   stage: "poruceno",
-  productId: "",
-  supplierId: "",
-  variantId: "",
   customerName: "",
   address: "",
   phone: "",
@@ -92,9 +86,6 @@ const defaultFormValues: OrderFormValues = {
 };
 
 const orderFocusOrder: (keyof OrderFormValues)[] = [
-  "productId",
-  "variantId",
-  "supplierId",
   "customerName",
   "address",
   "phone",
@@ -135,6 +126,20 @@ const findFirstErrorPath = (errors: FieldErrors | undefined, priority: string[] 
     .map((prefix) => paths.find((path) => path === prefix || path.startsWith(`${prefix}.`)))
     .find((path): path is string => Boolean(path));
   return preferred ?? paths[0];
+};
+
+const generateId = () => Math.random().toString(36).slice(2);
+
+type OrderItemDraft = {
+  id: string;
+  product: Product;
+  variant?: ProductVariant;
+  supplierId?: string;
+  kolicina: number;
+  nabavnaCena: number;
+  prodajnaCena: number;
+  variantLabel?: string;
+  title: string;
 };
 
 function RichTextSnippet({ text, className }: { text?: string | null; className?: string }) {
@@ -216,19 +221,34 @@ function OrdersContent() {
   const sessionToken = token as string;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersPagination, setOrdersPagination] = useState<OrderListResponse["pagination"]>({
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 1,
+  });
+  const [isLoadingMoreOrders, setIsLoadingMoreOrders] = useState(false);
   const [productInput, setProductInput] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [productMenuOpen, setProductMenuOpen] = useState(false);
   const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [draftItems, setDraftItems] = useState<OrderItemDraft[]>([]);
+  const [itemProductId, setItemProductId] = useState("");
+  const [itemVariantId, setItemVariantId] = useState("");
+  const [itemSupplierId, setItemSupplierId] = useState("");
+  const [itemQuantity, setItemQuantity] = useState(1);
   const productInputRef = useRef<HTMLInputElement | null>(null);
+  const ordersLoaderRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreOrdersTimerRef = useRef<number | null>(null);
 
   const list = useConvexQuery<OrderListResponse>("orders:list", {
     token: sessionToken,
     search: search.trim() ? search.trim() : undefined,
     page,
-    pageSize: 50,
+    pageSize: 10,
   });
   const deleteOrder = useConvexMutation<{ id: string; token: string }>("orders:remove");
   const createOrder = useConvexMutation("orders:create");
@@ -236,20 +256,21 @@ function OrdersContent() {
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
   const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
 
-  const items = useMemo<Order[]>(() => list?.items ?? [], [list]);
   const orderEntries = useMemo(
     () =>
-      items.map((order) => {
-        const prodajnoUkupno = ukupnoProdajno(order.kolicina, order.prodajnaCena);
-        const nabavnoUkupno = ukupnoNabavno(order.kolicina, order.nabavnaCena);
-        const transport = order.transportCost ?? 0;
-        const prof = profit(prodajnoUkupno, nabavnoUkupno, transport);
-        const mojDeo = myProfitShare(prof, order.myProfitPercent ?? 0);
-        return { order, prodajnoUkupno, nabavnoUkupno, transport, prof, mojDeo };
+      orders.map((order) => {
+        const totals = orderTotals(order);
+        return {
+          order,
+          prodajnoUkupno: totals.totalProdajno,
+          nabavnoUkupno: totals.totalNabavno,
+          transport: totals.transport,
+          prof: totals.profit,
+          mojDeo: totals.myShare,
+        };
       }),
-    [items],
+    [orders],
   );
-  const pagination = list?.pagination ?? { page: 1, pageSize: 50, total: 0, totalPages: 1 };
   const filteredProducts = useMemo(() => {
     const list = products ?? [];
     const needle = productSearch.trim().toLowerCase();
@@ -271,34 +292,104 @@ function OrdersContent() {
     [suppliers],
   );
   const isProductsLoading = products === undefined;
-  const isOrdersLoading = list === undefined;
+  const isOrdersLoading = list === undefined && orders.length === 0;
+  const hasMoreOrders = ordersPagination.totalPages > page;
+
+  const resetOrdersFeed = useCallback(() => {
+    if (loadMoreOrdersTimerRef.current !== null) {
+      window.clearTimeout(loadMoreOrdersTimerRef.current);
+      loadMoreOrdersTimerRef.current = null;
+    }
+    setOrders([]);
+    setPage(1);
+    setOrdersPagination((prev) => ({ ...prev, page: 1, total: 0, totalPages: 1 }));
+    setIsLoadingMoreOrders(false);
+  }, []);
+
+  useEffect(() => {
+    resetOrdersFeed();
+  }, [resetOrdersFeed, sessionToken]);
+
+  useEffect(() => {
+    if (!list) return;
+    if (loadMoreOrdersTimerRef.current !== null) {
+      window.clearTimeout(loadMoreOrdersTimerRef.current);
+      loadMoreOrdersTimerRef.current = null;
+    }
+    if (list.pagination) {
+      setOrdersPagination(list.pagination);
+    }
+    if (list.items) {
+      setOrders((prev) => {
+        const map = new Map(prev.map((entry) => [String(entry._id), entry]));
+        list.items.forEach((entry) => {
+          map.set(String(entry._id), entry);
+        });
+        return Array.from(map.values()).sort((a, b) => b.kreiranoAt - a.kreiranoAt);
+      });
+    }
+    setIsLoadingMoreOrders(false);
+  }, [list]);
+
+  useEffect(() => {
+    return () => {
+      if (loadMoreOrdersTimerRef.current !== null) {
+        window.clearTimeout(loadMoreOrdersTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleLoadMoreOrders = useCallback(() => {
+    if (isLoadingMoreOrders) return;
+    if (!hasMoreOrders) return;
+    setIsLoadingMoreOrders(true);
+    if (loadMoreOrdersTimerRef.current !== null) {
+      window.clearTimeout(loadMoreOrdersTimerRef.current);
+    }
+    loadMoreOrdersTimerRef.current = window.setTimeout(() => {
+      setPage((prev) => prev + 1);
+    }, 850);
+  }, [hasMoreOrders, isLoadingMoreOrders]);
+
+  useEffect(() => {
+    const target = ordersLoaderRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry?.isIntersecting) {
+          handleLoadMoreOrders();
+        }
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [handleLoadMoreOrders]);
 
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderSchema),
     defaultValues: defaultFormValues,
     mode: "onBlur",
   });
-  const productIdValue = useWatch({ control: form.control, name: "productId" });
-  const variantIdValue = useWatch({ control: form.control, name: "variantId" });
-  const supplierIdValue = useWatch({ control: form.control, name: "supplierId" });
   const selectedProduct = useMemo(
-    () => (products ?? []).find((item) => item._id === productIdValue),
-    [products, productIdValue],
+    () => (products ?? []).find((item) => item._id === itemProductId),
+    [products, itemProductId],
   );
   const selectedVariants = useMemo(() => getProductVariants(selectedProduct), [selectedProduct]);
   const selectedVariantForPreview = useMemo(() => {
     if (!selectedProduct) return undefined;
     const variants = selectedProduct.variants ?? [];
     if (variants.length === 0) return undefined;
-    if (variantIdValue) {
-      const match = variants.find((variant) => variant.id === variantIdValue);
+    if (itemVariantId) {
+      const match = variants.find((variant) => variant.id === itemVariantId);
       if (match) return match;
     }
     return variants.find((variant) => variant.isDefault) ?? variants[0];
-  }, [selectedProduct, variantIdValue]);
+  }, [selectedProduct, itemVariantId]);
   const supplierOptions = useMemo(
-    () => resolveSupplierOptions(selectedProduct, variantIdValue || undefined),
-    [selectedProduct, variantIdValue],
+    () => resolveSupplierOptions(selectedProduct, itemVariantId || undefined),
+    [selectedProduct, itemVariantId],
   );
   const supplierOptionsWithNames = useMemo(
     () =>
@@ -341,40 +432,40 @@ function OrdersContent() {
   }, [form.formState.errors]);
 
   useEffect(() => {
-    if (!productIdValue || !selectedProduct || selectedVariants.length === 0) {
-      if (variantIdValue) {
-        form.setValue("variantId", "", { shouldDirty: false, shouldValidate: true });
+    if (!selectedProduct || selectedVariants.length === 0) {
+      if (itemVariantId) {
+        setItemVariantId("");
       }
       return;
     }
-    const selectedExists = selectedVariants.some((variant) => variant.id === variantIdValue);
+    const selectedExists = selectedVariants.some((variant) => variant.id === itemVariantId);
     if (!selectedExists) {
       const fallbackVariant = selectedVariants.find((variant) => variant.isDefault) ?? selectedVariants[0];
       if (fallbackVariant) {
-        form.setValue("variantId", fallbackVariant.id, { shouldDirty: false, shouldValidate: true });
+        setItemVariantId(fallbackVariant.id);
         setProductInput(composeVariantLabel(selectedProduct, fallbackVariant));
       }
     }
-  }, [form, productIdValue, selectedProduct, selectedVariants, setProductInput, variantIdValue]);
+  }, [itemVariantId, selectedProduct, selectedVariants, setProductInput]);
 
   useEffect(() => {
     if (supplierOptionsWithNames.length === 0) {
-      form.setValue("supplierId", "", { shouldDirty: true, shouldValidate: true });
+      setItemSupplierId("");
       return;
     }
     if (supplierOptionsWithNames.length === 1) {
-      form.setValue("supplierId", supplierOptionsWithNames[0].supplierId, { shouldDirty: true, shouldValidate: true });
+      setItemSupplierId(supplierOptionsWithNames[0].supplierId);
       return;
     }
-    const hasCurrent = supplierOptionsWithNames.some((option) => option.supplierId === supplierIdValue);
+    const hasCurrent = supplierOptionsWithNames.some((option) => option.supplierId === itemSupplierId);
     if (!hasCurrent) {
-      form.setValue("supplierId", "", { shouldDirty: true, shouldValidate: true });
+      setItemSupplierId("");
     }
-  }, [form, supplierIdValue, supplierOptionsWithNames]);
+  }, [itemSupplierId, supplierOptionsWithNames]);
 
   useEffect(() => {
     if (!isModalOpen) return;
-    const timer = window.setTimeout(() => focusOrderField("productId"), 0);
+    const timer = window.setTimeout(() => focusOrderField("productSearch"), 0);
     return () => window.clearTimeout(timer);
   }, [focusOrderField, isModalOpen]);
 
@@ -394,10 +485,82 @@ function OrdersContent() {
     setProductMenuOpen(false);
     setExpandedProductId(null);
     setEditingOrder(null);
+    setDraftItems([]);
+    setItemProductId("");
+    setItemVariantId("");
+    setItemSupplierId("");
+    setItemQuantity(1);
     if (options?.closeModal) {
       setIsModalOpen(false);
     }
   };
+
+  const handleAddItem = () => {
+    if (!selectedProduct) {
+      toast.error("Izaberi proizvod koji dodajes u narudzbinu.");
+      focusOrderField("productSearch");
+      return;
+    }
+    const variantsList = selectedProduct.variants ?? [];
+    let variant = variantsList.find((item) => item.id === itemVariantId);
+    if (variantsList.length > 0 && !variant) {
+      variant = variantsList.find((item) => item.isDefault) ?? variantsList[0];
+    }
+    const supplierOptionsLocal = resolveSupplierOptions(selectedProduct, variant?.id);
+    const supplierOptionsWithNamesLocal = supplierOptionsLocal.map((option) => ({
+      ...option,
+      supplierName: supplierMap.get(option.supplierId)?.name,
+    }));
+    const bestSupplierLocal = pickBestSupplier(supplierOptionsWithNamesLocal);
+    const supplierId =
+      itemSupplierId || (supplierOptionsWithNamesLocal.length === 1 ? supplierOptionsWithNamesLocal[0].supplierId : undefined);
+    const supplierPrice =
+      supplierId
+        ? supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ?? bestSupplierLocal?.price
+        : bestSupplierLocal?.price;
+    const nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? selectedProduct.nabavnaCena;
+    const prodajnaCena = variant?.prodajnaCena ?? selectedProduct.prodajnaCena;
+    const variantLabel = variant ? composeVariantLabel(selectedProduct, variant) : undefined;
+    const title = variantLabel ?? selectedProduct.name;
+    const qty = Math.max(itemQuantity, 1);
+    const draft: OrderItemDraft = {
+      id: generateId(),
+      product: selectedProduct,
+      variant,
+      supplierId: supplierId || undefined,
+      kolicina: qty,
+      nabavnaCena,
+      prodajnaCena,
+      variantLabel,
+      title,
+    };
+    setDraftItems((prev) => [...prev, draft]);
+    setItemProductId("");
+    setItemVariantId("");
+    setItemSupplierId("");
+    setItemQuantity(1);
+    setProductInput("");
+    setProductMenuOpen(false);
+    setExpandedProductId(null);
+  };
+
+  const handleRemoveItem = (id: string) => {
+    setDraftItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const draftTotals = useMemo(
+    () =>
+      draftItems.reduce(
+        (acc, item) => {
+          acc.totalQty += item.kolicina;
+          acc.totalProdajno += item.prodajnaCena * item.kolicina;
+          acc.totalNabavno += item.nabavnaCena * item.kolicina;
+          return acc;
+        },
+        { totalQty: 0, totalProdajno: 0, totalNabavno: 0 },
+      ),
+    [draftItems],
+  );
 
   const openCreateModal = () => {
     resetOrderForm();
@@ -405,51 +568,28 @@ function OrdersContent() {
   };
 
   const handleSubmitOrder = async (values: OrderFormValues) => {
-    const product = (products ?? []).find((item) => item._id === values.productId);
-    if (!product) {
-      toast.error("Nije moguce pronaci izabran proizvod.");
-      focusOrderField("productId");
-      return;
-    }
-    if ((product.variants ?? []).length > 0 && !values.variantId) {
-      toast.error("Odaberi tip proizvoda.");
-      focusOrderField("variantId");
+    if (draftItems.length === 0) {
+      toast.error("Dodaj bar jedan proizvod u narudzbinu.");
+      focusOrderField("productSearch");
       return;
     }
 
     try {
-      const variantsList = product.variants ?? [];
-      let variant = variantsList.find((item) => item.id === values.variantId);
-      if (variantsList.length > 0 && !variant) {
-        variant = variantsList.find((item) => item.isDefault) ?? variantsList[0];
-      }
-      const resolvedTitle = composeVariantLabel(product, variant);
       const pickup = Boolean(values.pickup);
-      const supplierOptionsLocal = resolveSupplierOptions(product, variant?.id);
-      const supplierOptionsWithNamesLocal = supplierOptionsLocal.map((option) => ({
-        ...option,
-        supplierName: supplierMap.get(option.supplierId)?.name,
+      const payloadItems = draftItems.map((item) => ({
+        id: item.id,
+        productId: item.product._id,
+        supplierId: item.supplierId || undefined,
+        variantId: item.variant?.id,
+        variantLabel: item.variant ? composeVariantLabel(item.product, item.variant) : undefined,
+        title: item.title,
+        kolicina: item.kolicina,
+        nabavnaCena: item.nabavnaCena,
+        prodajnaCena: item.prodajnaCena,
       }));
-      const bestSupplierLocal = pickBestSupplier(supplierOptionsWithNamesLocal);
-      const supplierId =
-        values.supplierId ||
-        (supplierOptionsWithNamesLocal.length === 1 ? supplierOptionsWithNamesLocal[0].supplierId : undefined);
-      const supplierPrice =
-        supplierId
-          ? supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ??
-            bestSupplierLocal?.price
-          : bestSupplierLocal?.price;
-      const nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? product.nabavnaCena;
       const payload = {
         stage: values.stage,
-        productId: product._id,
-        supplierId: supplierId || undefined,
-        variantId: variant?.id,
-        variantLabel: variant ? composeVariantLabel(product, variant) : undefined,
-        title: resolvedTitle,
-        kolicina: 1,
-        nabavnaCena,
-        prodajnaCena: variant?.prodajnaCena ?? product.prodajnaCena,
+        title: payloadItems[0]?.title ?? "Narudzbina",
         transportCost: pickup ? 0 : values.transportCost,
         transportMode: pickup ? undefined : values.transportMode,
         customerName: values.customerName.trim(),
@@ -458,6 +598,7 @@ function OrdersContent() {
         pickup,
         myProfitPercent: values.myProfitPercent,
         napomena: values.note?.trim() || undefined,
+        items: payloadItems,
         token: sessionToken,
       };
 
@@ -468,6 +609,7 @@ function OrdersContent() {
         await createOrder(payload);
         toast.success("Narudzbina je dodata.");
       }
+      resetOrdersFeed();
       resetOrderForm({ closeModal: true });
     } catch (error) {
       console.error(error);
@@ -479,6 +621,7 @@ function OrdersContent() {
     try {
       await deleteOrder({ id, token: sessionToken });
       toast.success("Narudzbina je obrisana.");
+      resetOrdersFeed();
       if (editingOrder?._id === id) {
         resetOrderForm({ closeModal: true });
       }
@@ -514,7 +657,9 @@ function OrdersContent() {
         myProfitPercent: order.myProfitPercent,
         pickup: order.pickup,
         napomena: order.napomena,
+        items: order.items,
       });
+      setOrders((prev) => prev.map((item) => (item._id === order._id ? { ...item, stage: nextStage } : item)));
       toast.success("Status narudzbine promenjen.");
     } catch (error) {
       console.error(error);
@@ -575,283 +720,342 @@ function OrdersContent() {
                 </FormItem>
               )}
             />
-            <FormField
-              name="productId"
-              render={({ field, fieldState }) => (
-                <FormItem>
-                  <FormLabel>Proizvod</FormLabel>
-                  <div className="relative">
-                    <Input
-                      ref={(node) => {
-                        productInputRef.current = node;
-                        field.ref(node);
-                      }}
-                      name={field.name}
-                      value={productInput}
-                      placeholder={isProductsLoading ? "Ucitavanje..." : "Pretrazi proizvod"}
-                      disabled={isProductsLoading || (products?.length ?? 0) === 0}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setProductInput(value);
-                        setProductSearch(value);
-                        setProductMenuOpen(true);
-                        if (!value) {
-                          field.onChange("");
-                          form.setValue("variantId", "", { shouldDirty: true, shouldValidate: true });
-                        }
-                      }}
-                      onFocus={() => {
-                        setProductMenuOpen(true);
-                        setProductSearch("");
-                      }}
-                      onClick={() => {
-                        setProductMenuOpen(true);
-                        setProductSearch("");
-                      }}
-                      onBlur={(event) => {
-                        field.onBlur();
-                        setTimeout(() => setProductMenuOpen(false), 150);
-                      }}
-                    />
-                    {productMenuOpen && (
-                      <div className="absolute left-0 right-0 z-10 mt-1 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                        {isProductsLoading ? (
-                          <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Ucitavanje...</div>
-                        ) : filteredProducts.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Nema rezultata</div>
-                        ) : (
-                          filteredProducts.map((product, productIndex) => {
-                            const variants = product.variants ?? [];
-                            const hasVariants = variants.length > 0;
-                            const isExpanded = expandedProductId === product._id;
-                            return (
-                              <div
-                                key={product._id}
-                                className={`border-b border-slate-100 last:border-b-0 dark:border-slate-800 ${
-                                  productIndex % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-900/70"
-                                }`}
-                              >
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-blue-50 hover:text-blue-700 dark:text-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-50"
-                                  onMouseDown={(event) => {
-                                    event.preventDefault();
-                                    field.onChange(product._id);
-                                    setProductInput(product.name);
-                                    if (hasVariants) {
-                                      setExpandedProductId((prev) => (prev === product._id ? null : product._id));
-                                      form.setValue("variantId", "", { shouldDirty: true, shouldValidate: true });
-                                    } else {
-                                      setExpandedProductId(null);
-                                      form.setValue("variantId", "", { shouldDirty: true, shouldValidate: true });
-                                      setProductMenuOpen(false);
-                                    }
-                                  }}
-                                >
-                                  {(() => {
-                                    const images = product.images ?? [];
-                                    const mainImage = images.find((image) => image.isMain) ?? images[0];
-                                    if (mainImage?.url) {
-                                      return (
-                                        <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
-                                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img src={mainImage.url} alt={product.name} className="h-full w-full object-cover" />
-                                        </div>
-                                      );
-                                    }
-                                    return <div className="h-12 w-12 flex-shrink-0 rounded-md border border-dashed border-slate-200 dark:border-slate-700/70" />;
-                                  })()}
-                                  <div className="flex-1">
-                                    <p className="font-medium text-slate-800 dark:text-slate-100">{product.name}</p>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                                      Nabavna {formatCurrency(product.nabavnaCena, "EUR")} / Prodajna {formatCurrency(product.prodajnaCena, "EUR")}
-                                    </p>
-                                    {hasVariants ? (
-                                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                                        {variants.length} tip{variants.length === 1 ? "" : "a"} dostupno
-                                      </p>
-                                    ) : (
-                                      <RichTextSnippet text={product.opisFbInsta || product.opisKp || product.opis} />
-                                    )}
-                                  </div>
-                                  {hasVariants && (
-                                    <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
-                                      {isExpanded ? "Zatvori" : "Tipovi"}
-                                    </span>
-                                  )}
-                                </button>
-                                {hasVariants && isExpanded && (
-                                  <div className="space-y-1 border-t border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-800">
-                                    {variants.map((variant) => (
-                                      <button
-                                        key={variant.id}
-                                        type="button"
-                                        className="flex w-full flex-col gap-0.5 rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:border-blue-400 hover:bg-white dark:border-slate-700 dark:bg-slate-800/80 dark:hover:border-slate-500 dark:hover:bg-slate-700"
-                                        onMouseDown={(event) => {
-                                          event.preventDefault();
-                                          field.onChange(product._id);
-                                          form.setValue("variantId", variant.id, { shouldDirty: true, shouldValidate: true });
-                                          setProductInput(composeVariantLabel(product, variant));
-                                          setProductMenuOpen(false);
-                                          setExpandedProductId(null);
-                                        }}
-                                      >
-                                        <span className="font-medium text-slate-800 dark:text-slate-100">
-                                          {composeVariantLabel(product, variant)}
-                                        </span>
-                                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                                          Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
-                                        </span>
-                                        {variant.opis ? (
-                                          <RichTextSnippet text={variant.opis} className="text-[11px]" />
-                                        ) : (
-                                          <RichTextSnippet
-                                            text={product.opisFbInsta || product.opisKp || product.opis}
-                                            className="text-[11px]"
-                                          />
-                                        )}
-                                        {variant.isDefault && (
-                                          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                                            Podrazumevani tip
-                                          </span>
-                                        )}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <FormMessage>{fieldState.error?.message}</FormMessage>
-                </FormItem>
-              )}
-            />
-            {selectedProduct ? (
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <div className="flex items-center gap-3">
-                  {(() => {
-                    const images = selectedProduct.images ?? [];
-                    const mainImage = images.find((image) => image.isMain) ?? images[0];
-                    if (mainImage?.url) {
-                      return (
-                        <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={mainImage.url} alt={selectedProduct.name} className="h-full w-full object-cover" />
-                        </div>
-                      );
-                    }
-                    return (
-                      <div className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-300 text-[10px] uppercase text-slate-400">
-                        N/A
-                      </div>
-                    );
-                  })()}
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{selectedProduct.name}</p>
-                    {selectedVariantForPreview ? (
-                      <p className="text-xs text-slate-600">{selectedVariantForPreview.label}</p>
-                    ) : null}
-                  </div>
+                        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <FormLabel className="text-base">Stavke narudzbine</FormLabel>
+                  <p className="text-xs text-slate-500">Dodaj jedan ili vise proizvoda i tip.</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Prodajna cena</p>
-                  <p className="text-base font-semibold text-slate-900">
-                    {formatCurrency(selectedVariantForPreview?.prodajnaCena ?? selectedProduct.prodajnaCena, "EUR")}
-                  </p>
-                </div>
+                <Badge variant="secondary" className="shrink-0">
+                  {draftItems.length} stavki
+                </Badge>
               </div>
-            ) : null}
-
-            {selectedVariants.length > 0 && (
-              <FormField
-                name="variantId"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                    <FormLabel>Tip / varijanta</FormLabel>
-                    <p className="text-xs text-slate-500">
-                      Odaberi tacno koji tip proizvoda je prodat. Podrazumevani tip se popunjava automatski, ali mozes da ga promenis.
-                    </p>
-                    <div className="grid gap-2 md:grid-cols-2">
-                      {selectedVariants.map((variant, index) => {
-                        const isActive = field.value === variant.id;
-                        const composedLabel = selectedProduct ? composeVariantLabel(selectedProduct, variant) : variant.label;
+              <div className="relative">
+                <Input
+                  ref={productInputRef}
+                  name="productSearch"
+                  value={productInput}
+                  placeholder={isProductsLoading ? "Ucitavanje..." : "Pretrazi proizvod"}
+                  disabled={isProductsLoading || (products?.length ?? 0) === 0}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setProductInput(value);
+                    setProductSearch(value);
+                    setProductMenuOpen(true);
+                    if (!value) {
+                      setItemProductId("");
+                      setItemVariantId("");
+                      setItemSupplierId("");
+                    }
+                  }}
+                  onFocus={() => {
+                    setProductMenuOpen(true);
+                    setProductSearch("");
+                  }}
+                  onClick={() => {
+                    setProductMenuOpen(true);
+                    setProductSearch("");
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setProductMenuOpen(false), 150);
+                  }}
+                />
+                {productMenuOpen && (
+                  <div className="absolute left-0 right-0 z-10 mt-1 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                    {isProductsLoading ? (
+                      <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Ucitavanje...</div>
+                    ) : filteredProducts.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Nema rezultata</div>
+                    ) : (
+                      filteredProducts.map((product, productIndex) => {
+                        const variants = product.variants ?? [];
+                        const hasVariants = variants.length > 0;
+                        const isExpanded = expandedProductId === product._id;
                         return (
-                          <label
-                            key={variant.id}
-                            className={`cursor-pointer rounded-md border px-3 py-2 text-sm transition ${
-                              isActive ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" : "border-slate-200 hover:border-slate-300"
+                          <div
+                            key={product._id}
+                            className={`border-b border-slate-100 last:border-b-0 dark:border-slate-800 ${
+                              productIndex % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-900/70"
                             }`}
                           >
-                            <input
-                              type="radio"
-                              name={field.name}
-                              value={variant.id}
-                              checked={isActive}
-                              ref={index === 0 ? field.ref : undefined}
-                              onChange={() => {
-                                field.onChange(variant.id);
-                                if (selectedProduct) {
-                                  setProductInput(composedLabel);
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-blue-50 hover:text-blue-700 dark:text-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-50"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                setItemProductId(product._id);
+                                setProductInput(product.name);
+                                setItemVariantId("");
+                                setItemSupplierId("");
+                                setItemQuantity(1);
+                                if (hasVariants) {
+                                  setExpandedProductId((prev) => (prev === product._id ? null : product._id));
+                                } else {
+                                  setExpandedProductId(null);
+                                  setProductMenuOpen(false);
                                 }
-                                setProductMenuOpen(false);
-                                setExpandedProductId(null);
                               }}
-                              onBlur={field.onBlur}
-                              className="sr-only"
-                            />
-                            <span className="font-medium text-slate-800">{composedLabel}</span>
-                            <span className="text-xs text-slate-500">
-                              Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
-                            </span>
-                            <RichTextSnippet text={variant.opis || selectedProduct?.opisFbInsta || selectedProduct?.opisKp || selectedProduct?.opis} />
-                            {variant.isDefault ? (
-                              <span className="text-[11px] font-semibold text-emerald-600">Podrazumevano</span>
-                            ) : null}
-                          </label>
+                            >
+                              {(() => {
+                                const images = product.images ?? [];
+                                const mainImage = images.find((image) => image.isMain) ?? images[0];
+                                if (mainImage?.url) {
+                                  return (
+                                    <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={mainImage.url} alt={product.name} className="h-full w-full object-cover" />
+                                    </div>
+                                  );
+                                }
+                                return <div className="h-12 w-12 flex-shrink-0 rounded-md border border-dashed border-slate-200 dark:border-slate-700/70" />;
+                              })()}
+                              <div className="flex-1">
+                                <p className="font-medium text-slate-800 dark:text-slate-100">{product.name}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  Nabavna {formatCurrency(product.nabavnaCena, "EUR")} / Prodajna {formatCurrency(product.prodajnaCena, "EUR")}
+                                </p>
+                                {hasVariants ? (
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {variants.length} tip{variants.length === 1 ? "" : "a"} dostupno
+                                  </p>
+                                ) : (
+                                  <RichTextSnippet text={product.opisFbInsta || product.opisKp || product.opis} />
+                                )}
+                              </div>
+                              {hasVariants && (
+                                <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
+                                  {isExpanded ? "Zatvori" : "Tipovi"}
+                                </span>
+                              )}
+                            </button>
+                            {hasVariants && isExpanded && (
+                              <div className="space-y-1 border-t border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-800">
+                                {variants.map((variant) => (
+                                  <button
+                                    key={variant.id}
+                                    type="button"
+                                    className="flex w-full flex-col gap-0.5 rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:border-blue-400 hover:bg-white dark:border-slate-700 dark:bg-slate-800/80 dark:hover:border-slate-500 dark:hover:bg-slate-700"
+                                    onMouseDown={(event) => {
+                                      event.preventDefault();
+                                      setItemProductId(product._id);
+                                      setItemVariantId(variant.id);
+                                      setProductInput(composeVariantLabel(product, variant));
+                                      setProductMenuOpen(false);
+                                      setExpandedProductId(null);
+                                    }}
+                                  >
+                                    <span className="font-medium text-slate-800 dark:text-slate-100">
+                                      {composeVariantLabel(product, variant)}
+                                    </span>
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                                      Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
+                                    </span>
+                                    {variant.opis ? (
+                                      <RichTextSnippet text={variant.opis} className="text-[11px]" />
+                                    ) : (
+                                      <RichTextSnippet
+                                        text={product.opisFbInsta || product.opisKp || product.opis}
+                                        className="text-[11px]"
+                                      />
+                                    )}
+                                    {variant.isDefault && (
+                                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                        Podrazumevani tip
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         );
-                      })}
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {selectedProduct ? (
+                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    {(() => {
+                      const images = selectedProduct.images ?? [];
+                      const mainImage = images.find((image) => image.isMain) ?? images[0];
+                      if (mainImage?.url) {
+                        return (
+                          <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={mainImage.url} alt={selectedProduct.name} className="h-full w-full object-cover" />
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-300 text-[10px] uppercase text-slate-400">
+                          N/A
+                        </div>
+                      );
+                    })()}
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{selectedProduct.name}</p>
+                      {selectedVariantForPreview ? <p className="text-xs text-slate-600">{selectedVariantForPreview.label}</p> : null}
                     </div>
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
-                  </FormItem>
-                )}
-              />
-            )}
-            {selectedProduct && supplierOptionsWithNames.length > 0 ? (
-              <FormField
-                name="supplierId"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                <FormLabel>Dobavljac</FormLabel>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                  ref={field.ref}
-                  name={field.name}
-                  value={field.value ?? ""}
-                  onChange={(event) => field.onChange(event.target.value)}
-                  onBlur={field.onBlur}
-                >
-                      <option value="">
-                        {bestSupplierOption
-                          ? `Najpovoljniji (${formatCurrency(bestSupplierOption.price, "EUR")})`
-                          : "Najpovoljniji"}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Prodajna cena</p>
+                    <p className="text-base font-semibold text-slate-900">
+                      {formatCurrency(selectedVariantForPreview?.prodajnaCena ?? selectedProduct.prodajnaCena, "EUR")}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
+              {selectedVariants.length > 0 ? (
+                <div className="space-y-2">
+                  <FormLabel>Tip / varijanta</FormLabel>
+                  <p className="text-xs text-slate-500">
+                    Odaberi tacno koji tip proizvoda dodajes. Podrazumevani tip se popunjava automatski, ali mozes da ga promenis.
+                  </p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {selectedVariants.map((variant) => {
+                      const isActive = itemVariantId === variant.id;
+                      const composedLabel = selectedProduct ? composeVariantLabel(selectedProduct, variant) : variant.label;
+                      return (
+                        <label
+                          key={variant.id}
+                          className={`cursor-pointer rounded-md border px-3 py-2 text-sm transition ${
+                            isActive ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" : "border-slate-200 hover:border-slate-300"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="variantId"
+                            value={variant.id}
+                            checked={isActive}
+                            onChange={() => {
+                              setItemVariantId(variant.id);
+                              if (selectedProduct) {
+                                setProductInput(composedLabel);
+                              }
+                              setProductMenuOpen(false);
+                              setExpandedProductId(null);
+                            }}
+                            className="sr-only"
+                          />
+                          <span className="font-medium text-slate-800">{composedLabel}</span>
+                          <span className="text-xs text-slate-500">
+                            Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
+                          </span>
+                          <RichTextSnippet text={variant.opis || selectedProduct?.opisFbInsta || selectedProduct?.opisKp || selectedProduct?.opis} />
+                          {variant.isDefault ? <span className="text-[11px] font-semibold text-emerald-600">Podrazumevano</span> : null}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {selectedProduct && supplierOptionsWithNames.length > 0 ? (
+                <div>
+                  <FormLabel>Dobavljac</FormLabel>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                    name="supplierId"
+                    value={itemSupplierId}
+                    onChange={(event) => setItemSupplierId(event.target.value)}
+                  >
+                    <option value="">
+                      {bestSupplierOption
+                        ? `Najpovoljniji (${formatCurrency(bestSupplierOption.price, "EUR")})`
+                        : "Najpovoljniji"}
+                    </option>
+                    {supplierOptionsWithNames.map((option) => (
+                      <option key={option.supplierId} value={option.supplierId}>
+                        {(option.supplierName ?? "Dobavljac") + " - " + formatCurrency(option.price, "EUR")}
                       </option>
-                      {supplierOptionsWithNames.map((option) => (
-                        <option key={option.supplierId} value={option.supplierId}>
-                          {(option.supplierName ?? "Dobavljac") + " - " + formatCurrency(option.price, "EUR")}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-slate-500">Ako ne izaberes, racunamo najpovoljniju ponudu.</p>
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
-                  </FormItem>
-                )}
-              />
-            ) : null}
-            <div className="grid gap-4 md:grid-cols-2">
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500">Ako ne izaberes, racunamo najpovoljniju ponudu.</p>
+                </div>
+              ) : null}
+
+              {selectedProduct ? (
+                <div className="grid gap-3 md:grid-cols-3 md:items-end">
+                  <div>
+                    <FormLabel>Kolicina</FormLabel>
+                    <Input
+                      name="itemQuantity"
+                      type="number"
+                      min={1}
+                      value={itemQuantity}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        if (Number.isNaN(next)) {
+                          setItemQuantity(1);
+                          return;
+                        }
+                        setItemQuantity(Math.max(Math.round(next), 1));
+                      }}
+                    />
+                  </div>
+                  <div className="md:col-span-2 flex flex-wrap items-center gap-2">
+                    <Button type="button" onClick={handleAddItem} className="gap-2">
+                      <Plus className="h-4 w-4" />
+                      Dodaj u narudzbinu
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setItemProductId("");
+                        setItemVariantId("");
+                        setItemSupplierId("");
+                        setProductInput("");
+                        setItemQuantity(1);
+                      }}
+                    >
+                      Ponisti izbor
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {draftItems.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-800">Dodate stavke</p>
+                    <div className="text-right text-xs text-slate-500">
+                      <p>Prodajno: {formatCurrency(draftTotals.totalProdajno, "EUR")}</p>
+                      <p>Nabavno: {formatCurrency(draftTotals.totalNabavno, "EUR")}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {draftItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-start justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                      >
+                        <div className="space-y-0.5">
+                          <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                          {item.variantLabel ? <p className="text-xs text-slate-500">{item.variantLabel}</p> : null}
+                          <p className="text-xs text-slate-500">
+                            Kolicina: {item.kolicina} • Nabavna {formatCurrency(item.nabavnaCena, "EUR")} • Prodajna {formatCurrency(item.prodajnaCena, "EUR")}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveItem(item.id)}
+                          aria-label="Ukloni stavku"
+                        >
+                          <Trash2 className="h-4 w-4 text-slate-500" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>            <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 name="customerName"
                 render={({ field, fieldState }) => (
@@ -983,7 +1187,7 @@ function OrdersContent() {
                     />
                     <div className="space-y-0.5">
                       <FormLabel htmlFor="pickup" className="m-0 cursor-pointer">
-                        Lično preuzimanje
+                        LiÄno preuzimanje
                       </FormLabel>
                       <p className="text-xs text-slate-500">Oznaci ako kupac preuzima bez kurira.</p>
                     </div>
@@ -1018,7 +1222,7 @@ function OrdersContent() {
         </div>
         <div className="flex items-center gap-2">
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
-            {pagination.total} narudzbina
+            {ordersPagination.total} narudzbina
           </div>
           <Button onClick={openCreateModal} className="gap-2">
             <Plus className="h-4 w-4" />
@@ -1039,37 +1243,21 @@ function OrdersContent() {
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
-                setPage(1);
+                resetOrdersFeed();
               }}
               className="sm:w-72"
             />
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <span>
-                {pagination.total === 0
+                {ordersPagination.total === 0
                   ? "Nema podataka"
-                  : `${(pagination.page - 1) * pagination.pageSize + 1} - ${Math.min(
-                      pagination.page * pagination.pageSize,
-                      pagination.total,
-                    )} od ${pagination.total}`}
+                  : `Prikazano ${orders.length} od ${ordersPagination.total}`}
               </span>
-              <div className="flex gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-                >
-                  Prev
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= pagination.totalPages}
-                  onClick={() => setPage((prev) => prev + 1)}
-                >
-                  Next
-                </Button>
-              </div>
+              {hasMoreOrders ? (
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                  Skroluj do dna za jos 10
+                </span>
+              ) : null}
             </div>
           </div>
         </CardHeader>
@@ -1184,6 +1372,9 @@ function OrdersContent() {
               )}
             </TableBody>
           </Table>
+          <div ref={ordersLoaderRef} className="flex justify-center">
+            <LoadingDots show={isLoadingMoreOrders && hasMoreOrders} />
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RequireAuth } from "@/components/RequireAuth";
+import { LoadingDots } from "@/components/LoadingDots";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
+import { useInfiniteItems } from "@/lib/useInfiniteItems";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant } from "@/types/order";
 
@@ -80,6 +82,15 @@ function SocialContent() {
       return (product.variants ?? []).some((variant) => variant.label.toLowerCase().includes(needle));
     });
   }, [products, search]);
+  const {
+    visibleItems: visibleProducts,
+    loaderRef: postsLoaderRef,
+    isLoadingMore: isLoadingMorePosts,
+    hasMore: hasMorePosts,
+  } = useInfiniteItems(filteredProducts, {
+    batchSize: 10,
+    resetDeps: [search, viewMode, isMobile ? "mobile" : "desktop"],
+  });
 
   const selectedProduct = useMemo(
     () => (products ?? []).find((item) => item._id === selectedProductId) ?? null,
@@ -270,7 +281,7 @@ function SocialContent() {
                 </div>
               ) : viewMode === "list" && !isMobile ? (
                 <div className="space-y-2">
-                  {filteredProducts.map((product) => {
+                  {visibleProducts.map((product) => {
                     const main = getMainImage(product);
                     const isActive = selectedProductId === product._id;
                     const primaryVariant = resolvePrimaryVariant(product);
@@ -341,7 +352,7 @@ function SocialContent() {
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {filteredProducts.map((product) => {
+                  {visibleProducts.map((product) => {
                     const main = getMainImage(product);
                     const primaryVariant = resolvePrimaryVariant(product);
                     const price = formatCurrency(primaryVariant?.prodajnaCena ?? product.prodajnaCena, "EUR");
@@ -413,6 +424,12 @@ function SocialContent() {
                 </div>
               )}
             </div>
+
+            {visibleProducts.length > 0 ? (
+              <div ref={postsLoaderRef} className="flex justify-center">
+                <LoadingDots show={isLoadingMorePosts && hasMorePosts} />
+              </div>
+            ) : null}
 
             {selectedProduct ? (
               <div className="grid gap-4">

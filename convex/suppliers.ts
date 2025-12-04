@@ -6,6 +6,12 @@ const defaultSuppliers = ["Petrit", "Menad"];
 
 const normalizeName = (value: string) => value.trim();
 
+const collectSupplierIdsFromOrder = (order: any) => {
+  const fromItems = (order.items ?? []).map((item: any) => item.supplierId).filter(Boolean);
+  if (fromItems.length > 0) return fromItems;
+  return order.supplierId ? [order.supplierId] : [];
+};
+
 export const list = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
@@ -35,9 +41,11 @@ export const list = query({
 
     const orderUsageMap = new Map<string, number>();
     orders.forEach((order) => {
-      if (!order.supplierId) return;
-      const key = String(order.supplierId);
-      orderUsageMap.set(key, (orderUsageMap.get(key) ?? 0) + 1);
+      const supplierIds = collectSupplierIdsFromOrder(order);
+      supplierIds.forEach((id: string) => {
+        const key = String(id);
+        orderUsageMap.set(key, (orderUsageMap.get(key) ?? 0) + 1);
+      });
     });
 
     return suppliers
@@ -106,7 +114,9 @@ export const remove = mutation({
     const productsUsing = products.filter((product) =>
       (product.supplierOffers ?? []).some((offer) => String(offer.supplierId) === String(args.id)),
     );
-    const ordersUsing = orders.filter((order) => String(order.supplierId ?? "") === String(args.id));
+    const ordersUsing = orders.filter((order) =>
+      collectSupplierIdsFromOrder(order).some((id) => String(id) === String(args.id)),
+    );
 
     if (productsUsing.length > 0 || ordersUsing.length > 0) {
       throw new Error(

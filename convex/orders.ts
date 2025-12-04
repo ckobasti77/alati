@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
 
 const orderStages = ["poruceno", "poslato", "stiglo", "legle_pare"] as const;
@@ -39,6 +40,20 @@ const normalizeTransportMode = (mode?: (typeof transportModes)[number]) => {
   return transportModes.includes(mode) ? mode : undefined;
 };
 
+const generateItemId = () => Math.random().toString(36).slice(2);
+
+const normalizeQuantity = (value?: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+  return Math.max(Math.round(parsed), 1);
+};
+
+const sanitizePrice = (value?: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return parsed;
+};
+
 const resolveSupplierPrice = (
   product: any,
   variantId?: string,
@@ -74,6 +89,184 @@ const formatVariantLabel = (productName: string, variantLabel?: string) => {
   return `${productName} - ${trimmed}`;
 };
 
+type OrderItemRecord = {
+  id: string;
+  productId?: Id<"products">;
+  supplierId?: Id<"suppliers">;
+  variantId?: string;
+  variantLabel?: string;
+  title: string;
+  kolicina: number;
+  nabavnaCena: number;
+  prodajnaCena: number;
+};
+
+type IncomingItem = Partial<OrderItemRecord>;
+
+const resolveItemsFromOrder = (order: Doc<"orders">): OrderItemRecord[] => {
+  const stored = order.items ?? [];
+  const normalized = stored
+    .map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      supplierId: item.supplierId,
+      variantId: item.variantId,
+      variantLabel: item.variantLabel,
+      title: item.title || order.title,
+      kolicina: normalizeQuantity(item.kolicina),
+      nabavnaCena: sanitizePrice(item.nabavnaCena),
+      prodajnaCena: sanitizePrice(item.prodajnaCena),
+    }))
+    .filter((item) => item.title && item.kolicina > 0);
+  if (normalized.length > 0) return normalized;
+  return [
+    {
+      id: generateItemId(),
+      productId: order.productId,
+      supplierId: order.supplierId,
+      variantId: order.variantId,
+      variantLabel: order.variantLabel,
+      title: order.title,
+      kolicina: normalizeQuantity(order.kolicina),
+      nabavnaCena: sanitizePrice(order.nabavnaCena),
+      prodajnaCena: sanitizePrice(order.prodajnaCena),
+    },
+  ];
+};
+
+const summarizeItems = (items: OrderItemRecord[]) => {
+  const totals = items.reduce(
+    (acc, item) => {
+      acc.totalQty += item.kolicina;
+      acc.totalProdajno += item.prodajnaCena * item.kolicina;
+      acc.totalNabavno += item.nabavnaCena * item.kolicina;
+      return acc;
+    },
+    { totalQty: 0, totalProdajno: 0, totalNabavno: 0 },
+  );
+  const avgProdajna = totals.totalQty > 0 ? totals.totalProdajno / totals.totalQty : 0;
+  const avgNabavna = totals.totalQty > 0 ? totals.totalNabavno / totals.totalQty : 0;
+  return { ...totals, avgProdajna, avgNabavna };
+};
+
+const normalizeOrderItems = async (
+  ctx: any,
+  userId: Id<"users">,
+  incoming: IncomingItem[],
+  fallbackTitle: string,
+) => {
+  const normalized: OrderItemRecord[] = [];
+
+  for (const item of incoming) {
+    const qty = normalizeQuantity(item.kolicina);
+    let productId = item.productId;
+    let supplierId = item.supplierId;
+    let variantId = item.variantId;
+    let variantLabel = item.variantLabel?.trim();
+    let title = item.title?.trim();
+    let nabavnaCena = item.nabavnaCena;
+    let prodajnaCena = item.prodajnaCena;
+    let product: Doc<"products"> | null = null;
+
+    if (productId) {
+      const fetched = await ctx.db.get(productId);
+      if (fetched && fetched.userId === userId) {
+        product = fetched;
+      } else {
+        productId = undefined;
+        supplierId = undefined;
+        variantId = undefined;
+      }
+    }
+
+    if (product) {
+      const productVariants = product.variants ?? [];
+      let resolvedVariant: (typeof productVariants)[number] | undefined;
+      if (productVariants.length > 0) {
+        const foundVariant = variantId ? productVariants.find((variant) => variant.id === variantId) : undefined;
+        resolvedVariant = foundVariant ?? productVariants.find((variant) => variant.isDefault) ?? productVariants[0];
+        variantId = resolvedVariant?.id ?? variantId;
+        const formattedLabel = formatVariantLabel(product.name, variantLabel ?? resolvedVariant?.label);
+        variantLabel = formattedLabel ?? variantLabel;
+      } else {
+        variantId = undefined;
+        variantLabel = undefined;
+      }
+      prodajnaCena = resolvedVariant?.prodajnaCena ?? product.prodajnaCena;
+      const supplierChoice = resolveSupplierPrice(product, variantId, supplierId);
+      supplierId = supplierChoice.supplierId ?? supplierId;
+      nabavnaCena = supplierChoice.price ?? resolvedVariant?.nabavnaCena ?? product.nabavnaCena;
+      if (!title) {
+        title = variantLabel ?? product.name;
+      }
+    }
+
+    const normalizedItem: OrderItemRecord = {
+      id: item.id?.trim() || generateItemId(),
+      productId,
+      supplierId,
+      variantId,
+      variantLabel,
+      title: title?.trim() || variantLabel || fallbackTitle || "Stavka",
+      kolicina: qty,
+      nabavnaCena: sanitizePrice(nabavnaCena),
+      prodajnaCena: sanitizePrice(prodajnaCena),
+    };
+    normalized.push(normalizedItem);
+  }
+
+  return normalized.filter((item) => item.title && item.kolicina > 0);
+};
+
+const orderTotals = (order: Doc<"orders">) => {
+  const items = resolveItemsFromOrder(order);
+  const totals = summarizeItems(items);
+  const transport = order.pickup ? 0 : order.transportCost ?? 0;
+  const profit = totals.totalProdajno - totals.totalNabavno - transport;
+  const myShare = order.stage === "legle_pare" ? profit * ((order.myProfitPercent ?? 0) / 100) : 0;
+  return { items, totals, transport, profit, myShare };
+};
+
+const loadProductWithAssets = async (ctx: any, productId: Id<"products">, userId: Id<"users">) => {
+  const storedProduct = await ctx.db.get(productId);
+  if (!storedProduct || storedProduct.userId !== userId) return null;
+
+  const images = await Promise.all(
+    (storedProduct.images ?? []).map(async (image: any) => ({
+      ...image,
+      url: await ctx.storage.getUrl(image.storageId),
+    })),
+  );
+  const variants = await Promise.all(
+    (storedProduct.variants ?? []).map(async (variant: any) => {
+      const variantImages = await Promise.all(
+        (variant.images ?? []).map(async (image: any) => ({
+          ...image,
+          url: await ctx.storage.getUrl(image.storageId),
+        })),
+      );
+      return { ...variant, images: variantImages };
+    }),
+  );
+  const adImage = storedProduct.adImage
+    ? { ...storedProduct.adImage, url: await ctx.storage.getUrl(storedProduct.adImage.storageId) }
+    : undefined;
+
+  return { ...storedProduct, images, variants, adImage };
+};
+
+const itemArgSchema = v.object({
+  id: v.optional(v.string()),
+  productId: v.optional(v.id("products")),
+  supplierId: v.optional(v.id("suppliers")),
+  variantId: v.optional(v.string()),
+  variantLabel: v.optional(v.string()),
+  title: v.optional(v.string()),
+  kolicina: v.optional(v.number()),
+  nabavnaCena: v.optional(v.number()),
+  prodajnaCena: v.optional(v.number()),
+});
+
 export const latest = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
@@ -84,7 +277,8 @@ export const latest = query({
       .collect();
     return items
       .sort((a, b) => b.kreiranoAt - a.kreiranoAt)
-      .slice(0, 10);
+      .slice(0, 10)
+      .map((order) => ({ ...order, items: resolveItemsFromOrder(order) }));
   },
 });
 
@@ -98,15 +292,10 @@ export const summary = query({
       .collect();
     return orders.reduce(
       (acc, order) => {
-        const prodajno = order.prodajnaCena * order.kolicina;
-        const nabavno = order.nabavnaCena * order.kolicina;
-        const transport = order.transportCost ?? 0;
-        const profit = prodajno - nabavno - transport;
-        const canCountMyShare = order.stage === "legle_pare";
-        const myShare = canCountMyShare ? profit * ((order.myProfitPercent ?? 0) / 100) : 0;
+        const { totals, transport, profit, myShare } = orderTotals(order);
         acc.brojNarudzbina += 1;
-        acc.ukupnoProdajno += prodajno;
-        acc.ukupnoNabavno += nabavno;
+        acc.ukupnoProdajno += totals.totalProdajno;
+        acc.ukupnoNabavno += totals.totalNabavno;
         acc.profit += profit;
         acc.mojProfit += myShare;
         return acc;
@@ -131,32 +320,21 @@ export const get = query({
       return null;
     }
 
-    let product;
-    if (order.productId) {
-      const storedProduct = await ctx.db.get(order.productId);
-      if (storedProduct && storedProduct.userId === user._id) {
-        const images = await Promise.all(
-          (storedProduct.images ?? []).map(async (image) => ({
-            ...image,
-            url: await ctx.storage.getUrl(image.storageId),
-          })),
-        );
-        const variants = await Promise.all(
-          (storedProduct.variants ?? []).map(async (variant) => {
-            const variantImages = await Promise.all(
-              (variant.images ?? []).map(async (image) => ({
-                ...image,
-                url: await ctx.storage.getUrl(image.storageId),
-              })),
-            );
-            return { ...variant, images: variantImages };
-          }),
-        );
-        product = { ...storedProduct, images, variants };
-      }
-    }
+    const items = resolveItemsFromOrder(order);
+    const productsMap = new Map<string, any>();
+    const itemsWithProducts = await Promise.all(
+      items.map(async (item) => {
+        if (!item.productId) return item;
+        const key = String(item.productId);
+        if (!productsMap.has(key)) {
+          productsMap.set(key, await loadProductWithAssets(ctx, item.productId, user._id));
+        }
+        return { ...item, product: productsMap.get(key) ?? undefined };
+      }),
+    );
+    const primaryProduct = itemsWithProducts.find((item) => (item as any).product)?.product;
 
-    return { ...order, product };
+    return { ...order, items: itemsWithProducts, product: primaryProduct };
   },
 });
 
@@ -172,27 +350,35 @@ export const list = query({
     const page = Math.max(args.page ?? 1, 1);
     const pageSize = Math.max(Math.min(args.pageSize ?? 20, 100), 1);
 
-    let items = await ctx.db
+    let orders = await ctx.db
       .query("orders")
       .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
       .collect();
-    items = items.sort((a, b) => b.kreiranoAt - a.kreiranoAt);
+    orders = orders
+      .map((order) => ({ ...order, items: resolveItemsFromOrder(order) }))
+      .sort((a, b) => b.kreiranoAt - a.kreiranoAt);
 
     if (args.search) {
       const needle = args.search.toLowerCase();
-      items = items.filter((order) => {
-        if (order.title.toLowerCase().includes(needle)) return true;
-        if (order.variantLabel?.toLowerCase().includes(needle)) return true;
-        if (order.customerName.toLowerCase().includes(needle)) return true;
-        if (order.address.toLowerCase().includes(needle)) return true;
-        if (order.phone.toLowerCase().includes(needle)) return true;
-        return false;
+      orders = orders.filter((order) => {
+        const hasBaseMatch =
+          order.title.toLowerCase().includes(needle) ||
+          order.variantLabel?.toLowerCase().includes(needle) ||
+          order.customerName.toLowerCase().includes(needle) ||
+          order.address.toLowerCase().includes(needle) ||
+          order.phone.toLowerCase().includes(needle);
+        if (hasBaseMatch) return true;
+        return (order.items ?? []).some(
+          (item) =>
+            item.title.toLowerCase().includes(needle) ||
+            (item.variantLabel ?? "").toLowerCase().includes(needle),
+        );
       });
     }
 
-    const total = items.length;
+    const total = orders.length;
     const offset = (page - 1) * pageSize;
-    const pageItems = items.slice(offset, offset + pageSize);
+    const pageItems = orders.slice(offset, offset + pageSize);
 
     return {
       items: pageItems,
@@ -216,8 +402,8 @@ export const create = mutation({
     variantLabel: v.optional(v.string()),
     title: v.string(),
     kolicina: v.optional(v.number()),
-    nabavnaCena: v.number(),
-    prodajnaCena: v.number(),
+    nabavnaCena: v.optional(v.number()),
+    prodajnaCena: v.optional(v.number()),
     napomena: v.optional(v.string()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
@@ -226,86 +412,60 @@ export const create = mutation({
     phone: v.string(),
     myProfitPercent: v.optional(v.number()),
     pickup: v.optional(v.boolean()),
+    items: v.optional(v.array(itemArgSchema)),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const now = Date.now();
-
-    let title = args.title.trim();
-    let nabavnaCena = args.nabavnaCena;
-    let prodajnaCena = args.prodajnaCena;
-    const kolicina = Math.max(args.kolicina ?? 1, 1);
-    let productId = args.productId;
-    let supplierId = args.supplierId;
-    let variantId = args.variantId;
-    let variantLabel = args.variantLabel?.trim();
-    const customerName = args.customerName.trim();
-    const address = args.address.trim();
-    const phone = args.phone.trim();
-    const stage = normalizeStage(args.stage);
-    const myProfitPercent = clampPercent(args.myProfitPercent);
-    const transportCost = normalizeTransportCost(args.transportCost);
-    const transportMode = normalizeTransportMode(args.transportMode);
     const pickup = Boolean(args.pickup);
+    const transportCost = pickup ? 0 : normalizeTransportCost(args.transportCost);
+    const transportMode = pickup ? undefined : normalizeTransportMode(args.transportMode);
 
-    if (productId) {
-      const product = await ctx.db.get(productId);
-      if (product && product.userId === user._id) {
-        if (!title) title = product.name;
-        const productVariants = product.variants ?? [];
-        let resolvedVariant: { id: string; nabavnaCena: number; prodajnaCena: number } | undefined;
-        if (productVariants.length > 0) {
-          const foundVariant = variantId
-            ? productVariants.find((variant) => variant.id === variantId)
-            : undefined;
-          let normalizedVariant = foundVariant;
-          if (!normalizedVariant) {
-            normalizedVariant = productVariants.find((variant) => variant.isDefault) ?? productVariants[0];
-          }
-          variantId = normalizedVariant?.id ?? variantId;
-          const formattedIncoming = formatVariantLabel(product.name, variantLabel);
-          const fallbackLabel = normalizedVariant ? formatVariantLabel(product.name, normalizedVariant.label) : undefined;
-          variantLabel = formattedIncoming ?? fallbackLabel;
-          resolvedVariant = normalizedVariant;
-        } else {
-          variantId = variantLabel = undefined;
-        }
-        prodajnaCena = resolvedVariant?.prodajnaCena ?? product.prodajnaCena;
-        const supplierChoice = resolveSupplierPrice(product, variantId, supplierId);
-        supplierId = supplierChoice.supplierId ?? supplierId;
-        nabavnaCena = supplierChoice.price ?? resolvedVariant?.nabavnaCena ?? product.nabavnaCena;
-      } else {
-        productId = undefined;
-        variantId = undefined;
-        variantLabel = undefined;
-        supplierId = undefined;
-        prodajnaCena = args.prodajnaCena;
-      }
+    const baseItems: IncomingItem[] =
+      args.items && args.items.length > 0
+        ? args.items
+        : [
+            {
+              id: args.variantId ?? undefined,
+              productId: args.productId,
+              supplierId: args.supplierId,
+              variantId: args.variantId,
+              variantLabel: args.variantLabel,
+              title: args.title,
+              kolicina: args.kolicina,
+              nabavnaCena: args.nabavnaCena,
+              prodajnaCena: args.prodajnaCena,
+            },
+          ];
+
+    const normalizedItems = await normalizeOrderItems(ctx, user._id, baseItems, args.title);
+    if (normalizedItems.length === 0) {
+      throw new Error("Dodaj bar jedan proizvod u narudzbinu.");
     }
 
-    if (!title) {
-      throw new Error("Naziv narudzbine je obavezan.");
-    }
+    const totals = summarizeItems(normalizedItems);
+    const title = args.title.trim() || normalizedItems[0].title || "Narudzbina";
 
     await ctx.db.insert("orders", {
       userId: user._id,
-      stage,
-      productId,
-      supplierId,
-      variantId,
-      variantLabel,
+      stage: normalizeStage(args.stage),
+      productId: normalizedItems[0].productId,
+      supplierId: normalizedItems[0].supplierId,
+      variantId: normalizedItems[0].variantId,
+      variantLabel: normalizedItems[0].variantLabel,
       title,
-      kolicina,
-      nabavnaCena,
-      prodajnaCena,
+      kolicina: Math.max(totals.totalQty, 1),
+      nabavnaCena: totals.avgNabavna,
+      prodajnaCena: totals.avgProdajna,
       napomena: args.napomena?.trim() || undefined,
       transportCost,
       transportMode,
-      customerName,
-      address,
-      phone,
-      myProfitPercent,
+      customerName: args.customerName.trim(),
+      address: args.address.trim(),
+      phone: args.phone.trim(),
+      myProfitPercent: clampPercent(args.myProfitPercent),
       pickup,
+      items: normalizedItems,
       kreiranoAt: now,
     });
   },
@@ -322,8 +482,8 @@ export const update = mutation({
     variantLabel: v.optional(v.string()),
     title: v.string(),
     kolicina: v.optional(v.number()),
-    nabavnaCena: v.number(),
-    prodajnaCena: v.number(),
+    nabavnaCena: v.optional(v.number()),
+    prodajnaCena: v.optional(v.number()),
     napomena: v.optional(v.string()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
@@ -332,6 +492,7 @@ export const update = mutation({
     phone: v.string(),
     myProfitPercent: v.optional(v.number()),
     pickup: v.optional(v.boolean()),
+    items: v.optional(v.array(itemArgSchema)),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
@@ -342,80 +503,43 @@ export const update = mutation({
     if (existing.userId !== user._id) {
       throw new Error("Neautorizovan pristup narudzbini.");
     }
-    let title = args.title.trim();
-    let nabavnaCena = args.nabavnaCena;
-    let prodajnaCena = args.prodajnaCena;
-    const kolicina = Math.max(args.kolicina ?? 1, 1);
-    let productId = args.productId;
-    let supplierId = args.supplierId;
-    let variantId = args.variantId;
-    let variantLabel = args.variantLabel?.trim();
-    const customerName = args.customerName.trim();
-    const address = args.address.trim();
-    const phone = args.phone.trim();
-    const stage = normalizeStage(args.stage);
-    const myProfitPercent = clampPercent(args.myProfitPercent);
-    const transportCost = normalizeTransportCost(args.transportCost);
+
     const pickup = args.pickup ?? existing.pickup ?? false;
+    const transportCost = pickup ? 0 : normalizeTransportCost(args.transportCost);
+    const transportMode = pickup ? undefined : normalizeTransportMode(args.transportMode);
 
-    if (productId) {
-      const product = await ctx.db.get(productId);
-      if (product && product.userId === user._id) {
-        if (!title) title = product.name;
-        const productVariants = product.variants ?? [];
-        let resolvedVariant: { id: string; nabavnaCena: number; prodajnaCena: number } | undefined;
-        if (productVariants.length > 0) {
-          const foundVariant = variantId ? productVariants.find((variant) => variant.id === variantId) : undefined;
-          let normalizedVariant = foundVariant;
-          if (!normalizedVariant) {
-            normalizedVariant = productVariants.find((variant) => variant.isDefault) ?? productVariants[0];
-          }
-          variantId = normalizedVariant?.id ?? variantId;
-          const formattedIncoming = formatVariantLabel(product.name, variantLabel);
-          const fallbackLabel = normalizedVariant ? formatVariantLabel(product.name, normalizedVariant.label) : undefined;
-          variantLabel = formattedIncoming ?? fallbackLabel;
-          resolvedVariant = normalizedVariant;
-        } else {
-          variantId = undefined;
-          variantLabel = undefined;
-        }
-        prodajnaCena = resolvedVariant?.prodajnaCena ?? product.prodajnaCena;
-        const supplierChoice = resolveSupplierPrice(product, variantId, supplierId);
-        supplierId = supplierChoice.supplierId ?? supplierId;
-        nabavnaCena = supplierChoice.price ?? resolvedVariant?.nabavnaCena ?? product.nabavnaCena;
-      } else {
-        productId = undefined;
-        variantId = undefined;
-        variantLabel = undefined;
-        supplierId = undefined;
-        prodajnaCena = args.prodajnaCena;
-      }
+    const baseItems: IncomingItem[] =
+      args.items && args.items.length > 0
+        ? args.items
+        : resolveItemsFromOrder(existing).map((item) => ({ ...item }));
+
+    const normalizedItems = await normalizeOrderItems(ctx, user._id, baseItems, args.title || existing.title);
+    if (normalizedItems.length === 0) {
+      throw new Error("Narudzbina mora imati bar jednu stavku.");
     }
 
-    if (!title) {
-      throw new Error("Naziv narudzbine je obavezan.");
-    }
-
-    const transportMode = normalizeTransportMode(args.transportMode);
+    const totals = summarizeItems(normalizedItems);
+    const title = args.title.trim() || normalizedItems[0].title || existing.title;
 
     await ctx.db.patch(args.id, {
-      stage,
-      productId,
-      supplierId,
-      variantId,
-      variantLabel,
+      stage: normalizeStage(args.stage),
+      productId: normalizedItems[0].productId,
+      supplierId: normalizedItems[0].supplierId,
+      variantId: normalizedItems[0].variantId,
+      variantLabel: normalizedItems[0].variantLabel,
       title,
-      kolicina,
-      nabavnaCena,
-      prodajnaCena,
+      kolicina: Math.max(totals.totalQty, 1),
+      nabavnaCena: totals.avgNabavna,
+      prodajnaCena: totals.avgProdajna,
       napomena: args.napomena?.trim() || undefined,
       transportCost,
       transportMode,
-      customerName,
-      address,
-      phone,
-      myProfitPercent,
+      customerName: args.customerName.trim(),
+      address: args.address.trim(),
+      phone: args.phone.trim(),
+      myProfitPercent: clampPercent(args.myProfitPercent),
       pickup,
+      items: normalizedItems,
     });
   },
 });

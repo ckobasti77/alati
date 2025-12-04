@@ -1,3 +1,5 @@
+import type { Order, OrderItem } from "@/types/order";
+
 export const ukupnoProdajno = (kolicina: number, prodajna: number) =>
   kolicina * prodajna;
 
@@ -9,3 +11,72 @@ export const profit = (prodajnoUkupno: number, nabavnoUkupno: number, transportC
 
 export const myProfitShare = (profitValue: number, percent: number) =>
   profitValue * (Math.min(Math.max(percent, 0), 100) / 100);
+
+const normalizeQuantity = (value?: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+  return Math.max(Math.round(parsed), 1);
+};
+
+const sanitizePrice = (value?: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return parsed;
+};
+
+export const resolveOrderItems = (order: { items?: OrderItem[] } & Partial<Order>): OrderItem[] => {
+  const stored = order.items ?? [];
+  const normalized = stored
+    .map((item) => ({
+      ...item,
+      kolicina: normalizeQuantity(item.kolicina),
+      nabavnaCena: sanitizePrice(item.nabavnaCena),
+      prodajnaCena: sanitizePrice(item.prodajnaCena),
+    }))
+    .filter((item) => item.kolicina > 0);
+  if (normalized.length > 0) return normalized;
+  if (order.kolicina === undefined || order.nabavnaCena === undefined || order.prodajnaCena === undefined) {
+    return [];
+  }
+  return [
+    {
+      id: "legacy",
+      productId: order.productId,
+      supplierId: order.supplierId,
+      variantId: order.variantId,
+      variantLabel: order.variantLabel,
+      title: order.title ?? "",
+      kolicina: normalizeQuantity(order.kolicina),
+      nabavnaCena: sanitizePrice(order.nabavnaCena),
+      prodajnaCena: sanitizePrice(order.prodajnaCena),
+    },
+  ];
+};
+
+export const orderTotals = (order: { items?: OrderItem[] } & Partial<Order>) => {
+  const items = resolveOrderItems(order);
+  const totalQty =
+    items.length > 0
+      ? items.reduce((sum, item) => sum + item.kolicina, 0)
+      : normalizeQuantity(order.kolicina);
+  const totalProdajno =
+    items.length > 0
+      ? items.reduce((sum, item) => sum + item.prodajnaCena * item.kolicina, 0)
+      : ukupnoProdajno(normalizeQuantity(order.kolicina ?? 0), sanitizePrice(order.prodajnaCena));
+  const totalNabavno =
+    items.length > 0
+      ? items.reduce((sum, item) => sum + item.nabavnaCena * item.kolicina, 0)
+      : ukupnoNabavno(normalizeQuantity(order.kolicina ?? 0), sanitizePrice(order.nabavnaCena));
+  const transport = order.pickup ? 0 : order.transportCost ?? 0;
+  const profitValue = profit(totalProdajno, totalNabavno, transport);
+  const myShare = order.stage === "legle_pare" ? myProfitShare(profitValue, order.myProfitPercent ?? 0) : 0;
+  return {
+    items,
+    totalQty,
+    totalProdajno,
+    totalNabavno,
+    transport,
+    profit: profitValue,
+    myShare,
+  };
+};

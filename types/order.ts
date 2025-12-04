@@ -105,6 +105,18 @@ export interface ProductStats {
 export type OrderStage = "poruceno" | "poslato" | "stiglo" | "legle_pare";
 export type TransportMode = "Kol" | "Joe" | "Posta" | "Bex" | "Aks";
 
+export interface OrderItem {
+  id: string;
+  productId?: string;
+  supplierId?: string;
+  variantId?: string;
+  variantLabel?: string;
+  title: string;
+  kolicina: number;
+  nabavnaCena: number;
+  prodajnaCena: number;
+}
+
 export interface Order {
   _id: string;
   userId: string;
@@ -125,6 +137,7 @@ export interface Order {
   phone: string;
   myProfitPercent?: number;
   pickup?: boolean;
+  items?: OrderItem[];
   kreiranoAt: number;
 }
 
@@ -138,14 +151,19 @@ export interface OrderListResponse {
   };
 }
 
-export interface OrderWithProduct extends Order {
-  product?: Product;
-}
-
 export interface OrdersSummary {
   brojNarudzbina: number;
   ukupnoProdajno: number;
   ukupnoNabavno: number;
   profit: number;
   mojProfit: number;
+}
+
+export interface OrderItemWithProduct extends OrderItem {
+  product?: Product;
+}
+
+export interface OrderWithProduct extends Order {
+  product?: Product;
+  items?: OrderItemWithProduct[];
 }

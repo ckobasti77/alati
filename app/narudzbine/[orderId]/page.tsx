@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Check, Copy, Loader2, PenLine, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Loader2, PenLine, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,8 +12,8 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { myProfitShare, profit, ukupnoNabavno, ukupnoProdajno } from "@/lib/calc";
-import type { OrderStage, OrderWithProduct, Product, ProductVariant, Supplier } from "@/types/order";
+import { orderTotals } from "@/lib/calc";
+import type { OrderStage, OrderWithProduct } from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -27,37 +27,6 @@ const stageLabels = stageOptions.reduce((acc, item) => {
   acc[item.value] = { label: item.label, tone: item.tone };
   return acc;
 }, {} as Record<OrderStage, { label: string; tone: string }>);
-
-const getProductVariants = (product?: Product): ProductVariant[] => {
-  if (!product) return [];
-  return product.variants ?? [];
-};
-
-const resolveSupplierOptions = (product?: Product, variantId?: string) => {
-  if (!product) return [];
-  const offers = product.supplierOffers ?? [];
-  if (!offers.length) return [];
-  const exact = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
-  const fallback = offers.filter((offer) => !offer.variantId);
-  const pool = exact.length ? exact : fallback.length ? fallback : offers;
-  const seen = new Set<string>();
-  return pool
-    .filter((offer) => {
-      const key = String(offer.supplierId);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((offer) => ({ supplierId: String(offer.supplierId), price: offer.price }));
-};
-
-const pickBestSupplier = (options: { supplierId: string; price: number; supplierName?: string }[]) => {
-  if (!options.length) return null;
-  return options.reduce((best, option) => {
-    if (!best || option.price < best.price) return option;
-    return best;
-  }, null as { supplierId: string; price: number; supplierName?: string } | null);
-};
 
 const StageBadge = ({ stage }: { stage: OrderStage }) => {
   const meta = stageLabels[stage] ?? { label: stage, tone: "" };
@@ -261,11 +230,6 @@ function OrderDetails({ orderId }: { orderId: string }) {
     token: sessionToken,
     id: orderId,
   });
-  const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
-  const supplierMap = useMemo(
-    () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
-    [suppliers],
-  );
 
   const [order, setOrder] = useState<OrderWithProduct | null>(null);
   const isLoading = queryResult === undefined;
@@ -296,6 +260,10 @@ function OrderDetails({ orderId }: { orderId: string }) {
     phone: current.phone,
     myProfitPercent: current.myProfitPercent,
     pickup: current.pickup ?? false,
+    items: current.items?.map((item) => {
+      const { product, ...rest } = item as any;
+      return rest;
+    }),
   });
 
   const applyOrderUpdate = async (
@@ -431,35 +399,12 @@ function OrderDetails({ orderId }: { orderId: string }) {
     );
   };
 
-  const variantFromProduct: ProductVariant | undefined = useMemo(() => {
-    if (!order) return undefined;
-    const variants = getProductVariants(order?.product);
-    if (variants.length === 0) return undefined;
-    if (order.variantId) {
-      const match = variants.find((variant) => variant.id === order.variantId);
-      if (match) return match;
-    }
-    return variants.find((variant) => variant.isDefault) ?? variants[0];
-  }, [order]);
-  const supplierOptions = useMemo(
-    () => resolveSupplierOptions(order?.product, order?.variantId),
-    [order?.product, order?.variantId],
-  );
-  const supplierOptionsWithNames = useMemo(
-    () =>
-      supplierOptions.map((option) => ({
-        ...option,
-        supplierName: supplierMap.get(option.supplierId)?.name,
-      })),
-    [supplierMap, supplierOptions],
-  );
-  const bestSupplierOption = useMemo(() => pickBestSupplier(supplierOptionsWithNames), [supplierOptionsWithNames]);
-
-  const prodajnoUkupno = order ? ukupnoProdajno(order.kolicina, order.prodajnaCena) : 0;
-  const nabavnoUkupno = order ? ukupnoNabavno(order.kolicina, order.nabavnaCena) : 0;
-  const transport = order?.pickup ? 0 : order?.transportCost ?? 0;
-  const prof = profit(prodajnoUkupno, nabavnoUkupno, transport);
-  const mojDeo = myProfitShare(prof, order?.myProfitPercent ?? 0);
+  const totals = order ? orderTotals(order) : null;
+  const prodajnoUkupno = totals?.totalProdajno ?? 0;
+  const nabavnoUkupno = totals?.totalNabavno ?? 0;
+  const transport = totals?.transport ?? 0;
+  const prof = totals?.profit ?? 0;
+  const mojDeo = totals?.myShare ?? 0;
   const shouldShowMyShare = order?.stage === "legle_pare" && order?.myProfitPercent !== undefined;
 
   const handleStageChange = async (nextStage: OrderStage) => {
@@ -472,27 +417,6 @@ function OrderDetails({ orderId }: { orderId: string }) {
     } finally {
       setIsUpdatingStage(false);
     }
-  };
-
-  const handleSupplierUpdate = async (supplierId?: string) => {
-    if (!order) return;
-    const options = supplierOptionsWithNames;
-    const best = pickBestSupplier(options);
-    const targetSupplierId = supplierId || (options.length === 1 ? options[0].supplierId : undefined);
-    const supplierPrice =
-      targetSupplierId
-        ? options.find((option) => option.supplierId === targetSupplierId)?.price ?? best?.price
-        : best?.price;
-    const baseNabavna = variantFromProduct?.nabavnaCena ?? order.product?.nabavnaCena ?? order.nabavnaCena;
-    const nextNabavna = supplierPrice ?? baseNabavna;
-    await applyOrderUpdate(
-      (current) => ({
-        ...current,
-        supplierId: targetSupplierId,
-        nabavnaCena: nextNabavna,
-      }),
-      "Dobavljac sacuvan.",
-    );
   };
 
   if (isLoading) {
@@ -567,101 +491,53 @@ function OrderDetails({ orderId }: { orderId: string }) {
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Proizvod i tip</CardTitle>
-          {order.productId ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1"
-              onClick={() => router.push(`/proizvodi/${order.productId}`)}
-            >
-              Otvori proizvod
-              <ArrowUpRight className="h-4 w-4" />
-            </Button>
-          ) : null}
+            <Card>
+        <CardHeader>
+          <CardTitle>Stavke narudzbine</CardTitle>
         </CardHeader>
-        <CardContent>
-          {order.product ? (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-4">
-                {mainImage?.url ? (
-                  <div className="h-16 w-16 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={mainImage.url} alt={order.product.kpName ?? order.product.name} className="h-full w-full object-cover" />
+        <CardContent className="space-y-3">
+          <InlineField label="Naziv narudzbine" value={order.title} onSave={(val) => handleOrderFieldSave("title", val)} />
+          {order.items && order.items.length > 0 ? (
+            <div className="space-y-3">
+              {order.items.map((item) => {
+                const images = (item as any).product?.images ?? [];
+                const mainImage = images.find((image: any) => image.isMain) ?? images[0];
+                return (
+                  <div
+                    key={item.id}
+                    className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      {mainImage?.url ? (
+                        <div className="h-14 w-14 overflow-hidden rounded-md border border-slate-200">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={mainImage.url} alt={item.title} className="h-full w-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-slate-200 text-[10px] uppercase text-slate-400">
+                          N/A
+                        </div>
+                      )}
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                        {item.variantLabel ? <p className="text-xs text-slate-500">{item.variantLabel}</p> : null}
+                        <p className="text-xs text-slate-500">Kolicina: {item.kolicina}</p>
+                      </div>
+                    </div>
+                    <div className="text-right text-sm">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Prodajna</p>
+                      <p className="font-semibold text-slate-900">{formatCurrency(item.prodajnaCena, "EUR")}</p>
+                      <p className="text-xs text-slate-500">Nabavna {formatCurrency(item.nabavnaCena, "EUR")}</p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-slate-200 text-[10px] uppercase text-slate-400">
-                    N/A
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <p className="text-sm uppercase tracking-wide text-slate-500">Proizvod</p>
-                  <p className="text-lg font-semibold text-slate-900">{order.product.kpName ?? order.product.name}</p>
-                  <p className="text-xs text-slate-500">FB / IG naziv: {order.product.name}</p>
-                  {variantFromProduct ? (
-                    <p className="text-sm text-slate-600">{variantFromProduct.label}</p>
-                  ) : null}
-                  <p className="text-xs text-slate-500">Kolicina: {order.kolicina}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Prodajna cena</p>
-                <p className="text-xl font-semibold text-slate-900">
-                  {formatCurrency(variantFromProduct?.prodajnaCena ?? order.prodajnaCena, "EUR")}
-                </p>
-                <p className="text-xs text-slate-500">
-                  Nabavna {formatCurrency(variantFromProduct?.nabavnaCena ?? order.nabavnaCena, "EUR")}
-                </p>
-              </div>
+                );
+              })}
             </div>
           ) : (
-            <p className="text-sm text-slate-600">Narudzbina nije vezana za proizvod. Naslov: {order.title}</p>
+            <p className="text-sm text-slate-600">Narudzbina nema stavke.</p>
           )}
-          {supplierOptionsWithNames.length > 0 ? (
-            <div className="mt-3 space-y-1">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Dobavljac</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                  value={order.supplierId ?? ""}
-                  onChange={(event) => handleSupplierUpdate(event.target.value || undefined)}
-                >
-                  <option value="">
-                    {bestSupplierOption
-                      ? `Najpovoljniji (${formatCurrency(bestSupplierOption.price, "EUR")})`
-                      : "Najpovoljniji"}
-                  </option>
-                  {supplierOptionsWithNames.map((option) => (
-                    <option key={option.supplierId} value={option.supplierId}>
-                      {(option.supplierName ?? "Dobavljac") + " - " + formatCurrency(option.price, "EUR")}
-                    </option>
-                  ))}
-                </select>
-                {order.supplierId ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => handleSupplierUpdate(undefined)}>
-                    Ponisti
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <InlineField label="Naziv narudzbine" value={order.title} onSave={(val) => handleOrderFieldSave("title", val)} />
-            <InlineField
-              label="Kolicina"
-              value={order.kolicina}
-              onSave={(val) => handleOrderFieldSave("kolicina", val)}
-            />
-                <InlineField
-                  label="Oznaka tipa / varijante"
-                  value={order.variantLabel ?? variantFromProduct?.label ?? ""}
-                  onSave={(val) => handleOrderFieldSave("variantLabel", val)}
-                />
-              </div>
-            </CardContent>
-          </Card>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -729,36 +605,23 @@ function OrderDetails({ orderId }: { orderId: string }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Finansije</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <InlineField
-                label="Prodajna cena (EUR)"
-                value={order.prodajnaCena}
-                formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
-                onSave={(val) => handleOrderFieldSave("prodajnaCena", val)}
-              />
-              <InlineField
-                label="Nabavna cena (EUR)"
-                value={order.nabavnaCena}
-                formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
-                onSave={(val) => handleOrderFieldSave("nabavnaCena", val)}
-              />
-              <InlineField
-                label="Kolicina"
-                value={order.kolicina}
-                onSave={(val) => handleOrderFieldSave("kolicina", val)}
-              />
-              <InlineField
-                label="Moj procenat profita"
-                value={order.myProfitPercent ?? ""}
-                formatter={(val) => (val === undefined || val === null || val === "" ? "-" : `${val}%`)}
-                onSave={(val) => handleOrderFieldSave("myProfitPercent", val)}
-              />
+          <CardTitle>Finansije</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <InlineField
+              label="Moj procenat profita"
+              value={order.myProfitPercent ?? ""}
+              formatter={(val) => (val === undefined || val === null || val === "" ? "-" : `${val}%`)}
+              onSave={(val) => handleOrderFieldSave("myProfitPercent", val)}
+            />
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Ukupna kolicina</p>
+              <p className="text-base font-semibold text-slate-900">{totals?.totalQty ?? order.kolicina}</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Prodajno ukupno</p>
                 <p className="text-base font-semibold text-slate-900">{formatCurrency(prodajnoUkupno, "EUR")}</p>
               </div>
