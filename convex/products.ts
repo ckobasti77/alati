@@ -55,6 +55,13 @@ type SupplierOffer = {
   variantId?: string;
 };
 
+type OrderItemTotals = {
+  productId?: Id<"products">;
+  kolicina: number;
+  nabavnaCena: number;
+  prodajnaCena: number;
+};
+
 function normalizeSupplierOffers(
   incoming?: SupplierOffer[],
   options?: { variants?: { id: string }[] },
@@ -329,7 +336,7 @@ const sanitizeOrderPrice = (value?: number) => {
   return parsed;
 };
 
-const resolveOrderItems = (order: any) => {
+const resolveOrderItems = (order: any): OrderItemTotals[] => {
   const stored = order.items ?? [];
   const normalized = stored
     .map((item: any) => ({
@@ -338,7 +345,7 @@ const resolveOrderItems = (order: any) => {
       nabavnaCena: sanitizeOrderPrice(item.nabavnaCena),
       prodajnaCena: sanitizeOrderPrice(item.prodajnaCena),
     }))
-    .filter((item: any) => item.kolicina > 0);
+    .filter((item: OrderItemTotals) => item.kolicina > 0);
   if (normalized.length > 0) return normalized;
   return [
     {

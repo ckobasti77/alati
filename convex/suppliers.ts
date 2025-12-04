@@ -1,15 +1,18 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
 
 const defaultSuppliers = ["Petrit", "Menad"];
 
 const normalizeName = (value: string) => value.trim();
 
-const collectSupplierIdsFromOrder = (order: any) => {
-  const fromItems = (order.items ?? []).map((item: any) => item.supplierId).filter(Boolean);
+const collectSupplierIdsFromOrder = (order: any): Id<"suppliers">[] => {
+  const fromItems = (order.items ?? [])
+    .map((item: any) => item.supplierId as Id<"suppliers"> | undefined)
+    .filter((id: Id<"suppliers"> | undefined): id is Id<"suppliers"> => Boolean(id));
   if (fromItems.length > 0) return fromItems;
-  return order.supplierId ? [order.supplierId] : [];
+  return order.supplierId ? [order.supplierId as Id<"suppliers">] : [];
 };
 
 export const list = query({

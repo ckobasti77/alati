@@ -101,6 +101,8 @@ type OrderItemRecord = {
   prodajnaCena: number;
 };
 
+type OrderItemWithProduct = OrderItemRecord & { product?: any };
+
 type IncomingItem = Partial<OrderItemRecord>;
 
 const resolveItemsFromOrder = (order: Doc<"orders">): OrderItemRecord[] => {
@@ -322,9 +324,9 @@ export const get = query({
 
     const items = resolveItemsFromOrder(order);
     const productsMap = new Map<string, any>();
-    const itemsWithProducts = await Promise.all(
+    const itemsWithProducts: OrderItemWithProduct[] = await Promise.all(
       items.map(async (item) => {
-        if (!item.productId) return item;
+        if (!item.productId) return { ...item, product: undefined };
         const key = String(item.productId);
         if (!productsMap.has(key)) {
           productsMap.set(key, await loadProductWithAssets(ctx, item.productId, user._id));
@@ -332,7 +334,7 @@ export const get = query({
         return { ...item, product: productsMap.get(key) ?? undefined };
       }),
     );
-    const primaryProduct = itemsWithProducts.find((item) => (item as any).product)?.product;
+    const primaryProduct = itemsWithProducts.find((item) => item.product)?.product;
 
     return { ...order, items: itemsWithProducts, product: primaryProduct };
   },
