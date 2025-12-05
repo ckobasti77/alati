@@ -343,7 +343,7 @@ function ProductsContent() {
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [hasSeededSuppliers, setHasSeededSuppliers] = useState(false);
   const [isUploadingInboxImages, setIsUploadingInboxImages] = useState(false);
-  const [inboxView, setInboxView] = useState<InboxViewFilter>("withoutPurchasePrice");
+  const [inboxView, setInboxView] = useState<InboxViewFilter>("withPurchasePrice");
   const [inboxPreviewIndex, setInboxPreviewIndex] = useState<number | null>(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [showUtilityPanels, setShowUtilityPanels] = useState(false);
@@ -1011,8 +1011,8 @@ function ProductsContent() {
   const inboxImagesList = inboxImages ?? [];
   const inboxSplit = useMemo(
     () => ({
-      withPrice: inboxImagesList.filter((image) => image.hasPurchasePrice === true),
-      withoutPrice: inboxImagesList.filter((image) => image.hasPurchasePrice !== true),
+      withPrice: inboxImagesList.filter((image) => image.hasPurchasePrice !== true),
+      withoutPrice: inboxImagesList.filter((image) => image.hasPurchasePrice === true),
     }),
     [inboxImagesList],
   );
@@ -1333,7 +1333,7 @@ function ProductsContent() {
         return;
       }
       setIsUploadingInboxImages(true);
-      const targetHasPurchasePrice = options?.hasPurchasePrice ?? inboxView === "withPurchasePrice";
+      const targetHasPurchasePrice = options?.hasPurchasePrice ?? inboxView === "withoutPurchasePrice";
       try {
         for (const file of imagesOnly) {
           const uploadUrl = await generateUploadUrl({ token: sessionToken });
@@ -3166,21 +3166,21 @@ function ProductsContent() {
                   <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1 shadow-sm">
                     <Button
                       type="button"
-                      variant={inboxView === "withoutPurchasePrice" ? "default" : "ghost"}
-                      size="sm"
-                      className="rounded-full px-3"
-                      onClick={() => setInboxView("withoutPurchasePrice")}
-                    >
-                      Bez nabavne {inboxWithoutPriceCount ? `(${inboxWithoutPriceCount})` : ""}
-                    </Button>
-                    <Button
-                      type="button"
                       variant={inboxView === "withPurchasePrice" ? "default" : "ghost"}
                       size="sm"
                       className="rounded-full px-3"
                       onClick={() => setInboxView("withPurchasePrice")}
                     >
                       Sa nabavnom {inboxWithPriceCount ? `(${inboxWithPriceCount})` : ""}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={inboxView === "withoutPurchasePrice" ? "default" : "ghost"}
+                      size="sm"
+                      className="rounded-full px-3"
+                      onClick={() => setInboxView("withoutPurchasePrice")}
+                    >
+                      Bez nabavne {inboxWithoutPriceCount ? `(${inboxWithoutPriceCount})` : ""}
                     </Button>
                   </div>
                   <Button type="button" variant="ghost" size="sm" onClick={() => setShowUtilityPanels(false)}>
