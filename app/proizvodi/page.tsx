@@ -1405,6 +1405,28 @@ function ProductsContent() {
 
   const handleCloseInboxPreview = () => setInboxPreviewIndex(null);
 
+  const handleDownloadInboxImage = async (url?: string | null, fileName?: string) => {
+    if (!url) return;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error("Download failed");
+      }
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = fileName?.trim() ? fileName : "slika.jpg";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error(error);
+      toast.error("Preuzimanje slike nije uspelo.");
+    }
+  };
+
   const handleStepInboxPreview = (direction: 1 | -1) => {
     const list = inboxList;
     if (inboxPreviewIndex === null || list.length === 0) return;
@@ -3249,16 +3271,18 @@ function ProductsContent() {
                           >
                             <div className="flex items-center justify-end gap-1 p-2">
                               {safeUrl ? (
-                                <a
-                                  href={safeUrl}
-                                  download={image.fileName ?? "slika.jpg"}
+                                <button
+                                  type="button"
                                   className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-slate-700 shadow hover:bg-white"
                                   title="Preuzmi"
-                                  onClick={(event) => event.stopPropagation()}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleDownloadInboxImage(safeUrl, image.fileName);
+                                  }}
                                   onKeyDown={(event) => event.stopPropagation()}
                                 >
                                   <Download className="h-4 w-4" />
-                                </a>
+                                </button>
                               ) : null}
                               <button
                                 type="button"
@@ -3649,14 +3673,16 @@ function ProductsContent() {
             >
               <div className="mb-2 flex items-center justify-end gap-2">
                 {inboxPreviewImage.url ? (
-                  <a
-                    href={inboxPreviewImage.url}
-                    download={inboxPreviewImage.fileName ?? "slika.jpg"}
-                    className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-slate-800 shadow"
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => handleDownloadInboxImage(inboxPreviewImage.url, inboxPreviewImage.fileName)}
                   >
                     <Download className="h-4 w-4" />
                     Preuzmi
-                  </a>
+                  </Button>
                 ) : null}
                 <Button
                   type="button"
