@@ -447,10 +447,11 @@ function ProductDetailsContent() {
   const resolveSupplierPriceForVariant = (
     offers: { price: number; variantId?: string }[] | undefined,
     variantId?: string,
+    options?: { fallbackToBase?: boolean },
   ) => {
     if (!offers || offers.length === 0) return undefined;
     const exactMatches = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
-    const fallbackMatches = offers.filter((offer) => !offer.variantId);
+    const fallbackMatches = options?.fallbackToBase === false ? [] : offers.filter((offer) => !offer.variantId);
     const pool = exactMatches.length > 0 ? exactMatches : fallbackMatches;
     if (pool.length === 0) return undefined;
     return pool.reduce((min, offer) => Math.min(min, offer.price), Number.POSITIVE_INFINITY);
@@ -471,7 +472,7 @@ function ProductDetailsContent() {
       return list;
     }, []);
     const variants = (current.variants ?? []).map((variant) => {
-      const supplierPrice = resolveSupplierPriceForVariant(normalized, variant.id);
+      const supplierPrice = resolveSupplierPriceForVariant(normalized, variant.id, { fallbackToBase: false });
       if (supplierPrice === undefined) return variant;
       return { ...variant, nabavnaCena: supplierPrice, nabavnaCenaIsReal: true };
     });

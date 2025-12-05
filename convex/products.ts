@@ -86,10 +86,14 @@ function normalizeSupplierOffers(
   return normalized.length ? normalized : undefined;
 }
 
-function resolveSupplierPrice(offers: SupplierOffer[] | undefined, variantId?: string) {
+function resolveSupplierPrice(
+  offers: SupplierOffer[] | undefined,
+  variantId?: string,
+  options?: { fallbackToBase?: boolean },
+) {
   if (!offers || offers.length === 0) return undefined;
   const exactMatches = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
-  const fallbackMatches = offers.filter((offer) => !offer.variantId);
+  const fallbackMatches = options?.fallbackToBase === false ? [] : offers.filter((offer) => !offer.variantId);
   const pool = exactMatches.length > 0 ? exactMatches : fallbackMatches;
   if (pool.length === 0) return undefined;
   return pool.reduce((min, offer) => Math.min(min, offer.price), Number.POSITIVE_INFINITY);
@@ -525,7 +529,7 @@ export const create = mutation({
     const variants = normalizeVariants(args.variants);
     const supplierOffers = normalizeSupplierOffers(args.supplierOffers, { variants });
     const variantsWithSupplierPrices = variants?.map((variant) => {
-      const supplierPrice = resolveSupplierPrice(supplierOffers, variant.id);
+      const supplierPrice = resolveSupplierPrice(supplierOffers, variant.id, { fallbackToBase: false });
       if (supplierPrice === undefined) return variant;
       return { ...variant, nabavnaCena: supplierPrice, nabavnaCenaIsReal: true };
     });
@@ -625,7 +629,7 @@ export const update = mutation({
         ? normalizeSupplierOffers(product.supplierOffers as SupplierOffer[] | undefined, { variants })
         : normalizeSupplierOffers(args.supplierOffers, { variants });
     const variantsWithSupplierPrices = variants?.map((variant) => {
-      const supplierPrice = resolveSupplierPrice(supplierOffers, variant.id);
+      const supplierPrice = resolveSupplierPrice(supplierOffers, variant.id, { fallbackToBase: false });
       if (supplierPrice === undefined) return variant;
       return { ...variant, nabavnaCena: supplierPrice, nabavnaCenaIsReal: true };
     });

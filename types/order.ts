@@ -40,6 +40,7 @@ export interface InboxImage {
   storageId: string;
   fileName?: string;
   contentType?: string;
+  hasPurchasePrice?: boolean;
   url?: string | null;
   uploadedAt: number;
 }

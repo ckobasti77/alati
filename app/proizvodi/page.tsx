@@ -176,6 +176,8 @@ type SocialPlatform = "facebook" | "instagram";
 
 type SortOption = "created_desc" | "price_desc" | "price_asc" | "sales_desc" | "profit_desc";
 
+type InboxViewFilter = "withPurchasePrice" | "withoutPurchasePrice";
+
 const generateId = () => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -225,10 +227,14 @@ const normalizeSupplierOffersInput = (
   return normalized;
 };
 
-const pickBestSupplierOffer = (offers: NormalizedSupplierOffer[], variantId?: string) => {
+const pickBestSupplierOffer = (
+  offers: NormalizedSupplierOffer[],
+  variantId?: string,
+  options?: { fallbackToBase?: boolean },
+) => {
   if (!offers.length) return null;
   const exact = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
-  const fallback = offers.filter((offer) => !offer.variantId);
+  const fallback = options?.fallbackToBase === false ? [] : offers.filter((offer) => !offer.variantId);
   const pool = exact.length > 0 ? exact : fallback;
   if (!pool.length) return null;
   let best: { supplierId: string; price: number } | null = null;
@@ -337,6 +343,7 @@ function ProductsContent() {
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [hasSeededSuppliers, setHasSeededSuppliers] = useState(false);
   const [isUploadingInboxImages, setIsUploadingInboxImages] = useState(false);
+  const [inboxView, setInboxView] = useState<InboxViewFilter>("withoutPurchasePrice");
   const [inboxPreviewIndex, setInboxPreviewIndex] = useState<number | null>(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [showUtilityPanels, setShowUtilityPanels] = useState(false);
@@ -382,6 +389,7 @@ function ProductsContent() {
     fileName?: string;
     contentType?: string;
     uploadedAt?: number;
+    hasPurchasePrice?: boolean;
   }>("inboxImages:add");
   const deleteInboxImage = useConvexMutation<{ token: string; id: string }>("inboxImages:remove");
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
@@ -595,14 +603,16 @@ function ProductsContent() {
       variantEntries,
       isVariantProduct,
     );
-    const resolveBestOffer = (variantId?: string): { supplierId: string; price: number } | null =>
-      pickBestSupplierOffer(normalizedOffers, variantId);
+    const resolveBestOffer = (
+      variantId?: string,
+      options?: { fallbackToBase?: boolean },
+    ): { supplierId: string; price: number } | null => pickBestSupplierOffer(normalizedOffers, variantId, options);
     const variants =
       isVariantProduct && variantEntries.length > 0
         ? variantEntries.map((variant, index) => {
             const imagesForVariant = variantImages[variant.id] ?? [];
             const mappedImages = buildImagePayload(imagesForVariant);
-            const bestOffer = resolveBestOffer(variant.id);
+            const bestOffer = resolveBestOffer(variant.id, { fallbackToBase: false });
             const nabavnaCena = bestOffer?.price ?? parsePrice(variant.nabavnaCena);
             return {
               id: variant.id || generateId(),
@@ -998,10 +1008,39 @@ function ProductsContent() {
     [bestSupplierForVariant, defaultVariantEntry?.id, resolvedProductType],
   );
   const bestFormSupplierName = bestFormOffer ? supplierMap.get(bestFormOffer.supplierId)?.name : undefined;
-  const inboxList = inboxImages ?? [];
+  const inboxImagesList = inboxImages ?? [];
+  const inboxSplit = useMemo(
+    () => ({
+      withPrice: inboxImagesList.filter((image) => image.hasPurchasePrice === true),
+      withoutPrice: inboxImagesList.filter((image) => image.hasPurchasePrice !== true),
+    }),
+    [inboxImagesList],
+  );
+  const inboxWithPriceCount = inboxSplit.withPrice.length;
+  const inboxWithoutPriceCount = inboxSplit.withoutPrice.length;
+  const inboxList = inboxView === "withPurchasePrice" ? inboxSplit.withPrice : inboxSplit.withoutPrice;
   const inboxPreviewImage = inboxPreviewIndex !== null ? inboxList[inboxPreviewIndex] : undefined;
   const supplierCount = suppliers?.length ?? 0;
   const inboxCount = inboxList.length;
+  const inboxTotalCount = inboxImagesList.length;
+  const inboxEmptyMessage =
+    inboxView === "withPurchasePrice"
+      ? "Nema slika sa nabavnom cenom. Dodaj ih ili prebaci filter."
+      : "Nema slika bez nabavne cene. Dodaj ih ili prebaci filter.";
+
+  useEffect(() => {
+    setInboxPreviewIndex((prev) => {
+      if (prev === null) return null;
+      if (prev >= inboxList.length) {
+        return inboxList.length > 0 ? inboxList.length - 1 : null;
+      }
+      return prev;
+    });
+  }, [inboxList.length]);
+
+  useEffect(() => {
+    setInboxPreviewIndex(null);
+  }, [inboxView]);
 
   const focusProductField = useCallback(
     (fieldName: string) => {
@@ -1280,7 +1319,7 @@ function ProductsContent() {
   };
 
   const uploadInboxImages = useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | null, options?: { hasPurchasePrice?: boolean }) => {
       if (!files || files.length === 0) return;
       if (isUploadingInboxImages) {
         toast.info("Otpremanje slika je vec u toku.");
@@ -1294,6 +1333,7 @@ function ProductsContent() {
         return;
       }
       setIsUploadingInboxImages(true);
+      const targetHasPurchasePrice = options?.hasPurchasePrice ?? inboxView === "withPurchasePrice";
       try {
         for (const file of imagesOnly) {
           const uploadUrl = await generateUploadUrl({ token: sessionToken });
@@ -1315,6 +1355,7 @@ function ProductsContent() {
             fileName: file.name,
             contentType: file.type,
             uploadedAt: Date.now(),
+            hasPurchasePrice: targetHasPurchasePrice,
           });
         }
         toast.success("Slike su dodate u inbox za ubacivanje.");
@@ -1328,7 +1369,7 @@ function ProductsContent() {
         }
       }
     },
-    [addInboxImage, generateUploadUrl, isUploadingInboxImages, sessionToken],
+    [addInboxImage, generateUploadUrl, inboxView, isUploadingInboxImages, sessionToken],
   );
 
   const handleInboxFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1341,7 +1382,7 @@ function ProductsContent() {
     try {
       await deleteInboxImage({ token: sessionToken, id });
       if (inboxPreviewIndex !== null) {
-        const nextCount = (inboxImages?.length ?? 0) - 1;
+        const nextCount = Math.max(inboxCount - 1, 0);
         if (nextCount <= 0) {
           setInboxPreviewIndex(null);
         } else {
@@ -1365,7 +1406,7 @@ function ProductsContent() {
   const handleCloseInboxPreview = () => setInboxPreviewIndex(null);
 
   const handleStepInboxPreview = (direction: 1 | -1) => {
-    const list = inboxImages ?? [];
+    const list = inboxList;
     if (inboxPreviewIndex === null || list.length === 0) return;
     const nextIndex = (inboxPreviewIndex + direction + list.length) % list.length;
     setInboxPreviewIndex(nextIndex);
@@ -3116,19 +3157,42 @@ function ProductsContent() {
 
           <div className="lg:col-span-2">
             <Card className="h-full">
-              <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle>Slike za ubacivanje</CardTitle>
                   <p className="text-sm text-slate-500">Privremeni inbox za slike proizvoda koji tek treba da se dodaju.</p>
                 </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setShowUtilityPanels(false)}>
-                  Sakrij
-                </Button>
+                <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                  <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1 shadow-sm">
+                    <Button
+                      type="button"
+                      variant={inboxView === "withoutPurchasePrice" ? "default" : "ghost"}
+                      size="sm"
+                      className="rounded-full px-3"
+                      onClick={() => setInboxView("withoutPurchasePrice")}
+                    >
+                      Bez nabavne {inboxWithoutPriceCount ? `(${inboxWithoutPriceCount})` : ""}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={inboxView === "withPurchasePrice" ? "default" : "ghost"}
+                      size="sm"
+                      className="rounded-full px-3"
+                      onClick={() => setInboxView("withPurchasePrice")}
+                    >
+                      Sa nabavnom {inboxWithPriceCount ? `(${inboxWithPriceCount})` : ""}
+                    </Button>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowUtilityPanels(false)}>
+                    Sakrij
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm text-slate-600">
-                    Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom.
+                    Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom. Trenutno gledas{" "}
+                    {inboxView === "withPurchasePrice" ? "slike sa nabavnom cenom." : "slike bez nabavne cene."}
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -3154,7 +3218,7 @@ function ProductsContent() {
                 {inboxImages === undefined ? (
                   <p className="text-sm text-slate-500">Ucitavanje slika...</p>
                 ) : inboxList.length === 0 ? (
-                  <p className="text-sm text-slate-500">Nema slika u inboxu. Dodaj ih da ih kasnije rasporedis.</p>
+                  <p className="text-sm text-slate-500">{inboxEmptyMessage}</p>
                 ) : (
                   <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                     {inboxList.map((image, index) => {
@@ -3232,7 +3296,7 @@ function ProductsContent() {
           </Button>
           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setShowUtilityPanels(true)}>
             <Images className="h-4 w-4" />
-            Slike {inboxCount ? `(${inboxCount})` : ""}
+            Slike {inboxTotalCount ? `(${inboxTotalCount})` : ""}
           </Button>
         </div>
       )}

@@ -27,6 +27,7 @@ export const add = mutation({
     fileName: v.optional(v.string()),
     contentType: v.optional(v.string()),
     uploadedAt: v.optional(v.number()),
+    hasPurchasePrice: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
@@ -36,6 +37,7 @@ export const add = mutation({
       storageId: args.storageId,
       fileName: args.fileName,
       contentType: args.contentType,
+      hasPurchasePrice: args.hasPurchasePrice ?? false,
       uploadedAt: now,
     });
   },

@@ -175,6 +175,7 @@ export default defineSchema({
     storageId: v.id("_storage"),
     fileName: v.optional(v.string()),
     contentType: v.optional(v.string()),
+    hasPurchasePrice: v.optional(v.boolean()),
     uploadedAt: v.number(),
   }).index("by_user_uploadedAt", ["userId", "uploadedAt"]),
 });
