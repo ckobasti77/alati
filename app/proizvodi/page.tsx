@@ -496,8 +496,6 @@ function ProductsContent() {
     setCategoryMenuOpen(false);
     setIsAddingCategory(false);
     setNewCategoryName("");
-    setCategoryToDelete(null);
-    setIsDeletingCategory(false);
     if (newCategoryIcon?.previewUrl) {
       URL.revokeObjectURL(newCategoryIcon.previewUrl);
     }
@@ -2396,7 +2394,7 @@ function ProductsContent() {
                 )}
               />
             )}
-            <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-3">
+            <div className="space-y-3 rounded-lg border border-blue-100 bg-slate-50/60 px-3 py-3">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <FormLabel>Dobavljaci i nabavne ponude</FormLabel>
@@ -3552,37 +3550,6 @@ function ProductsContent() {
           ) : null}
         </CardContent>
       </Card>
-
-      <Dialog open={Boolean(categoryToDelete)} onOpenChange={(open) => (!open ? setCategoryToDelete(null) : null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Obrisi kategoriju</DialogTitle>
-            <DialogDescription>
-              {categoryToDelete?.productCount && categoryToDelete.productCount > 0
-                ? `Kategorija "${categoryToDelete.name}" je vezana za ${categoryToDelete.productCount} proizvoda. Brisanjem ce biti uklonjena sa svih.`
-                : `Obrisi kategoriju "${categoryToDelete?.name}"?`}
-            </DialogDescription>
-          </DialogHeader>
-          {categoryToDelete?.productCount && categoryToDelete.productCount > 0 ? (
-            <div className="flex items-start gap-3 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>
-                Ova kategorija je dodeljena na {categoryToDelete.productCount} proizvod{categoryToDelete.productCount === 1 ? "" : "a"}.
-                Potvrdom ce biti skinuta sa svih proizvoda i obrisana.
-              </p>
-            </div>
-          ) : null}
-          <DialogFooter className="gap-2">
-            <Button type="button" variant="ghost" onClick={() => setCategoryToDelete(null)} disabled={isDeletingCategory}>
-              Odustani
-            </Button>
-            <Button type="button" variant="destructive" onClick={handleConfirmDeleteCategory} disabled={isDeletingCategory}>
-              {isDeletingCategory ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-              Obrisi
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {inboxPreviewImage ? (
         <div
