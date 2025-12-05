@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
 
 const defaultCategories = [
@@ -28,9 +29,27 @@ const decorateWithUrl = async (ctx: any, category: any) => {
 export const list = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
-    await requireUser(ctx, args.token);
-    const categories = await ctx.db.query("categories").collect();
-    const withUrls = await Promise.all(categories.map((category) => decorateWithUrl(ctx, category)));
+    const { user } = await requireUser(ctx, args.token);
+    const [categories, products] = await Promise.all([
+      ctx.db.query("categories").collect(),
+      ctx.db
+        .query("products")
+        .withIndex("by_user_createdAt", (q: any) => q.eq("userId", user._id))
+        .collect(),
+    ]);
+    const productCountByCategory = new Map<string, number>();
+    products.forEach((product) => {
+      (product.categoryIds ?? []).forEach((categoryId: Id<"categories">) => {
+        const key = String(categoryId);
+        productCountByCategory.set(key, (productCountByCategory.get(key) ?? 0) + 1);
+      });
+    });
+    const withUrls = await Promise.all(
+      categories.map(async (category) => ({
+        ...(await decorateWithUrl(ctx, category)),
+        productCount: productCountByCategory.get(String(category._id)) ?? 0,
+      })),
+    );
     return withUrls.sort((a, b) => a.name.localeCompare(b.name));
   },
 });
@@ -110,5 +129,52 @@ export const ensureDefaults = mutation({
     );
 
     return { created };
+  },
+});
+
+export const remove = mutation({
+  args: {
+    token: v.string(),
+    id: v.id("categories"),
+    force: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const category = await ctx.db.get(args.id);
+    if (!category) {
+      throw new Error("Kategorija nije pronadjena.");
+    }
+    if (category.userId && category.userId !== user._id) {
+      throw new Error("Nemas dozvolu za ovu kategoriju.");
+    }
+
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_user_createdAt", (q: any) => q.eq("userId", user._id))
+      .collect();
+    const relatedProducts = products.filter((product) => (product.categoryIds ?? []).some((id) => id === args.id));
+    const productCount = relatedProducts.length;
+
+    if (productCount > 0 && !args.force) {
+      return { removed: false, productCount };
+    }
+
+    await Promise.all(
+      relatedProducts.map(async (product) => {
+        const nextCategoryIds = (product.categoryIds ?? []).filter((id) => id !== args.id);
+        await ctx.db.patch(product._id, { categoryIds: nextCategoryIds.length ? nextCategoryIds : undefined });
+      }),
+    );
+
+    await ctx.db.delete(args.id);
+    if (category.iconStorageId) {
+      try {
+        await ctx.storage.delete(category.iconStorageId);
+      } catch (error) {
+        console.error("Failed to delete category icon", category.iconStorageId, error);
+      }
+    }
+
+    return { removed: true, productCount };
   },
 });

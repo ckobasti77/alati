@@ -42,6 +42,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -316,6 +318,7 @@ function ProductsContent() {
   const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [isAdDragActive, setIsAdDragActive] = useState(false);
+  const [isInboxDragActive, setIsInboxDragActive] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
   const [isMobile, setIsMobile] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("created_desc");
@@ -326,6 +329,8 @@ function ProductsContent() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryIcon, setNewCategoryIcon] = useState<DraftCategoryIcon | null>(null);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
   const [isUploadingCategoryIcon, setIsUploadingCategoryIcon] = useState(false);
   const [hasSeededCategories, setHasSeededCategories] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
@@ -334,8 +339,7 @@ function ProductsContent() {
   const [isUploadingInboxImages, setIsUploadingInboxImages] = useState(false);
   const [inboxPreviewIndex, setInboxPreviewIndex] = useState<number | null>(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
-  const [showSuppliersPanel, setShowSuppliersPanel] = useState(false);
-  const [showInboxPanel, setShowInboxPanel] = useState(false);
+  const [showUtilityPanels, setShowUtilityPanels] = useState(false);
   const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
   const productUploadInputRef = useRef<HTMLInputElement | null>(null);
   const adImageInputRef = useRef<HTMLInputElement | null>(null);
@@ -365,6 +369,9 @@ function ProductsContent() {
     },
     string
   >("categories:create");
+  const removeCategory = useConvexMutation<{ token: string; id: string; force?: boolean }, { removed: boolean; productCount: number }>(
+    "categories:remove",
+  );
   const ensureDefaultCategories = useConvexMutation<{ token: string }, { created: number }>("categories:ensureDefaults");
   const createSupplier = useConvexMutation<{ token: string; name: string }, string>("suppliers:create");
   const removeSupplier = useConvexMutation<{ token: string; id: string }>("suppliers:remove");
@@ -489,6 +496,8 @@ function ProductsContent() {
     setCategoryMenuOpen(false);
     setIsAddingCategory(false);
     setNewCategoryName("");
+    setCategoryToDelete(null);
+    setIsDeletingCategory(false);
     if (newCategoryIcon?.previewUrl) {
       URL.revokeObjectURL(newCategoryIcon.previewUrl);
     }
@@ -828,6 +837,33 @@ function ProductsContent() {
     }
   };
 
+  const handleRequestDeleteCategory = (category: Category) => {
+    setCategoryToDelete(category);
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    setIsDeletingCategory(true);
+    try {
+      await removeCategory({ token: sessionToken, id: categoryToDelete._id, force: true });
+      const current = (form.getValues("categoryIds") ?? []) as string[];
+      if (current.includes(categoryToDelete._id)) {
+        form.setValue(
+          "categoryIds",
+          current.filter((id) => id !== categoryToDelete._id),
+          { shouldDirty: true, shouldValidate: true },
+        );
+      }
+      toast.success("Kategorija obrisana.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message ?? "Brisanje kategorije nije uspelo.");
+    } finally {
+      setIsDeletingCategory(false);
+      setCategoryToDelete(null);
+    }
+  };
+
   const items = useMemo(() => products ?? [], [products]);
   const statsMap = useMemo(() => {
     const map = new Map<string, ProductStats>();
@@ -968,7 +1004,6 @@ function ProductsContent() {
   const inboxPreviewImage = inboxPreviewIndex !== null ? inboxList[inboxPreviewIndex] : undefined;
   const supplierCount = suppliers?.length ?? 0;
   const inboxCount = inboxList.length;
-  const utilityPanelsCollapsed = !showSuppliersPanel && !showInboxPanel;
 
   const focusProductField = useCallback(
     (fieldName: string) => {
@@ -1246,54 +1281,57 @@ function ProductsContent() {
     setIsAdDragActive(false);
   };
 
-  const uploadInboxImages = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    if (isUploadingInboxImages) {
-      toast.info("Otpremanje slika je vec u toku.");
-      return;
-    }
-    const imagesOnly = Array.from(files).filter(
-      (file) => file.type?.startsWith("image/") || /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name),
-    );
-    if (imagesOnly.length === 0) {
-      toast.error("Izaberi fajlove tipa slike.");
-      return;
-    }
-    setIsUploadingInboxImages(true);
-    try {
-      for (const file of imagesOnly) {
-        const uploadUrl = await generateUploadUrl({ token: sessionToken });
-        const response = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-          body: file,
-        });
-        if (!response.ok) {
-          throw new Error("Upload nije uspeo.");
-        }
-        const result = await response.json();
-        if (!result?.storageId) {
-          throw new Error("Nedostaje ID fajla.");
-        }
-        await addInboxImage({
-          token: sessionToken,
-          storageId: result.storageId as string,
-          fileName: file.name,
-          contentType: file.type,
-          uploadedAt: Date.now(),
-        });
+  const uploadInboxImages = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      if (isUploadingInboxImages) {
+        toast.info("Otpremanje slika je vec u toku.");
+        return;
       }
-      toast.success("Slike su dodate u inbox za ubacivanje.");
-    } catch (error) {
-      console.error(error);
-      toast.error("Otpremanje slika nije uspelo.");
-    } finally {
-      setIsUploadingInboxImages(false);
-      if (inboxUploadInputRef.current) {
-        inboxUploadInputRef.current.value = "";
+      const imagesOnly = Array.from(files).filter(
+        (file) => file.type?.startsWith("image/") || /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name),
+      );
+      if (imagesOnly.length === 0) {
+        toast.error("Izaberi fajlove tipa slike.");
+        return;
       }
-    }
-  };
+      setIsUploadingInboxImages(true);
+      try {
+        for (const file of imagesOnly) {
+          const uploadUrl = await generateUploadUrl({ token: sessionToken });
+          const response = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": file.type || "application/octet-stream" },
+            body: file,
+          });
+          if (!response.ok) {
+            throw new Error("Upload nije uspeo.");
+          }
+          const result = await response.json();
+          if (!result?.storageId) {
+            throw new Error("Nedostaje ID fajla.");
+          }
+          await addInboxImage({
+            token: sessionToken,
+            storageId: result.storageId as string,
+            fileName: file.name,
+            contentType: file.type,
+            uploadedAt: Date.now(),
+          });
+        }
+        toast.success("Slike su dodate u inbox za ubacivanje.");
+      } catch (error) {
+        console.error(error);
+        toast.error("Otpremanje slika nije uspelo.");
+      } finally {
+        setIsUploadingInboxImages(false);
+        if (inboxUploadInputRef.current) {
+          inboxUploadInputRef.current.value = "";
+        }
+      }
+    },
+    [addInboxImage, generateUploadUrl, isUploadingInboxImages, sessionToken],
+  );
 
   const handleInboxFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -1534,6 +1572,50 @@ function ProductsContent() {
   };
 
   useEffect(() => {
+    if (isModalOpen) {
+      setIsInboxDragActive(false);
+      return;
+    }
+
+    const handleWindowDragOver = (event: DragEvent) => {
+      const hasFiles = Array.from(event.dataTransfer?.items ?? []).some((item) => item.kind === "file");
+      if (!hasFiles) return;
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+      setIsInboxDragActive(true);
+    };
+
+    const handleWindowDrop = (event: DragEvent) => {
+      const hasFiles = Array.from(event.dataTransfer?.items ?? []).some((item) => item.kind === "file");
+      if (!hasFiles) return;
+      event.preventDefault();
+      setIsInboxDragActive(false);
+      const files = event.dataTransfer?.files;
+      if (files && files.length > 0) {
+        void uploadInboxImages(files);
+      }
+    };
+
+    const handleWindowDragLeave = (event: DragEvent) => {
+      const leavingDocument = !event.relatedTarget && event.clientX === 0 && event.clientY === 0;
+      if (leavingDocument) {
+        setIsInboxDragActive(false);
+      }
+    };
+
+    window.addEventListener("dragover", handleWindowDragOver);
+    window.addEventListener("drop", handleWindowDrop);
+    window.addEventListener("dragleave", handleWindowDragLeave);
+    return () => {
+      window.removeEventListener("dragover", handleWindowDragOver);
+      window.removeEventListener("drop", handleWindowDrop);
+      window.removeEventListener("dragleave", handleWindowDragLeave);
+    };
+  }, [isModalOpen, uploadInboxImages]);
+
+  useEffect(() => {
     if (!isModalOpen) {
       setIsDraggingFiles(false);
       return;
@@ -1759,6 +1841,19 @@ function ProductsContent() {
 
   return (
     <div className="relative mx-auto space-y-6">
+      {!isModalOpen && isInboxDragActive && (
+        <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center bg-slate-900/25 backdrop-blur-[1px]">
+          <div className="flex items-center gap-3 rounded-2xl border border-white/60 bg-white/80 px-6 py-3 text-slate-800 shadow-2xl shadow-blue-500/25 ring-1 ring-white/70">
+            <div className="rounded-full bg-blue-600 p-2.5 text-white shadow-md shadow-blue-500/40">
+              <Images className="h-5 w-5" />
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-sm font-semibold">Otpusti slike da ih dodas u inbox</p>
+              <p className="text-xs text-slate-600">Fajlovi se dodaju u sekciju &quot;Slike za ubacivanje&quot;.</p>
+            </div>
+          </div>
+        </div>
+      )}
       {isModalOpen && isDraggingFiles && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-slate-900/25 backdrop-blur-[1px]">
           <div className="flex items-center gap-3 rounded-2xl border border-white/60 bg-white/75 px-6 py-3 text-slate-800 shadow-2xl shadow-blue-500/25 ring-1 ring-white/70">
@@ -2002,6 +2097,7 @@ function ProductsContent() {
                     ) : (
                       filteredCategories.map((category, idx) => {
                         const isSelected = categoryIds.includes(category._id);
+                        const usageCount = category.productCount ?? 0;
                         return (
                           <button
                             key={category._id}
@@ -2025,8 +2121,26 @@ function ProductsContent() {
                             <div className="flex-1">
                               <p className="font-semibold">{category.name}</p>
                               {isSelected ? <p className="text-[11px] text-emerald-600">Izabrana</p> : null}
+                              {usageCount > 0 ? (
+                                <p className="text-[11px] text-amber-600">{usageCount} proizvoda vezano</p>
+                              ) : null}
                             </div>
-                            {isSelected ? <Check className="h-4 w-4 text-emerald-600" /> : null}
+                            <div className="flex items-center gap-2">
+                              {isSelected ? <Check className="h-4 w-4 text-emerald-600" /> : null}
+                              <span
+                                role="button"
+                                aria-label="Obrisi kategoriju"
+                                className="rounded-full p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setCategoryMenuOpen(false);
+                                  handleRequestDeleteCategory(category);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </span>
+                            </div>
                           </button>
                         );
                       })
@@ -2930,219 +3044,195 @@ function ProductsContent() {
         </DialogContent>
       </Dialog>
 
-      {!utilityPanelsCollapsed ? (
+      {showUtilityPanels ? (
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-1">
-            {showSuppliersPanel ? (
-              <Card className="h-full">
-                <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <CardTitle>Dobavljaci</CardTitle>
-                    <p className="text-sm text-slate-500">Dodaj ili obrisi dobavljace. Ne mozes obrisati vezane za proizvode.</p>
-                  </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowSuppliersPanel(false)}>
-                    Sakrij
-                  </Button>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <Input
-                      value={newSupplierName}
-                      onChange={(event) => setNewSupplierName(event.target.value)}
-                      placeholder="npr. Petrit"
-                    />
-                    <Button
-                      type="button"
-                      onClick={handleCreateSupplierEntry}
-                      disabled={isCreatingSupplier || !newSupplierName.trim()}
-                      className="gap-2"
-                    >
-                      {isCreatingSupplier ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                      Dodaj
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {suppliers === undefined ? (
-                      <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
-                    ) : suppliers.length === 0 ? (
-                      <p className="text-sm text-slate-500">Nema dobavljaca. Dodaj Petrit i Menad za pocetak.</p>
-                    ) : (
-                      suppliers.map((supplier) => {
-                        const usageProducts = supplier.usage?.products ?? 0;
-                        const usageOrders = supplier.usage?.orders ?? 0;
-                        const isLocked = usageProducts > 0 || usageOrders > 0;
-                        return (
-                          <div
-                            key={supplier._id}
-                            className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
-                          >
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">{supplier.name}</p>
-                              <p className="text-xs text-slate-500">
-                                Proizvodi: {usageProducts} | Narudzbine: {usageOrders}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {isLocked ? <Badge variant="secondary">Vezan</Badge> : null}
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                disabled={isLocked}
-                                onClick={() => handleRemoveSupplierEntry(supplier._id, supplier.usage)}
-                              >
-                                Obrisi
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="flex h-full items-center justify-between rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 shadow-sm">
+            <Card className="h-full">
+              <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-800">Dobavljaci</p>
-                  <p className="text-xs text-slate-500">Ukupno {supplierCount}</p>
+                  <CardTitle>Dobavljaci</CardTitle>
+                  <p className="text-sm text-slate-500">Dodaj ili obrisi dobavljace. Ne mozes obrisati vezane za proizvode.</p>
                 </div>
-                <Button type="button" size="sm" variant="outline" onClick={() => setShowSuppliersPanel(true)}>
-                  Otvori
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowUtilityPanels(false)}>
+                  Sakrij
                 </Button>
-              </div>
-            )}
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    value={newSupplierName}
+                    onChange={(event) => setNewSupplierName(event.target.value)}
+                    placeholder="npr. Petrit"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleCreateSupplierEntry}
+                    disabled={isCreatingSupplier || !newSupplierName.trim()}
+                    className="gap-2"
+                  >
+                    {isCreatingSupplier ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    Dodaj
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {suppliers === undefined ? (
+                    <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
+                  ) : suppliers.length === 0 ? (
+                    <p className="text-sm text-slate-500">Nema dobavljaca. Dodaj Petrit i Menad za pocetak.</p>
+                  ) : (
+                    suppliers.map((supplier) => {
+                      const usageProducts = supplier.usage?.products ?? 0;
+                      const usageOrders = supplier.usage?.orders ?? 0;
+                      const isLocked = usageProducts > 0 || usageOrders > 0;
+                      return (
+                        <div
+                          key={supplier._id}
+                          className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800">{supplier.name}</p>
+                            <p className="text-xs text-slate-500">
+                              Proizvodi: {usageProducts} | Narudzbine: {usageOrders}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isLocked ? <Badge variant="secondary">Vezan</Badge> : null}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={isLocked}
+                              onClick={() => handleRemoveSupplierEntry(supplier._id, supplier.usage)}
+                            >
+                              Obrisi
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="lg:col-span-2">
-            {showInboxPanel ? (
-              <Card className="h-full">
-                <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <CardTitle>Slike za ubacivanje</CardTitle>
-                    <p className="text-sm text-slate-500">Privremeni inbox za slike proizvoda koji tek treba da se dodaju.</p>
+            <Card className="h-full">
+              <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle>Slike za ubacivanje</CardTitle>
+                  <p className="text-sm text-slate-500">Privremeni inbox za slike proizvoda koji tek treba da se dodaju.</p>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowUtilityPanels(false)}>
+                  Sakrij
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm text-slate-600">
+                    Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom.
                   </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowInboxPanel(false)}>
-                    Sakrij
-                  </Button>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-sm text-slate-600">
-                      Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom.
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        ref={inboxUploadInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="sr-only"
-                        onChange={handleInboxFilesSelected}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => inboxUploadInputRef.current?.click()}
-                        disabled={isUploadingInboxImages}
-                      >
-                        {isUploadingInboxImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
-                        Dodaj slike
-                      </Button>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={inboxUploadInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="sr-only"
+                      onChange={handleInboxFilesSelected}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => inboxUploadInputRef.current?.click()}
+                      disabled={isUploadingInboxImages}
+                    >
+                      {isUploadingInboxImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+                      Dodaj slike
+                    </Button>
                   </div>
-                  {inboxImages === undefined ? (
-                    <p className="text-sm text-slate-500">Ucitavanje slika...</p>
-                  ) : inboxList.length === 0 ? (
-                    <p className="text-sm text-slate-500">Nema slika u inboxu. Dodaj ih da ih kasnije rasporedis.</p>
-                  ) : (
-                    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                      {inboxList.map((image, index) => {
-                        const safeUrl = image.url ?? "";
-                        return (
+                </div>
+                {inboxImages === undefined ? (
+                  <p className="text-sm text-slate-500">Ucitavanje slika...</p>
+                ) : inboxList.length === 0 ? (
+                  <p className="text-sm text-slate-500">Nema slika u inboxu. Dodaj ih da ih kasnije rasporedis.</p>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                    {inboxList.map((image, index) => {
+                      const safeUrl = image.url ?? "";
+                      return (
+                        <div
+                          key={image._id}
+                          className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={safeUrl}
+                            alt={image.fileName ?? "Inbox slika"}
+                            className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                          />
                           <div
-                            key={image._id}
-                            className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
+                            className="absolute inset-0 flex cursor-pointer flex-col justify-between bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 transition-opacity focus:opacity-100 focus-within:opacity-100 group-hover:opacity-100"
+                            role="button"
+                            tabIndex={0}
+                            aria-label="Otvori pregled slike"
+                            onClick={() => handleOpenInboxPreview(index)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                handleOpenInboxPreview(index);
+                              }
+                            }}
                           >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={safeUrl}
-                              alt={image.fileName ?? "Inbox slika"}
-                              className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
-                            />
-                            <div
-                              className="absolute inset-0 flex cursor-pointer flex-col justify-between bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 transition-opacity focus:opacity-100 focus-within:opacity-100 group-hover:opacity-100"
-                              role="button"
-                              tabIndex={0}
-                              aria-label="Otvori pregled slike"
-                              onClick={() => handleOpenInboxPreview(index)}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
-                                  event.preventDefault();
-                                  handleOpenInboxPreview(index);
-                                }
-                              }}
-                            >
-                              <div className="flex items-center justify-end gap-1 p-2">
-                                {safeUrl ? (
-                                  <a
-                                    href={safeUrl}
-                                    download={image.fileName ?? "slika.jpg"}
-                                    className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-slate-700 shadow hover:bg-white"
-                                    title="Preuzmi"
-                                    onClick={(event) => event.stopPropagation()}
-                                    onKeyDown={(event) => event.stopPropagation()}
-                                  >
-                                    <Download className="h-4 w-4" />
-                                  </a>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-red-600 shadow hover:bg-white"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleDeleteInboxImage(image._id);
-                                  }}
+                            <div className="flex items-center justify-end gap-1 p-2">
+                              {safeUrl ? (
+                                <a
+                                  href={safeUrl}
+                                  download={image.fileName ?? "slika.jpg"}
+                                  className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-slate-700 shadow hover:bg-white"
+                                  title="Preuzmi"
+                                  onClick={(event) => event.stopPropagation()}
                                   onKeyDown={(event) => event.stopPropagation()}
-                                  title="Obrisi"
                                 >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                              <div className="flex items-center justify-center gap-2 pb-3 text-sm font-semibold text-white drop-shadow">
-                                <Images className="h-5 w-5" />
-                                <span>Klik za pregled</span>
-                              </div>
+                                  <Download className="h-4 w-4" />
+                                </a>
+                              ) : null}
+                              <button
+                                type="button"
+                                className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-red-600 shadow hover:bg-white"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleDeleteInboxImage(image._id);
+                                }}
+                                onKeyDown={(event) => event.stopPropagation()}
+                                title="Obrisi"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <div className="flex items-center justify-center gap-2 pb-3 text-sm font-semibold text-white drop-shadow">
+                              <Images className="h-5 w-5" />
+                              <span>Klik za pregled</span>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="flex h-full items-center justify-between rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 shadow-sm">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">Slike za ubacivanje</p>
-                  <p className="text-xs text-slate-500">Ukupno {inboxCount}</p>
-                </div>
-                <Button type="button" size="sm" variant="outline" onClick={() => setShowInboxPanel(true)}>
-                  Otvori
-                </Button>
-              </div>
-            )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paneli</span>
-          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setShowSuppliersPanel(true)}>
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setShowUtilityPanels(true)}>
             <UserRound className="h-4 w-4" />
             Dobavljaci {supplierCount ? `(${supplierCount})` : ""}
           </Button>
-          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setShowInboxPanel(true)}>
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => setShowUtilityPanels(true)}>
             <Images className="h-4 w-4" />
             Slike {inboxCount ? `(${inboxCount})` : ""}
           </Button>
@@ -3462,6 +3552,37 @@ function ProductsContent() {
           ) : null}
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(categoryToDelete)} onOpenChange={(open) => (!open ? setCategoryToDelete(null) : null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Obrisi kategoriju</DialogTitle>
+            <DialogDescription>
+              {categoryToDelete?.productCount && categoryToDelete.productCount > 0
+                ? `Kategorija "${categoryToDelete.name}" je vezana za ${categoryToDelete.productCount} proizvoda. Brisanjem ce biti uklonjena sa svih.`
+                : `Obrisi kategoriju "${categoryToDelete?.name}"?`}
+            </DialogDescription>
+          </DialogHeader>
+          {categoryToDelete?.productCount && categoryToDelete.productCount > 0 ? (
+            <div className="flex items-start gap-3 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                Ova kategorija je dodeljena na {categoryToDelete.productCount} proizvod{categoryToDelete.productCount === 1 ? "" : "a"}.
+                Potvrdom ce biti skinuta sa svih proizvoda i obrisana.
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="ghost" onClick={() => setCategoryToDelete(null)} disabled={isDeletingCategory}>
+              Odustani
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleConfirmDeleteCategory} disabled={isDeletingCategory}>
+              {isDeletingCategory ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Obrisi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {inboxPreviewImage ? (
         <div

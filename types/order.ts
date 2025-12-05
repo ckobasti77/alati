@@ -63,6 +63,7 @@ export interface Category {
   iconUrl?: string | null;
   iconFileName?: string;
   iconContentType?: string;
+  productCount?: number;
   createdAt: number;
   updatedAt: number;
 }

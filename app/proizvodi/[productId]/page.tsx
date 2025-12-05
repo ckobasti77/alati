@@ -13,6 +13,7 @@ import {
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  AlertCircle,
   ArrowLeft,
   Check,
   Copy,
@@ -34,6 +35,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -269,6 +278,9 @@ function ProductDetailsContent() {
     },
     string
   >("categories:create");
+  const removeCategory = useConvexMutation<{ token: string; id: string; force?: boolean }, { removed: boolean; productCount: number }>(
+    "categories:remove",
+  );
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
   const [product, setProduct] = useState<ProductWithUrls | null>(null);
   const productRef = useRef<ProductWithUrls | null>(null);
@@ -292,6 +304,8 @@ function ProductDetailsContent() {
   const [newCategoryIcon, setNewCategoryIcon] = useState<DraftCategoryIcon | null>(null);
   const [isUploadingCategoryIcon, setIsUploadingCategoryIcon] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
   const [reorderEditingId, setReorderEditingId] = useState<string | null>(null);
   const [reorderInputValue, setReorderInputValue] = useState("");
   const [isAddingVariant, setIsAddingVariant] = useState(false);
@@ -764,6 +778,32 @@ function ProductDetailsContent() {
       toast.error("Kreiranje kategorije nije uspelo.");
     } finally {
       setIsCreatingCategory(false);
+    }
+  };
+
+  const handleRequestDeleteCategory = (category: Category) => {
+    setCategoryToDelete(category);
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    setIsDeletingCategory(true);
+    try {
+      await removeCategory({ token: sessionToken, id: categoryToDelete._id, force: true });
+      setProduct((current) => {
+        if (!current) return current;
+        const nextCategoryIds = (current.categoryIds ?? []).filter((id) => id !== categoryToDelete._id);
+        const next = { ...current, categoryIds: nextCategoryIds };
+        productRef.current = next;
+        return next;
+      });
+      toast.success("Kategorija obrisana.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message ?? "Brisanje kategorije nije uspelo.");
+    } finally {
+      setIsDeletingCategory(false);
+      setCategoryToDelete(null);
     }
   };
 
@@ -2210,6 +2250,7 @@ function ProductDetailsContent() {
                       ) : (
                         filteredCategories.map((category, idx) => {
                           const isSelected = (product.categoryIds ?? []).includes(category._id);
+                          const usageCount = category.productCount ?? 0;
                           return (
                             <button
                               key={category._id}
@@ -2217,11 +2258,11 @@ function ProductDetailsContent() {
                               className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition ${
                                 idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"
                               } ${isSelected ? "text-blue-700" : "text-slate-800"} hover:bg-blue-50`}
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                handleSelectCategory(category._id);
-                              }}
-                            >
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleSelectCategory(category._id);
+                            }}
+                          >
                               {category.iconUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={category.iconUrl} alt={category.name} className="h-8 w-8 rounded-md object-cover" />
@@ -2230,11 +2271,29 @@ function ProductDetailsContent() {
                                   <Tag className="h-4 w-4" />
                                 </div>
                               )}
-                              <div className="flex-1">
-                                <p className="font-semibold">{category.name}</p>
-                                {isSelected ? <p className="text-[11px] text-emerald-600">Izabrana</p> : null}
-                              </div>
+                            <div className="flex-1">
+                              <p className="font-semibold">{category.name}</p>
+                              {isSelected ? <p className="text-[11px] text-emerald-600">Izabrana</p> : null}
+                              {usageCount > 0 ? (
+                                <p className="text-[11px] text-amber-600">{usageCount} proizvoda vezano</p>
+                              ) : null}
+                            </div>
+                            <div className="flex items-center gap-2">
                               {isSelected ? <Check className="h-4 w-4 text-emerald-600" /> : null}
+                              <span
+                                role="button"
+                                aria-label="Obrisi kategoriju"
+                                className="rounded-full p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setCategoryMenuOpen(false);
+                                  handleRequestDeleteCategory(category);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </span>
+                            </div>
                             </button>
                           );
                         })
@@ -2809,6 +2868,37 @@ function ProductDetailsContent() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(categoryToDelete)} onOpenChange={(open) => (!open ? setCategoryToDelete(null) : null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Obrisi kategoriju</DialogTitle>
+            <DialogDescription>
+              {categoryToDelete?.productCount && categoryToDelete.productCount > 0
+                ? `Kategorija "${categoryToDelete.name}" je vezana za ${categoryToDelete.productCount} proizvoda. Brisanjem ce biti uklonjena sa svih.`
+                : `Obrisi kategoriju "${categoryToDelete?.name}"?`}
+            </DialogDescription>
+          </DialogHeader>
+          {categoryToDelete?.productCount && categoryToDelete.productCount > 0 ? (
+            <div className="flex items-start gap-3 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                Ova kategorija je dodeljena na {categoryToDelete.productCount} proizvod
+                {categoryToDelete.productCount === 1 ? "" : "a"}. Potvrdom ce biti skinuta sa svih proizvoda i obrisana.
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="ghost" onClick={() => setCategoryToDelete(null)} disabled={isDeletingCategory}>
+              Odustani
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleConfirmDeleteCategory} disabled={isDeletingCategory}>
+              {isDeletingCategory ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Obrisi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {previewImage && (
         <div
