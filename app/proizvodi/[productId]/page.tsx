@@ -8,7 +8,7 @@ import {
   useState,
   type ChangeEvent,
   type DragEvent as ReactDragEvent,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -171,7 +171,7 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
   };
 
   const displayValue = formatter ? formatter(value) : valueAsString || "-";
-  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing) return;
     if (event.key !== "Enter") return;
     event.preventDefault();
