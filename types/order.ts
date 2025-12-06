@@ -41,6 +41,7 @@ export interface InboxImage {
   fileName?: string;
   contentType?: string;
   hasPurchasePrice?: boolean;
+  status?: "withPurchasePrice" | "withoutPurchasePrice" | "skip";
   url?: string | null;
   uploadedAt: number;
 }

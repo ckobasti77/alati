@@ -176,6 +176,9 @@ export default defineSchema({
     fileName: v.optional(v.string()),
     contentType: v.optional(v.string()),
     hasPurchasePrice: v.optional(v.boolean()),
+    status: v.optional(
+      v.union(v.literal("withPurchasePrice"), v.literal("withoutPurchasePrice"), v.literal("skip")),
+    ),
     uploadedAt: v.number(),
   }).index("by_user_uploadedAt", ["userId", "uploadedAt"]),
 });

@@ -16,6 +16,8 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   Facebook,
@@ -78,6 +80,12 @@ type DraftCategoryIcon = {
 };
 
 type SocialPlatform = "facebook" | "instagram";
+
+type LightboxItem = {
+  id?: string;
+  url: string;
+  alt?: string;
+};
 
 const isVariantOrigin = (
   origin: GalleryItem["origin"],
@@ -294,7 +302,7 @@ function ProductDetailsContent() {
     return window.matchMedia("(pointer: coarse)").matches;
   });
   const adImageInputRef = useRef<HTMLInputElement | null>(null);
-  const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
+  const [imageLightbox, setImageLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   const [draggingItem, setDraggingItem] = useState<GalleryItem | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [categorySearch, setCategorySearch] = useState("");
@@ -1600,11 +1608,6 @@ function ProductDetailsContent() {
     event.target.value = "";
   };
 
-  const handleOpenPreview = (item: GalleryItem) => {
-    if (!item.url) return;
-    setPreviewImage({ url: item.url, alt: item.alt || item.label });
-  };
-
   const handleDownloadImage = async (url: string, filename: string) => {
     if (!url) return;
     try {
@@ -1621,8 +1624,6 @@ function ProductDetailsContent() {
       toast.error("Preuzimanje nije uspelo.");
     }
   };
-
-  const handleClosePreview = () => setPreviewImage(null);
 
   const gallery: GalleryItem[] = useMemo(() => {
     if (!product) return [];
@@ -1651,11 +1652,59 @@ function ProductDetailsContent() {
           isMain: Boolean(image.isMain),
           publishFb: image.publishFb ?? true,
           publishIg: image.publishIg ?? true,
-          origin: { type: "variant" as const, variantId: variant.id },
-        })),
-      ) ?? [];
+        origin: { type: "variant" as const, variantId: variant.id },
+      })),
+    ) ?? [];
     return [...baseImages, ...variantImages].filter((item) => Boolean(item.url));
   }, [product]);
+  const openLightbox = useCallback(
+    (targetId?: string) => {
+      if (!gallery.length) return;
+      const items: LightboxItem[] = gallery
+        .map((item) => ({
+          id: item.id,
+          url: item.url,
+          alt: item.alt || item.label,
+        }))
+        .filter((item) => Boolean(item.url));
+      if (items.length === 0) return;
+      const startIndex =
+        targetId && items.some((item) => item.id === targetId)
+          ? items.findIndex((item) => item.id === targetId)
+          : 0;
+      setImageLightbox({ items, index: startIndex < 0 ? 0 : startIndex });
+    },
+    [gallery],
+  );
+  const handleOpenPreview = useCallback(
+    (item: GalleryItem) => {
+      if (!item.url) return;
+      openLightbox(item.id);
+    },
+    [openLightbox],
+  );
+  const handleCloseLightbox = useCallback(() => setImageLightbox(null), []);
+  const handleStepLightbox = useCallback((direction: 1 | -1) => {
+    setImageLightbox((prev) => {
+      if (!prev || prev.items.length === 0) return prev;
+      const nextIndex = (prev.index + direction + prev.items.length) % prev.items.length;
+      return { ...prev, index: nextIndex };
+    });
+  }, []);
+  useEffect(() => {
+    if (!imageLightbox) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleCloseLightbox();
+      } else if (event.key === "ArrowRight") {
+        handleStepLightbox(1);
+      } else if (event.key === "ArrowLeft") {
+        handleStepLightbox(-1);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleCloseLightbox, handleStepLightbox, imageLightbox]);
   const draggingIndex = useMemo(
     () => (draggingItem ? gallery.findIndex((item) => item.id === draggingItem.id) : -1),
     [draggingItem, gallery],
@@ -2901,31 +2950,71 @@ function ProductDetailsContent() {
         </DialogContent>
       </Dialog>
 
-      {previewImage && (
+      {imageLightbox ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          onClick={handleClosePreview}
+          onClick={handleCloseLightbox}
         >
+          {imageLightbox.items.length > 1 ? (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-4">
+              <button
+                type="button"
+                className="pointer-events-auto rounded-full bg-white/90 p-2 text-slate-800 shadow hover:bg-white"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleStepLightbox(-1);
+                }}
+                aria-label="Prethodna slika"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                className="pointer-events-auto rounded-full bg-white/90 p-2 text-slate-800 shadow hover:bg-white"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleStepLightbox(1);
+                }}
+                aria-label="Sledeca slika"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </div>
+          ) : null}
           <div
             className="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-black/40 p-3 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={handleClosePreview}
-              className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800 shadow"
-            >
-              Zatvori
-            </button>
+            <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-white/80">
+              <span>
+                {imageLightbox.index + 1} / {imageLightbox.items.length}
+              </span>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleCloseLightbox();
+                }}
+                className="rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-800 shadow"
+              >
+                Zatvori
+              </button>
+            </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={previewImage.url}
-              alt={previewImage.alt ?? "Pregled slike"}
+              src={imageLightbox.items[imageLightbox.index]?.url}
+              alt={imageLightbox.items[imageLightbox.index]?.alt ?? "Pregled slike"}
               className="mx-auto max-h-[82vh] w-auto rounded-xl object-contain"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (imageLightbox.items.length > 1) {
+                  handleStepLightbox(1);
+                }
+              }}
             />
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

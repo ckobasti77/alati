@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { DragEvent as ReactDragEvent } from "react";
+import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
@@ -30,6 +30,7 @@ import {
   Trash2,
   UserRound,
   X,
+  MoreVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -176,7 +177,18 @@ type SocialPlatform = "facebook" | "instagram";
 
 type SortOption = "created_desc" | "price_desc" | "price_asc" | "sales_desc" | "profit_desc";
 
-type InboxViewFilter = "withPurchasePrice" | "withoutPurchasePrice";
+type InboxImageStatus = "withPurchasePrice" | "withoutPurchasePrice" | "skip";
+
+type InboxViewFilter = InboxImageStatus;
+
+type LightboxItem = {
+  id?: string;
+  url: string;
+  alt?: string;
+  downloadUrl?: string;
+  downloadName?: string;
+  deleteId?: string;
+};
 
 const generateId = () => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -319,7 +331,7 @@ function ProductsContent() {
   const [images, setImages] = useState<DraftImage[]>([]);
   const [variantImages, setVariantImages] = useState<Record<string, DraftImage[]>>({});
   const [adImage, setAdImage] = useState<DraftAdImage | null>(null);
-  const [previewImage, setPreviewImage] = useState<{ url: string; alt?: string } | null>(null);
+  const [imageLightbox, setImageLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -344,7 +356,7 @@ function ProductsContent() {
   const [hasSeededSuppliers, setHasSeededSuppliers] = useState(false);
   const [isUploadingInboxImages, setIsUploadingInboxImages] = useState(false);
   const [inboxView, setInboxView] = useState<InboxViewFilter>("withPurchasePrice");
-  const [inboxPreviewIndex, setInboxPreviewIndex] = useState<number | null>(null);
+  const [inboxContextMenu, setInboxContextMenu] = useState<{ x: number; y: number; width: number; imageId: string } | null>(null);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [showUtilityPanels, setShowUtilityPanels] = useState(false);
   const variantUploadInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
@@ -390,7 +402,9 @@ function ProductsContent() {
     contentType?: string;
     uploadedAt?: number;
     hasPurchasePrice?: boolean;
+    status?: InboxImageStatus;
   }>("inboxImages:add");
+  const updateInboxImage = useConvexMutation<{ token: string; id: string; status: InboxImageStatus }>("inboxImages:update");
   const deleteInboxImage = useConvexMutation<{ token: string; id: string }>("inboxImages:remove");
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
 
@@ -740,6 +754,7 @@ function ProductsContent() {
     }
     setNewCategoryIcon(null);
     setIsUploadingCategoryIcon(false);
+    setImageLightbox(null);
   };
 
   const handleSelectCategory = (categoryId: string) => {
@@ -1008,39 +1023,58 @@ function ProductsContent() {
     [bestSupplierForVariant, defaultVariantEntry?.id, resolvedProductType],
   );
   const bestFormSupplierName = bestFormOffer ? supplierMap.get(bestFormOffer.supplierId)?.name : undefined;
-  const inboxImagesList = inboxImages ?? [];
-  const inboxSplit = useMemo(
-    () => ({
-      withPrice: inboxImagesList.filter((image) => image.hasPurchasePrice !== true),
-      withoutPrice: inboxImagesList.filter((image) => image.hasPurchasePrice === true),
-    }),
-    [inboxImagesList],
-  );
+  const resolveInboxStatus = useCallback((image: InboxImage): InboxImageStatus => {
+    if (
+      image.status === "withPurchasePrice" ||
+      image.status === "withoutPurchasePrice" ||
+      image.status === "skip"
+    ) {
+      return image.status;
+    }
+    return image.hasPurchasePrice === true ? "withoutPurchasePrice" : "withPurchasePrice";
+  }, []);
+  const inboxImagesList = (inboxImages ?? []).map((image) => ({
+    ...image,
+    status: resolveInboxStatus(image),
+  }));
+  const inboxSplit = useMemo(() => {
+    const withPrice = inboxImagesList.filter((image) => image.status === "withPurchasePrice");
+    const withoutPrice = inboxImagesList.filter((image) => image.status === "withoutPurchasePrice");
+    const skip = inboxImagesList.filter((image) => image.status === "skip");
+    return { withPrice, withoutPrice, skip };
+  }, [inboxImagesList]);
   const inboxWithPriceCount = inboxSplit.withPrice.length;
   const inboxWithoutPriceCount = inboxSplit.withoutPrice.length;
-  const inboxList = inboxView === "withPurchasePrice" ? inboxSplit.withPrice : inboxSplit.withoutPrice;
-  const inboxPreviewImage = inboxPreviewIndex !== null ? inboxList[inboxPreviewIndex] : undefined;
+  const inboxSkipCount = inboxSplit.skip.length;
+  const inboxList =
+    inboxView === "withPurchasePrice"
+      ? inboxSplit.withPrice
+      : inboxView === "withoutPurchasePrice"
+        ? inboxSplit.withoutPrice
+        : inboxSplit.skip;
   const supplierCount = suppliers?.length ?? 0;
-  const inboxCount = inboxList.length;
   const inboxTotalCount = inboxImagesList.length;
   const inboxEmptyMessage =
     inboxView === "withPurchasePrice"
       ? "Nema slika sa nabavnom cenom. Dodaj ih ili prebaci filter."
-      : "Nema slika bez nabavne cene. Dodaj ih ili prebaci filter.";
+      : inboxView === "withoutPurchasePrice"
+        ? "Nema slika bez nabavne cene. Dodaj ih ili prebaci filter."
+        : "Nema oznacenih za ignorisanje. Prebaci neku sliku u ovu grupu.";
 
   useEffect(() => {
-    setInboxPreviewIndex((prev) => {
-      if (prev === null) return null;
-      if (prev >= inboxList.length) {
-        return inboxList.length > 0 ? inboxList.length - 1 : null;
-      }
-      return prev;
-    });
-  }, [inboxList.length]);
-
-  useEffect(() => {
-    setInboxPreviewIndex(null);
+    setInboxContextMenu(null);
   }, [inboxView]);
+
+  useEffect(() => {
+    if (!inboxContextMenu) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setInboxContextMenu(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [inboxContextMenu]);
 
   const focusProductField = useCallback(
     (fieldName: string) => {
@@ -1319,7 +1353,7 @@ function ProductsContent() {
   };
 
   const uploadInboxImages = useCallback(
-    async (files: FileList | null, options?: { hasPurchasePrice?: boolean }) => {
+    async (files: FileList | null, options?: { status?: InboxImageStatus }) => {
       if (!files || files.length === 0) return;
       if (isUploadingInboxImages) {
         toast.info("Otpremanje slika je vec u toku.");
@@ -1333,7 +1367,7 @@ function ProductsContent() {
         return;
       }
       setIsUploadingInboxImages(true);
-      const targetHasPurchasePrice = options?.hasPurchasePrice ?? inboxView === "withoutPurchasePrice";
+      const targetStatus = options?.status ?? inboxView ?? "withPurchasePrice";
       try {
         for (const file of imagesOnly) {
           const uploadUrl = await generateUploadUrl({ token: sessionToken });
@@ -1355,7 +1389,8 @@ function ProductsContent() {
             fileName: file.name,
             contentType: file.type,
             uploadedAt: Date.now(),
-            hasPurchasePrice: targetHasPurchasePrice,
+            hasPurchasePrice: targetStatus === "withoutPurchasePrice",
+            status: targetStatus,
           });
         }
         toast.success("Slike su dodate u inbox za ubacivanje.");
@@ -1381,17 +1416,13 @@ function ProductsContent() {
   const handleDeleteInboxImage = async (id: string) => {
     try {
       await deleteInboxImage({ token: sessionToken, id });
-      if (inboxPreviewIndex !== null) {
-        const nextCount = Math.max(inboxCount - 1, 0);
-        if (nextCount <= 0) {
-          setInboxPreviewIndex(null);
-        } else {
-          setInboxPreviewIndex((prev) => {
-            if (prev === null) return null;
-            return Math.min(prev, nextCount - 1);
-          });
-        }
-      }
+      setImageLightbox((prev) => {
+        if (!prev) return prev;
+        const filtered = prev.items.filter((item) => item.deleteId !== id);
+        if (filtered.length === 0) return null;
+        const nextIndex = Math.min(prev.index, filtered.length - 1);
+        return { items: filtered, index: nextIndex };
+      });
       toast.success("Slika je obrisana.");
     } catch (error) {
       console.error(error);
@@ -1399,11 +1430,77 @@ function ProductsContent() {
     }
   };
 
-  const handleOpenInboxPreview = (index: number) => {
-    setInboxPreviewIndex(index);
+  const handleMoveInboxImage = async (id: string, status: InboxImageStatus) => {
+    try {
+      await updateInboxImage({ token: sessionToken, id, status });
+      toast.success(
+        status === "skip"
+          ? "Slika oznacena za ne ubacivati."
+          : status === "withoutPurchasePrice"
+            ? "Slika prebacena u Bez nabavne."
+            : "Slika vracena u Sa nabavnom.",
+      );
+    } catch (error) {
+      console.error(error);
+      toast.error("Nije moguce promeniti grupu slike.");
+    } finally {
+      setInboxContextMenu(null);
+    }
   };
 
-  const handleCloseInboxPreview = () => setInboxPreviewIndex(null);
+  const handleOpenInboxPreview = (index: number) => {
+    setInboxContextMenu(null);
+    const items: LightboxItem[] = inboxList
+      .map((image) => {
+        const url = image.url ?? "";
+        if (!url) return null;
+        return {
+          id: image._id,
+          url,
+          alt: image.fileName ?? "Inbox slika",
+          downloadUrl: url,
+          downloadName: image.fileName ?? "inbox-slika.jpg",
+          deleteId: image._id,
+        };
+      })
+      .filter(Boolean) as LightboxItem[];
+    if (items.length === 0) return;
+    const targetId = items[index]?.id;
+    openLightbox(items, targetId);
+  };
+
+  const handleInboxContextMenu = (event: ReactMouseEvent, imageId: string) => {
+    event.preventDefault();
+    const margin = 8;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const desiredMenuWidth = 210;
+    const menuWidth = Math.min(desiredMenuWidth, viewportWidth - margin * 2);
+    const menuHeight = 130;
+    const triggerRect = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect();
+    const isMobile = viewportWidth <= 640;
+
+    let x = triggerRect ? triggerRect.right + margin : event.clientX || margin;
+    let y = triggerRect ? triggerRect.bottom + margin : event.clientY || margin;
+
+    if (triggerRect) {
+      const wouldOverflowRight = x + menuWidth + margin > viewportWidth;
+      if (isMobile || wouldOverflowRight) {
+        x = triggerRect.left - menuWidth - margin;
+      }
+      const wouldOverflowBottom = y + menuHeight + margin > viewportHeight;
+      if (wouldOverflowBottom) {
+        y = triggerRect.top - menuHeight - margin;
+      }
+    }
+
+    x = Math.min(Math.max(margin, x), viewportWidth - menuWidth - margin);
+    y = Math.min(Math.max(margin, y), viewportHeight - menuHeight - margin);
+
+    setInboxContextMenu({ x, y, width: menuWidth, imageId });
+  };
+
+  const handleCloseInboxContextMenu = () => setInboxContextMenu(null);
 
   const handleDownloadInboxImage = async (url?: string | null, fileName?: string) => {
     if (!url) return;
@@ -1425,13 +1522,6 @@ function ProductsContent() {
       console.error(error);
       toast.error("Preuzimanje slike nije uspelo.");
     }
-  };
-
-  const handleStepInboxPreview = (direction: 1 | -1) => {
-    const list = inboxList;
-    if (inboxPreviewIndex === null || list.length === 0) return;
-    const nextIndex = (inboxPreviewIndex + direction + list.length) % list.length;
-    setInboxPreviewIndex(nextIndex);
   };
 
   const handleAdDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -1725,12 +1815,66 @@ function ProductsContent() {
     setImages((prev) => prev.map((image) => ({ ...image, isMain: image.storageId === storageId })));
   };
 
-  const handleOpenPreview = (url?: string | null, alt?: string) => {
-    if (!url) return;
-    setPreviewImage({ url, alt });
-  };
+  const buildLightboxItems = useCallback((list: DraftImage[]): LightboxItem[] => {
+    return list
+      .map((image) => {
+        const url = image.url ?? image.previewUrl;
+        if (!url) return null;
+        return {
+          id: image.storageId,
+          url,
+          alt: image.fileName ?? "Pregled slike",
+        };
+      })
+      .filter(Boolean) as LightboxItem[];
+  }, []);
 
-  const handleClosePreview = () => setPreviewImage(null);
+  const openLightbox = useCallback((items: LightboxItem[], targetId?: string) => {
+    const validItems = items.filter((item) => Boolean(item.url));
+    if (validItems.length === 0) return;
+    const startIndex =
+      targetId && validItems.some((item) => item.id === targetId)
+        ? validItems.findIndex((item) => item.id === targetId)
+        : 0;
+    setImageLightbox({ items: validItems, index: startIndex < 0 ? 0 : startIndex });
+  }, []);
+
+  const handleOpenImageGroup = useCallback(
+    (list: DraftImage[], targetId: string) => {
+      const items = buildLightboxItems(list);
+      openLightbox(items, targetId);
+    },
+    [buildLightboxItems, openLightbox],
+  );
+
+  const handleStepLightbox = useCallback((direction: 1 | -1) => {
+    setImageLightbox((prev) => {
+      if (!prev || prev.items.length === 0) return prev;
+      const nextIndex = (prev.index + direction + prev.items.length) % prev.items.length;
+      return { ...prev, index: nextIndex };
+    });
+  }, []);
+
+  const handleCloseLightbox = useCallback(() => setImageLightbox(null), []);
+
+  useEffect(() => {
+    setImageLightbox(null);
+  }, [images.length]);
+
+  useEffect(() => {
+    if (!imageLightbox) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleCloseLightbox();
+      } else if (event.key === "ArrowRight") {
+        handleStepLightbox(1);
+      } else if (event.key === "ArrowLeft") {
+        handleStepLightbox(-1);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleCloseLightbox, handleStepLightbox, imageLightbox]);
 
   const handleSetVariantMainImage = (variantId: string, storageId: string) => {
     setVariantImages((prev) => {
@@ -2771,7 +2915,7 @@ function ProductsContent() {
                                     className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
                                       resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
                                     }`}
-                                    onClick={() => handleOpenPreview(resolvedUrl, image.fileName ?? "Variant image")}
+                                    onClick={() => handleOpenImageGroup(variantImages[variant.id] ?? [], image.storageId)}
                                   >
                                     {resolvedUrl ? (
                                       // eslint-disable-next-line @next/next/no-img-element
@@ -3029,7 +3173,7 @@ function ProductsContent() {
                           className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
                             resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
                           }`}
-                          onClick={() => handleOpenPreview(resolvedUrl, image.fileName ?? "Product image")}
+                          onClick={() => handleOpenImageGroup(images, image.storageId)}
                         >
                           {resolvedUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -3106,209 +3250,236 @@ function ProductsContent() {
       </Dialog>
 
       {showUtilityPanels ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-1">
-            <Card className="h-full">
-              <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <CardTitle>Dobavljaci</CardTitle>
-                  <p className="text-sm text-slate-500">Dodaj ili obrisi dobavljace. Ne mozes obrisati vezane za proizvode.</p>
-                </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setShowUtilityPanels(false)}>
-                  Sakrij
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Input
-                    value={newSupplierName}
-                    onChange={(event) => setNewSupplierName(event.target.value)}
-                    placeholder="npr. Petrit"
-                  />
-                  <Button
-                    type="button"
-                    onClick={handleCreateSupplierEntry}
-                    disabled={isCreatingSupplier || !newSupplierName.trim()}
-                    className="gap-2"
-                  >
-                    {isCreatingSupplier ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    Dodaj
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {suppliers === undefined ? (
-                    <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
-                  ) : suppliers.length === 0 ? (
-                    <p className="text-sm text-slate-500">Nema dobavljaca. Dodaj Petrit i Menad za pocetak.</p>
-                  ) : (
-                    suppliers.map((supplier) => {
-                      const usageProducts = supplier.usage?.products ?? 0;
-                      const usageOrders = supplier.usage?.orders ?? 0;
-                      const isLocked = usageProducts > 0 || usageOrders > 0;
-                      return (
-                        <div
-                          key={supplier._id}
-                          className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
-                        >
-                          <div>
-                            <p className="text-sm font-semibold text-slate-800">{supplier.name}</p>
-                            <p className="text-xs text-slate-500">
-                              Proizvodi: {usageProducts} | Narudzbine: {usageOrders}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {isLocked ? <Badge variant="secondary">Vezan</Badge> : null}
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={isLocked}
-                              onClick={() => handleRemoveSupplierEntry(supplier._id, supplier.usage)}
-                            >
-                              Obrisi
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="lg:col-span-2">
-            <Card className="h-full">
-              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <CardTitle>Slike za ubacivanje</CardTitle>
-                  <p className="text-sm text-slate-500">Privremeni inbox za slike proizvoda koji tek treba da se dodaju.</p>
-                </div>
-                <div className="flex flex-col items-stretch gap-2 sm:items-end">
-                  <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1 shadow-sm">
-                    <Button
-                      type="button"
-                      variant={inboxView === "withPurchasePrice" ? "default" : "ghost"}
-                      size="sm"
-                      className="rounded-full px-3"
-                      onClick={() => setInboxView("withPurchasePrice")}
-                    >
-                      Sa nabavnom {inboxWithPriceCount ? `(${inboxWithPriceCount})` : ""}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={inboxView === "withoutPurchasePrice" ? "default" : "ghost"}
-                      size="sm"
-                      className="rounded-full px-3"
-                      onClick={() => setInboxView("withoutPurchasePrice")}
-                    >
-                      Bez nabavne {inboxWithoutPriceCount ? `(${inboxWithoutPriceCount})` : ""}
-                    </Button>
+        <div className="w-full max-w-[100vw]">
+          <div className="grid w-full max-w-full gap-4 overflow-hidden lg:grid-cols-3">
+            <div className="lg:col-span-1">
+              <Card className="h-full w-full">
+                <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle>Dobavljaci</CardTitle>
+                    <p className="text-sm text-slate-500">Dodaj ili obrisi dobavljace. Ne mozes obrisati vezane za proizvode.</p>
                   </div>
                   <Button type="button" variant="ghost" size="sm" onClick={() => setShowUtilityPanels(false)}>
                     Sakrij
                   </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm text-slate-600">
-                    Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom. Trenutno gledas{" "}
-                    {inboxView === "withPurchasePrice" ? "slike sa nabavnom cenom." : "slike bez nabavne cene."}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      ref={inboxUploadInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="sr-only"
-                      onChange={handleInboxFilesSelected}
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Input
+                      value={newSupplierName}
+                      onChange={(event) => setNewSupplierName(event.target.value)}
+                      placeholder="npr. Petrit"
                     />
                     <Button
                       type="button"
-                      variant="outline"
+                      onClick={handleCreateSupplierEntry}
+                      disabled={isCreatingSupplier || !newSupplierName.trim()}
                       className="gap-2"
-                      onClick={() => inboxUploadInputRef.current?.click()}
-                      disabled={isUploadingInboxImages}
                     >
-                      {isUploadingInboxImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
-                      Dodaj slike
+                      {isCreatingSupplier ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Dodaj
                     </Button>
                   </div>
-                </div>
-                {inboxImages === undefined ? (
-                  <p className="text-sm text-slate-500">Ucitavanje slika...</p>
-                ) : inboxList.length === 0 ? (
-                  <p className="text-sm text-slate-500">{inboxEmptyMessage}</p>
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                    {inboxList.map((image, index) => {
-                      const safeUrl = image.url ?? "";
-                      return (
-                        <div
-                          key={image._id}
-                          className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={safeUrl}
-                            alt={image.fileName ?? "Inbox slika"}
-                            className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
-                          />
+                  <div className="space-y-2">
+                    {suppliers === undefined ? (
+                      <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
+                    ) : suppliers.length === 0 ? (
+                      <p className="text-sm text-slate-500">Nema dobavljaca. Dodaj Petrit i Menad za pocetak.</p>
+                    ) : (
+                      suppliers.map((supplier) => {
+                        const usageProducts = supplier.usage?.products ?? 0;
+                        const usageOrders = supplier.usage?.orders ?? 0;
+                        const isLocked = usageProducts > 0 || usageOrders > 0;
+                        return (
                           <div
-                            className="absolute inset-0 flex cursor-pointer flex-col justify-between bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 transition-opacity focus:opacity-100 focus-within:opacity-100 group-hover:opacity-100"
-                            role="button"
-                            tabIndex={0}
-                            aria-label="Otvori pregled slike"
-                            onClick={() => handleOpenInboxPreview(index)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                handleOpenInboxPreview(index);
-                              }
-                            }}
+                            key={supplier._id}
+                            className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
                           >
-                            <div className="flex items-center justify-end gap-1 p-2">
-                              {safeUrl ? (
-                                <button
-                                  type="button"
-                                  className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-slate-700 shadow hover:bg-white"
-                                  title="Preuzmi"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void handleDownloadInboxImage(safeUrl, image.fileName);
-                                  }}
-                                  onKeyDown={(event) => event.stopPropagation()}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-red-600 shadow hover:bg-white"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleDeleteInboxImage(image._id);
-                                }}
-                                onKeyDown={(event) => event.stopPropagation()}
-                                title="Obrisi"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{supplier.name}</p>
+                              <p className="text-xs text-slate-500">
+                                Proizvodi: {usageProducts} | Narudzbine: {usageOrders}
+                              </p>
                             </div>
-                            <div className="flex items-center justify-center gap-2 pb-3 text-sm font-semibold text-white drop-shadow">
-                              <Images className="h-5 w-5" />
-                              <span>Klik za pregled</span>
+                            <div className="flex items-center gap-2">
+                              {isLocked ? <Badge variant="secondary">Vezan</Badge> : null}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={isLocked}
+                                onClick={() => handleRemoveSupplierEntry(supplier._id, supplier.usage)}
+                              >
+                                Obrisi
+                              </Button>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="lg:col-span-2">
+              <Card className="h-full w-full">
+                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle>Slike za ubacivanje</CardTitle>
+                    <p className="text-sm text-slate-500">Privremeni inbox za slike proizvoda koji tek treba da se dodaju.</p>
+                  </div>
+                  <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                    <div className="inline-flex flex-wrap items-center gap-1 rounded-3xl lg:rounded-full border border-slate-200 bg-slate-50 p-1 shadow-sm">
+                      <Button
+                        type="button"
+                        variant={inboxView === "withPurchasePrice" ? "default" : "ghost"}
+                        size="sm"
+                        className="rounded-full px-3 w-full lg:w-auto"
+                        onClick={() => setInboxView("withPurchasePrice")}
+                      >
+                        Sa nabavnom {inboxWithPriceCount ? `(${inboxWithPriceCount})` : ""}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={inboxView === "withoutPurchasePrice" ? "default" : "ghost"}
+                        size="sm"
+                        className="rounded-full px-3 w-full lg:w-auto"
+                        onClick={() => setInboxView("withoutPurchasePrice")}
+                      >
+                        Bez nabavne {inboxWithoutPriceCount ? `(${inboxWithoutPriceCount})` : ""}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={inboxView === "skip" ? "default" : "ghost"}
+                        size="sm"
+                        className="rounded-full px-3 w-full lg:w-auto"
+                        onClick={() => setInboxView("skip")}
+                      >
+                        Ne ubacivati {inboxSkipCount ? `(${inboxSkipCount})` : ""}
+                      </Button>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setShowUtilityPanels(false)}>
+                      Sakrij
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-sm text-slate-600">
+                      Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom. Trenutno gledas{" "}
+                      {inboxView === "withPurchasePrice"
+                        ? "slike sa nabavnom cenom."
+                        : inboxView === "withoutPurchasePrice"
+                          ? "slike bez nabavne cene."
+                          : "slike oznacene da se ne ubacuju."}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={inboxUploadInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="sr-only"
+                        onChange={handleInboxFilesSelected}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => inboxUploadInputRef.current?.click()}
+                        disabled={isUploadingInboxImages}
+                      >
+                        {isUploadingInboxImages ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+                        Dodaj slike
+                      </Button>
+                    </div>
+                  </div>
+                  {inboxImages === undefined ? (
+                    <p className="text-sm text-slate-500">Ucitavanje slika...</p>
+                  ) : inboxList.length === 0 ? (
+                    <p className="text-sm text-slate-500">{inboxEmptyMessage}</p>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                      {inboxList.map((image, index) => {
+                        const safeUrl = image.url ?? "";
+                        return (
+                          <div
+                            key={image._id}
+                            className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
+                            onContextMenu={(event) => handleInboxContextMenu(event, image._id)}
+                          >
+                            <button
+                              type="button"
+                              className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow transition hover:bg-white md:hidden"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleInboxContextMenu(event, image._id);
+                              }}
+                              aria-label="Opcije slike"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={safeUrl}
+                              alt={image.fileName ?? "Inbox slika"}
+                              className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                            />
+                            <div
+                              className="absolute inset-0 flex cursor-pointer flex-col justify-between bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 transition-opacity focus:opacity-100 focus-within:opacity-100 group-hover:opacity-100"
+                              role="button"
+                              tabIndex={0}
+                              aria-label="Otvori pregled slike"
+                              onClick={() => handleOpenInboxPreview(index)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  handleOpenInboxPreview(index);
+                                }
+                              }}
+                            >
+                              <div className="flex items-center justify-end gap-1 p-2">
+                                {safeUrl ? (
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-slate-700 shadow hover:bg-white"
+                                    title="Preuzmi"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleDownloadInboxImage(safeUrl, image.fileName);
+                                    }}
+                                    onKeyDown={(event) => event.stopPropagation()}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-red-600 shadow hover:bg-white"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleDeleteInboxImage(image._id);
+                                  }}
+                                  onKeyDown={(event) => event.stopPropagation()}
+                                  title="Obrisi"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <div className="flex items-center justify-center gap-2 pb-3 text-sm font-semibold text-white drop-shadow">
+                                <Images className="h-5 w-5" />
+                                <span>Klik za pregled</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       ) : (
@@ -3639,101 +3810,141 @@ function ProductsContent() {
         </CardContent>
       </Card>
 
-      {inboxPreviewImage ? (
+      {inboxContextMenu ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={handleCloseInboxContextMenu} />
+          <div
+            className="fixed z-50 min-w-[190px] overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg shadow-slate-400/30"
+            style={{ top: inboxContextMenu.y, left: inboxContextMenu.x }}
+            role="menu"
+          >
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              onClick={() => handleMoveInboxImage(inboxContextMenu.imageId, "withoutPurchasePrice")}
+            >
+              <Images className="h-4 w-4 text-slate-500" />
+              Prebaci u &quot;Bez nabavne&quot;
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+              onClick={() => handleMoveInboxImage(inboxContextMenu.imageId, "skip")}
+            >
+              <X className="h-4 w-4" />
+              Prebaci u &quot;Ne ubacivati&quot;
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      {imageLightbox ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          onClick={handleCloseInboxPreview}
+          onClick={handleCloseLightbox}
         >
-          <div className="relative w-full max-w-5xl">
-            <div className="absolute left-3 top-1/2 flex -translate-y-1/2 gap-2">
-              <button
-                type="button"
-                className="rounded-full bg-white/80 p-2 text-slate-800 shadow"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleStepInboxPreview(-1);
-                }}
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                className="rounded-full bg-white/80 p-2 text-slate-800 shadow"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleStepInboxPreview(1);
-                }}
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            </div>
-            <div
-              className="relative max-h-[90vh] overflow-hidden rounded-2xl bg-black/50 p-3 shadow-2xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="mb-2 flex items-center justify-end gap-2">
-                {inboxPreviewImage.url ? (
+          {(() => {
+            const item = imageLightbox.items[imageLightbox.index];
+            const showDownload = Boolean(item?.downloadUrl);
+            const showDelete = Boolean(item?.deleteId);
+            if (!showDownload && !showDelete) return null;
+            return (
+              <div className="absolute right-4 top-4 z-50 flex items-center gap-2">
+                {showDownload ? (
                   <Button
                     type="button"
-                    variant="secondary"
                     size="sm"
+                    variant="secondary"
                     className="gap-1"
-                    onClick={() => handleDownloadInboxImage(inboxPreviewImage.url, inboxPreviewImage.fileName)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDownloadInboxImage(item?.downloadUrl, item?.downloadName);
+                    }}
                   >
                     <Download className="h-4 w-4" />
                     Preuzmi
                   </Button>
                 ) : null}
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="gap-1"
-                  onClick={() => handleDeleteInboxImage(inboxPreviewImage._id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Obrisi
-                </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={handleCloseInboxPreview}>
-                  Zatvori
-                </Button>
+                {showDelete ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="gap-1"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (item?.deleteId) {
+                        void handleDeleteInboxImage(item.deleteId);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Obrisi
+                  </Button>
+                ) : null}
               </div>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={inboxPreviewImage.url ?? ""}
-                alt={inboxPreviewImage.fileName ?? "Inbox slika"}
-                className="mx-auto max-h-[78vh] w-full rounded-xl object-contain"
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {previewImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          onClick={handleClosePreview}
-        >
+            );
+          })()}
           <div
             className="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-black/40 p-3 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={handleClosePreview}
-              className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800 shadow"
-            >
-              Zatvori
-            </button>
+            {imageLightbox.items.length > 1 ? (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-4">
+                <button
+                  type="button"
+                  className="pointer-events-auto rounded-full bg-white/90 p-2 text-slate-800 shadow hover:bg-white"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleStepLightbox(-1);
+                  }}
+                  aria-label="Prethodna slika"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  type="button"
+                  className="pointer-events-auto rounded-full bg-white/90 p-2 text-slate-800 shadow hover:bg-white"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleStepLightbox(1);
+                  }}
+                  aria-label="Sledeca slika"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </div>
+            ) : null}
+            <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-white/80">
+              <span>
+                {imageLightbox.index + 1} / {imageLightbox.items.length}
+              </span>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleCloseLightbox();
+                }}
+                className="rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-800 shadow"
+              >
+                Zatvori
+              </button>
+            </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={previewImage.url}
-              alt={previewImage.alt ?? "Pregled slike"}
+              src={imageLightbox.items[imageLightbox.index]?.url}
+              alt={imageLightbox.items[imageLightbox.index]?.alt ?? "Pregled slike"}
               className="mx-auto max-h-[82vh] w-auto rounded-xl object-contain"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (imageLightbox.items.length > 1) {
+                  handleStepLightbox(1);
+                }
+              }}
             />
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
