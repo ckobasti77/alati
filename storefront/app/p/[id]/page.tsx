@@ -10,9 +10,14 @@ import { useConvexQuery } from "../../../lib/convex";
 
 const ensureMainImage = (list: PublicImage[] = []) => {
   if (list.length === 0) return list;
-  const hasMain = list.some((image) => image.isMain);
-  if (hasMain) return list;
-  return list.map((image, index) => ({ ...image, isMain: index === 0 }));
+  const next = [...list];
+  const mainIndex = next.findIndex((image) => image.isMain);
+  const targetIndex = mainIndex >= 0 ? mainIndex : 0;
+  if (targetIndex > 0) {
+    const [main] = next.splice(targetIndex, 1);
+    next.unshift(main);
+  }
+  return next.map((image, index) => ({ ...image, isMain: index === 0 }));
 };
 
 export default function ProductPage() {

@@ -302,11 +302,11 @@ export const list = query({
     const withUrls = await Promise.all(
       items.map(async (item) => {
         const images = await Promise.all(
-      (item.images ?? []).map(async (image) => ({
-        ...image,
-        url: await ctx.storage.getUrl(image.storageId),
-      })),
-    );
+          (item.images ?? []).map(async (image) => ({
+            ...image,
+            url: await ctx.storage.getUrl(image.storageId),
+          })),
+        );
         const adImage = item.adImage
           ? { ...item.adImage, url: await ctx.storage.getUrl(item.adImage.storageId) }
           : undefined;
@@ -325,6 +325,88 @@ export const list = query({
       }),
     );
     return withUrls.sort((a, b) => b.createdAt - a.createdAt);
+  },
+});
+
+export const listPaginated = query({
+  args: {
+    token: v.string(),
+    search: v.optional(v.string()),
+    page: v.optional(v.number()),
+    pageSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const page = Math.max(args.page ?? 1, 1);
+    const pageSize = Math.max(Math.min(args.pageSize ?? 20, 100), 1);
+
+    let items = await ctx.db
+      .query("products")
+      .withIndex("by_user_createdAt", (q) => q.eq("userId", user._id))
+      .collect();
+
+    const needle = args.search?.trim().toLowerCase();
+    if (needle) {
+      const categories = await ctx.db.query("categories").collect();
+      const categoryMap = new Map(
+        categories.map((category) => [String(category._id), category.name.toLowerCase()]),
+      );
+      items = items.filter((product) => {
+        const baseText = `${product.kpName ?? ""} ${product.name ?? ""} ${product.opisKp ?? ""} ${product.opisFbInsta ?? ""} ${
+          product.opis ?? ""
+        }`.toLowerCase();
+        if (baseText.includes(needle)) return true;
+        if ((product.variants ?? []).some((variant) => variant.label.toLowerCase().includes(needle))) {
+          return true;
+        }
+        const hasCategoryHit = (product.categoryIds ?? []).some((id) => {
+          const name = categoryMap.get(String(id));
+          return name ? name.includes(needle) : false;
+        });
+        return hasCategoryHit;
+      });
+    }
+
+    items = items.sort((a, b) => b.createdAt - a.createdAt);
+    const total = items.length;
+    const offset = (page - 1) * pageSize;
+    const pageItems = items.slice(offset, offset + pageSize);
+
+    const withUrls = await Promise.all(
+      pageItems.map(async (item) => {
+        const images = await Promise.all(
+          (item.images ?? []).map(async (image) => ({
+            ...image,
+            url: await ctx.storage.getUrl(image.storageId),
+          })),
+        );
+        const adImage = item.adImage
+          ? { ...item.adImage, url: await ctx.storage.getUrl(item.adImage.storageId) }
+          : undefined;
+        const variants = await Promise.all(
+          (item.variants ?? []).map(async (variant) => {
+            const variantImages = await Promise.all(
+              (variant.images ?? []).map(async (image) => ({
+                ...image,
+                url: await ctx.storage.getUrl(image.storageId),
+              })),
+            );
+            return { ...variant, images: variantImages };
+          }),
+        );
+        return { ...item, images, variants, adImage };
+      }),
+    );
+
+    return {
+      items: withUrls,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(Math.ceil(total / pageSize), 1),
+      },
+    };
   },
 });
 

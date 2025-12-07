@@ -144,6 +144,16 @@ export interface Order {
   kreiranoAt: number;
 }
 
+export interface ProductListResponse {
+  items: Product[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 export interface OrderListResponse {
   items: Order[];
   pagination: {

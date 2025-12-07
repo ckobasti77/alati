@@ -61,8 +61,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { LoadingDots } from "@/components/LoadingDots";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
-import { useInfiniteItems } from "@/lib/useInfiniteItems";
-import type { Category, InboxImage, Product, ProductStats, Supplier } from "@/types/order";
+import type { Category, InboxImage, Product, ProductListResponse, ProductStats, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 
@@ -144,6 +143,8 @@ type ProductFormValues = z.infer<typeof productSchema>;
 type VariantFormEntry = z.infer<typeof variantSchema>;
 
 type SupplierOfferFormEntry = z.infer<typeof supplierOfferSchema>;
+
+const PRODUCTS_PAGE_SIZE = 20;
 
 type DraftImage = {
   storageId: string;
@@ -341,6 +342,15 @@ function ProductsContent() {
   const [isMobile, setIsMobile] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("created_desc");
   const [productSearch, setProductSearch] = useState("");
+  const [productPage, setProductPage] = useState(1);
+  const [productFeed, setProductFeed] = useState<Product[]>([]);
+  const [productPagination, setProductPagination] = useState<ProductListResponse["pagination"]>({
+    page: 1,
+    pageSize: PRODUCTS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  });
+  const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
   const [categorySearch, setCategorySearch] = useState("");
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
@@ -366,13 +376,20 @@ function ProductsContent() {
   const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
   const dialogScrollRef = useRef<HTMLDivElement | null>(null);
+  const productsLoaderRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreProductsTimerRef = useRef<number | null>(null);
   const fileInputId = useMemo(() => `product-images-${generateId()}`, []);
   const adUploadInputId = useMemo(() => `ad-image-${generateId()}`, []);
   const hiddenFileInputStyle = useMemo<CSSProperties>(
     () => ({ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, opacity: 0 }),
     [],
   );
-  const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
+  const productList = useConvexQuery<ProductListResponse>("products:listPaginated", {
+    token: sessionToken,
+    search: productSearch.trim() || undefined,
+    page: productPage,
+    pageSize: PRODUCTS_PAGE_SIZE,
+  });
   const productStats = useConvexQuery<ProductStats[]>("products:stats", { token: sessionToken });
   const createProduct = useConvexMutation("products:create");
   const updateProduct = useConvexMutation("products:update");
@@ -407,6 +424,80 @@ function ProductsContent() {
   const updateInboxImage = useConvexMutation<{ token: string; id: string; status: InboxImageStatus }>("inboxImages:update");
   const deleteInboxImage = useConvexMutation<{ token: string; id: string }>("inboxImages:remove");
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
+
+  const resetProductsFeed = useCallback(() => {
+    if (loadMoreProductsTimerRef.current !== null) {
+      window.clearTimeout(loadMoreProductsTimerRef.current);
+      loadMoreProductsTimerRef.current = null;
+    }
+    setProductFeed([]);
+    setProductPage(1);
+    setProductPagination((prev) => ({ ...prev, page: 1, total: 0, totalPages: 1 }));
+    setIsLoadingMoreProducts(false);
+  }, []);
+
+  useEffect(() => {
+    resetProductsFeed();
+  }, [resetProductsFeed, sessionToken]);
+
+  useEffect(() => {
+    if (!productList) return;
+    if (loadMoreProductsTimerRef.current !== null) {
+      window.clearTimeout(loadMoreProductsTimerRef.current);
+      loadMoreProductsTimerRef.current = null;
+    }
+    if (productList.pagination) {
+      setProductPagination(productList.pagination);
+    }
+    if (productList.items) {
+      setProductFeed((prev) => {
+        const map = new Map(prev.map((entry) => [String(entry._id), entry]));
+        productList.items.forEach((entry) => {
+          map.set(String(entry._id), entry);
+        });
+        return Array.from(map.values()).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+      });
+    }
+    setIsLoadingMoreProducts(false);
+  }, [productList]);
+
+  useEffect(() => {
+    return () => {
+      if (loadMoreProductsTimerRef.current !== null) {
+        window.clearTimeout(loadMoreProductsTimerRef.current);
+      }
+    };
+  }, []);
+
+  const hasMoreProducts = productPagination.totalPages > productPage;
+
+  const handleLoadMoreProducts = useCallback(() => {
+    if (isLoadingMoreProducts) return;
+    if (!hasMoreProducts) return;
+    setIsLoadingMoreProducts(true);
+    if (loadMoreProductsTimerRef.current !== null) {
+      window.clearTimeout(loadMoreProductsTimerRef.current);
+    }
+    loadMoreProductsTimerRef.current = window.setTimeout(() => {
+      setProductPage((prev) => prev + 1);
+    }, 850);
+  }, [hasMoreProducts, isLoadingMoreProducts]);
+
+  useEffect(() => {
+    const target = productsLoaderRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry?.isIntersecting) {
+          handleLoadMoreProducts();
+        }
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [handleLoadMoreProducts]);
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
@@ -538,22 +629,21 @@ function ProductsContent() {
 
   const buildImagePayload = (list: DraftImage[] = []) => {
     if (list.length === 0) return [];
-    let hasMain = list.some((image) => image.isMain);
-    return list.map((image, index) => {
-      const isMain = hasMain ? image.isMain : index === 0;
-      if (!hasMain && index === 0) {
-        hasMain = true;
-      }
-      return {
-        storageId: image.storageId,
-        isMain,
-        fileName: image.fileName,
-        contentType: image.fileType,
-        publishFb: image.publishFb ?? true,
-        publishIg: image.publishIg ?? true,
-        uploadedAt: image.uploadedAt,
-      };
-    });
+    const next = [...list];
+    const mainIndex = next.findIndex((image) => image.isMain);
+    if (mainIndex > 0) {
+      const [main] = next.splice(mainIndex, 1);
+      next.unshift(main);
+    }
+    return next.map((image, index) => ({
+      storageId: image.storageId,
+      isMain: index === 0,
+      fileName: image.fileName,
+      contentType: image.fileType,
+      publishFb: image.publishFb ?? true,
+      publishIg: image.publishIg ?? true,
+      uploadedAt: image.uploadedAt,
+    }));
   };
 
   const buildAdImagePayload = (image: DraftAdImage | null) => {
@@ -688,6 +778,7 @@ function ProductsContent() {
           });
         }
       }
+      resetProductsFeed();
       closeModal();
     } catch (error) {
       console.error(error);
@@ -702,6 +793,7 @@ function ProductsContent() {
       if (editingProduct?._id === id) {
         closeModal();
       }
+      resetProductsFeed();
     } catch (error) {
       console.error(error);
       toast.error("Brisanje nije uspelo.");
@@ -887,7 +979,7 @@ function ProductsContent() {
     }
   };
 
-  const items = useMemo(() => products ?? [], [products]);
+  const items = useMemo(() => productFeed, [productFeed]);
   const statsMap = useMemo(() => {
     const map = new Map<string, ProductStats>();
     (productStats ?? []).forEach((entry) => {
@@ -902,23 +994,7 @@ function ProductsContent() {
     });
     return map;
   }, [categories]);
-  const filteredProducts = useMemo(() => {
-    const list = items;
-    const needle = productSearch.trim().toLowerCase();
-    if (!needle) return list;
-    return list.filter((product) => {
-      const baseText = `${product.kpName ?? ""} ${product.name ?? ""} ${product.opisKp ?? ""} ${product.opisFbInsta ?? ""} ${product.opis ?? ""}`.toLowerCase();
-      if (baseText.includes(needle)) return true;
-      if ((product.variants ?? []).some((variant) => variant.label.toLowerCase().includes(needle))) {
-        return true;
-      }
-      const hasCategoryHit = (product.categoryIds ?? []).some((id) => {
-        const category = categoryMap.get(id);
-        return category ? category.name.toLowerCase().includes(needle) : false;
-      });
-      return hasCategoryHit;
-    });
-  }, [categoryMap, items, productSearch]);
+  const filteredProducts = useMemo(() => items, [items]);
   const filteredCategories = useMemo(() => {
     const list = categories ?? [];
     const needle = categorySearch.trim().toLowerCase();
@@ -1005,15 +1081,7 @@ function ProductsContent() {
         return list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     }
   }, [filteredProducts, getProductPrice, sortBy, getSalesCount, getProfit]);
-  const {
-    visibleItems: visibleProducts,
-    loaderRef: productsLoaderRef,
-    isLoadingMore: isLoadingMoreProducts,
-    hasMore: hasMoreProducts,
-  } = useInfiniteItems(sortedProducts, {
-    batchSize: 10,
-    resetDeps: [productSearch, sortBy, viewMode, isMobile ? "mobile" : "desktop"],
-  });
+  const visibleProducts = sortedProducts;
   const defaultVariantEntry =
     resolvedProductType === "variant"
       ? normalizedVariants.find((variant) => variant.isDefault) ?? normalizedVariants[0]
@@ -3500,7 +3568,9 @@ function ProductsContent() {
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <CardTitle>
-              Lista proizvoda ({hasProductSearch ? `${sortedProducts.length} od ${items.length}` : items.length})
+              Lista proizvoda (
+              {hasProductSearch ? `${sortedProducts.length} od ${productPagination.total}` : productPagination.total || items.length}
+              )
             </CardTitle>
             <p className="text-sm text-slate-500">
               {viewMode === "list"
@@ -3516,6 +3586,7 @@ function ProductsContent() {
                   value={productSearch}
                   onChange={(event) => {
                     setProductSearch(event.target.value);
+                    resetProductsFeed();
                   }}
                   placeholder="Pretrazi proizvode"
                   className="pl-9"

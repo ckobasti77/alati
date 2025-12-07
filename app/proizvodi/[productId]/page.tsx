@@ -822,12 +822,12 @@ function ProductDetailsContent() {
   ) {
     if (list.length === 0) return [];
     const next = [...list];
-    if (preferredMainId) {
-      const preferredIndex = next.findIndex((image) => image.storageId === preferredMainId);
-      if (preferredIndex > 0) {
-        const [preferred] = next.splice(preferredIndex, 1);
-        next.unshift(preferred);
-      }
+    const preferredIndex = preferredMainId ? next.findIndex((image) => image.storageId === preferredMainId) : -1;
+    const flaggedIndex = preferredIndex === -1 ? next.findIndex((image) => image.isMain) : -1;
+    const targetIndex = preferredIndex >= 0 ? preferredIndex : flaggedIndex >= 0 ? flaggedIndex : 0;
+    if (targetIndex > 0) {
+      const [main] = next.splice(targetIndex, 1);
+      next.unshift(main);
     }
     return next.map((image, index) => ({ ...image, isMain: index === 0 }));
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Facebook, Instagram, Layers, LayoutGrid, List, Search, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,12 @@ import { useAuth } from "@/lib/auth-client";
 import { useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
-import { useInfiniteItems } from "@/lib/useInfiniteItems";
 import { cn } from "@/lib/utils";
-import type { Product, ProductVariant } from "@/types/order";
+import type { Product, ProductListResponse, ProductVariant } from "@/types/order";
 
 type Platform = "facebook" | "instagram";
+
+const PRODUCTS_PAGE_SIZE = 20;
 
 function resolvePrimaryVariant(product: Product): ProductVariant | undefined {
   const variants = product.variants ?? [];
@@ -62,6 +63,28 @@ function SocialContent() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const isMobile = useIsMobile();
   const topRef = useRef<HTMLDivElement | null>(null);
+  const [page, setPage] = useState(1);
+  const [productsFeed, setProductsFeed] = useState<Product[]>([]);
+  const [pagination, setPagination] = useState<ProductListResponse["pagination"]>({
+    page: 1,
+    pageSize: PRODUCTS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  });
+  const [isLoadingMorePosts, setIsLoadingMorePosts] = useState(false);
+  const postsLoaderRef = useRef<HTMLDivElement | null>(null);
+  const loadMorePostsTimerRef = useRef<number | null>(null);
+
+  const resetProductsFeed = useCallback(() => {
+    if (loadMorePostsTimerRef.current !== null) {
+      window.clearTimeout(loadMorePostsTimerRef.current);
+      loadMorePostsTimerRef.current = null;
+    }
+    setProductsFeed([]);
+    setPage(1);
+    setPagination((prev) => ({ ...prev, page: 1, total: 0, totalPages: 1 }));
+    setIsLoadingMorePosts(false);
+  }, []);
 
   useEffect(() => {
     if (isMobile) {
@@ -69,32 +92,81 @@ function SocialContent() {
     }
   }, [isMobile]);
 
-  const products = useConvexQuery<Product[]>("products:list", { token: sessionToken ?? "" });
-  const filteredProducts = useMemo(() => {
-    const list = products ?? [];
-    const needle = search.trim().toLowerCase();
-    if (!needle) return list;
-    return list.filter((product) => {
-      if (product.kpName?.toLowerCase().includes(needle)) return true;
-      if (product.name.toLowerCase().includes(needle)) return true;
-      if (product.opisFbInsta?.toLowerCase().includes(needle)) return true;
-      if (product.opisKp?.toLowerCase().includes(needle)) return true;
-      return (product.variants ?? []).some((variant) => variant.label.toLowerCase().includes(needle));
-    });
-  }, [products, search]);
-  const {
-    visibleItems: visibleProducts,
-    loaderRef: postsLoaderRef,
-    isLoadingMore: isLoadingMorePosts,
-    hasMore: hasMorePosts,
-  } = useInfiniteItems(filteredProducts, {
-    batchSize: 10,
-    resetDeps: [search, viewMode, isMobile ? "mobile" : "desktop"],
+  const list = useConvexQuery<ProductListResponse>("products:listPaginated", {
+    token: sessionToken ?? "",
+    search: search.trim() || undefined,
+    page,
+    pageSize: PRODUCTS_PAGE_SIZE,
   });
 
+  useEffect(() => {
+    resetProductsFeed();
+  }, [resetProductsFeed, sessionToken]);
+
+  useEffect(() => {
+    if (!list) return;
+    if (loadMorePostsTimerRef.current !== null) {
+      window.clearTimeout(loadMorePostsTimerRef.current);
+      loadMorePostsTimerRef.current = null;
+    }
+    if (list.pagination) {
+      setPagination(list.pagination);
+    }
+    if (list.items) {
+      setProductsFeed((prev) => {
+        const map = new Map(prev.map((item) => [String(item._id), item]));
+        list.items.forEach((item) => {
+          map.set(String(item._id), item);
+        });
+        return Array.from(map.values()).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+      });
+    }
+    setIsLoadingMorePosts(false);
+  }, [list]);
+
+  useEffect(() => {
+    return () => {
+      if (loadMorePostsTimerRef.current !== null) {
+        window.clearTimeout(loadMorePostsTimerRef.current);
+      }
+    };
+  }, []);
+
+  const hasMorePosts = pagination.totalPages > page;
+
+  const handleLoadMorePosts = useCallback(() => {
+    if (isLoadingMorePosts) return;
+    if (!hasMorePosts) return;
+    setIsLoadingMorePosts(true);
+    if (loadMorePostsTimerRef.current !== null) {
+      window.clearTimeout(loadMorePostsTimerRef.current);
+    }
+    loadMorePostsTimerRef.current = window.setTimeout(() => {
+      setPage((prev) => prev + 1);
+    }, 850);
+  }, [hasMorePosts, isLoadingMorePosts]);
+
+  useEffect(() => {
+    const target = postsLoaderRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry?.isIntersecting) {
+          handleLoadMorePosts();
+        }
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [handleLoadMorePosts]);
+
+  const visibleProducts = productsFeed;
+
   const selectedProduct = useMemo(
-    () => (products ?? []).find((item) => item._id === selectedProductId) ?? null,
-    [products, selectedProductId],
+    () => productsFeed.find((item) => item._id === selectedProductId) ?? null,
+    [productsFeed, selectedProductId],
   );
 
   const mainImage = useMemo(() => {
@@ -189,9 +261,12 @@ function SocialContent() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
                 value={search}
-                placeholder={products === undefined ? "Ucitavanje..." : "Pretrazi proizvode"}
-                disabled={products === undefined || (products?.length ?? 0) === 0}
-                onChange={(event) => setSearch(event.target.value)}
+                placeholder={list === undefined ? "Ucitavanje..." : "Pretrazi proizvode"}
+                disabled={list === undefined || (pagination.total === 0 && productsFeed.length === 0)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  resetProductsFeed();
+                }}
                 className="pl-9"
               />
             </div>
@@ -271,11 +346,11 @@ function SocialContent() {
 
           <div className="grid gap-4 lg:grid-cols-[7fr,5fr]">
             <div className="space-y-3">
-              {products === undefined ? (
+              {list === undefined && productsFeed.length === 0 ? (
                 <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
                   Ucitavanje proizvoda...
                 </div>
-              ) : filteredProducts.length === 0 ? (
+              ) : visibleProducts.length === 0 ? (
                 <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
                   Nema proizvoda koji odgovaraju pretrazi.
                 </div>
