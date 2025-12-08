@@ -267,8 +267,9 @@ export default function ProductDetailsPage() {
 }
 
 function ProductDetailsContent() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const sessionToken = token as string;
+  const isKodMajstor = user?.username === "kodmajstora";
   const params = useParams();
   const router = useRouter();
   const productId = params?.productId as string;
@@ -893,6 +894,10 @@ function ProductDetailsContent() {
     field: "publishKp" | "publishFb" | "publishIg" | "publishFbProfile" | "publishMarketplace" | "pickupAvailable",
     value: boolean,
   ) => {
+    if (!isKodMajstor) {
+      toast.error("Samo glavni profil moze da menja objave.");
+      return;
+    }
     await applyUpdate(
       (current) => ({
         ...current,
@@ -903,6 +908,10 @@ function ProductDetailsContent() {
   };
 
   const publishNow = async (platform: SocialPlatform) => {
+    if (!isKodMajstor) {
+      toast.error("Objavljivanje je dostupno samo sa glavnog profila.");
+      return;
+    }
     if (!sessionToken) {
       toast.error("Nedostaje token za objavu. Prijavi se ponovo.");
       return;
@@ -2596,6 +2605,7 @@ function ProductDetailsContent() {
               )}
             </div>
           <div className="space-y-3">
+            {isKodMajstor ? (
             <div className="flex flex-wrap gap-2">
               <label className="flex min-w-[240px] flex-1 cursor-pointer items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
                 <input
@@ -2663,6 +2673,7 @@ function ProductDetailsContent() {
                 </span>
               </label>
             </div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <label className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
                 <input
@@ -2675,37 +2686,39 @@ function ProductDetailsContent() {
               </label>
             </div>
           </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="gap-2"
-                  onClick={() => publishNow("facebook")}
-                  disabled={publishing !== null}
-                >
-                  {publishing === "facebook" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Facebook className="h-4 w-4" />
-                  )}
-                  {publishing === "facebook" ? "Objavljivanje..." : "Okaci na Facebook"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => publishNow("instagram")}
-                  disabled={publishing !== null}
-                >
-                  {publishing === "instagram" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Instagram className="h-4 w-4" />
-                  )}
-                  {publishing === "instagram" ? "Objavljivanje..." : "Okaci na Instagram"}
-                </Button>
-              </div>
+          {isKodMajstor ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="gap-2"
+                onClick={() => publishNow("facebook")}
+                disabled={publishing !== null}
+              >
+                {publishing === "facebook" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Facebook className="h-4 w-4" />
+                )}
+                {publishing === "facebook" ? "Objavljivanje..." : "Okaci na Facebook"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                onClick={() => publishNow("instagram")}
+                disabled={publishing !== null}
+              >
+                {publishing === "instagram" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Instagram className="h-4 w-4" />
+                )}
+                {publishing === "instagram" ? "Objavljivanje..." : "Okaci na Instagram"}
+              </Button>
+            </div>
+          ) : null}
               <div className="grid gap-2 sm:grid-cols-2 text-sm text-slate-600">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-400">Kreirano</p>

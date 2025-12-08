@@ -62,6 +62,21 @@ type OrderItemTotals = {
   prodajnaCena: number;
 };
 
+const normalizeSearchText = (value: string) => {
+  const map: Record<string, string> = {
+    š: "s",
+    đ: "dj",
+    ž: "z",
+    ć: "c",
+    č: "c",
+  };
+  return value
+    .toLowerCase()
+    .replace(/[šđžćč]/g, (char) => map[char] ?? char)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+};
+
 function normalizeSupplierOffers(
   incoming?: SupplierOffer[],
   options?: { variants?: { id: string }[] },
@@ -345,18 +360,21 @@ export const listPaginated = query({
       .withIndex("by_user_createdAt", (q) => q.eq("userId", user._id))
       .collect();
 
-    const needle = args.search?.trim().toLowerCase();
+    const rawSearch = args.search?.trim();
+    const needle = rawSearch ? normalizeSearchText(rawSearch) : "";
     if (needle) {
       const categories = await ctx.db.query("categories").collect();
       const categoryMap = new Map(
-        categories.map((category) => [String(category._id), category.name.toLowerCase()]),
+        categories.map((category) => [String(category._id), normalizeSearchText(category.name)]),
       );
       items = items.filter((product) => {
-        const baseText = `${product.kpName ?? ""} ${product.name ?? ""} ${product.opisKp ?? ""} ${product.opisFbInsta ?? ""} ${
-          product.opis ?? ""
-        }`.toLowerCase();
+        const baseText = normalizeSearchText(
+          `${product.kpName ?? ""} ${product.name ?? ""} ${product.opisKp ?? ""} ${product.opisFbInsta ?? ""} ${
+            product.opis ?? ""
+          }`,
+        );
         if (baseText.includes(needle)) return true;
-        if ((product.variants ?? []).some((variant) => variant.label.toLowerCase().includes(needle))) {
+        if ((product.variants ?? []).some((variant) => normalizeSearchText(variant.label).includes(needle))) {
           return true;
         }
         const hasCategoryHit = (product.categoryIds ?? []).some((id) => {
@@ -547,12 +565,13 @@ export const listPublic = query({
   args: { search: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const items = await ctx.db.query("products").withIndex("by_createdAt").collect();
-    const search = args.search?.trim().toLowerCase();
-    const narrowed = search
+    const rawSearch = args.search?.trim();
+    const needle = rawSearch ? normalizeSearchText(rawSearch) : "";
+    const narrowed = needle
       ? items.filter((item) => {
-          const name = (item.kpName ?? item.name).toLowerCase();
-          const fbName = item.name.toLowerCase();
-          return name.includes(search) || fbName.includes(search);
+          const name = normalizeSearchText(item.kpName ?? item.name);
+          const fbName = normalizeSearchText(item.name);
+          return name.includes(needle) || fbName.includes(needle);
         })
       : items;
     const withUrls = await Promise.all(narrowed.map((item) => toPublicProduct(ctx, item)));

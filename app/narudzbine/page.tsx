@@ -232,7 +232,6 @@ function OrdersContent() {
   const [productInput, setProductInput] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [productMenuOpen, setProductMenuOpen] = useState(false);
-  const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [draftItems, setDraftItems] = useState<OrderItemDraft[]>([]);
@@ -483,7 +482,6 @@ function OrdersContent() {
     setProductInput("");
     setProductSearch("");
     setProductMenuOpen(false);
-    setExpandedProductId(null);
     setEditingOrder(null);
     setDraftItems([]);
     setItemProductId("");
@@ -541,7 +539,6 @@ function OrdersContent() {
     setItemQuantity(1);
     setProductInput("");
     setProductMenuOpen(false);
-    setExpandedProductId(null);
   };
 
   const handleRemoveItem = (id: string) => {
@@ -770,7 +767,8 @@ function OrdersContent() {
                       filteredProducts.map((product, productIndex) => {
                         const variants = product.variants ?? [];
                         const hasVariants = variants.length > 0;
-                        const isExpanded = expandedProductId === product._id;
+                        const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
+                        const displayPrice = defaultVariant?.prodajnaCena ?? product.prodajnaCena;
                         return (
                           <div
                             key={product._id}
@@ -785,15 +783,10 @@ function OrdersContent() {
                                 event.preventDefault();
                                 setItemProductId(product._id);
                                 setProductInput(product.name);
-                                setItemVariantId("");
+                                setItemVariantId(defaultVariant?.id ?? "");
                                 setItemSupplierId("");
                                 setItemQuantity(1);
-                                if (hasVariants) {
-                                  setExpandedProductId((prev) => (prev === product._id ? null : product._id));
-                                } else {
-                                  setExpandedProductId(null);
-                                  setProductMenuOpen(false);
-                                }
+                                setProductMenuOpen(false);
                               }}
                             >
                               {(() => {
@@ -809,64 +802,33 @@ function OrdersContent() {
                                 }
                                 return <div className="h-12 w-12 flex-shrink-0 rounded-md border border-dashed border-slate-200 dark:border-slate-700/70" />;
                               })()}
-                              <div className="flex-1">
-                                <p className="font-medium text-slate-800 dark:text-slate-100">{product.name}</p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
-                                  Nabavna {formatCurrency(product.nabavnaCena, "EUR")} / Prodajna {formatCurrency(product.prodajnaCena, "EUR")}
-                                </p>
+                              <div className="flex-1 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-slate-800 dark:text-slate-100">{product.name}</p>
+                                  {hasVariants ? (
+                                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-200">
+                                      Tipski
+                                    </span>
+                                  ) : null}
+                                </div>
                                 {hasVariants ? (
-                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                                     {variants.length} tip{variants.length === 1 ? "" : "a"} dostupno
                                   </p>
                                 ) : (
-                                  <RichTextSnippet text={product.opisFbInsta || product.opisKp || product.opis} />
+                                  <RichTextSnippet
+                                    text={product.opisFbInsta || product.opisKp || product.opis}
+                                    className="text-[11px] text-slate-500 dark:text-slate-400"
+                                  />
                                 )}
                               </div>
-                              {hasVariants && (
-                                <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
-                                  {isExpanded ? "Zatvori" : "Tipovi"}
-                                </span>
-                              )}
-                            </button>
-                            {hasVariants && isExpanded && (
-                              <div className="space-y-1 border-t border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-800">
-                                {variants.map((variant) => (
-                                  <button
-                                    key={variant.id}
-                                    type="button"
-                                    className="flex w-full flex-col gap-0.5 rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:border-blue-400 hover:bg-white dark:border-slate-700 dark:bg-slate-800/80 dark:hover:border-slate-500 dark:hover:bg-slate-700"
-                                    onMouseDown={(event) => {
-                                      event.preventDefault();
-                                      setItemProductId(product._id);
-                                      setItemVariantId(variant.id);
-                                      setProductInput(composeVariantLabel(product, variant));
-                                      setProductMenuOpen(false);
-                                      setExpandedProductId(null);
-                                    }}
-                                  >
-                                    <span className="font-medium text-slate-800 dark:text-slate-100">
-                                      {composeVariantLabel(product, variant)}
-                                    </span>
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                                      Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
-                                    </span>
-                                    {variant.opis ? (
-                                      <RichTextSnippet text={variant.opis} className="text-[11px]" />
-                                    ) : (
-                                      <RichTextSnippet
-                                        text={product.opisFbInsta || product.opisKp || product.opis}
-                                        className="text-[11px]"
-                                      />
-                                    )}
-                                    {variant.isDefault && (
-                                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                                        Podrazumevani tip
-                                      </span>
-                                    )}
-                                  </button>
-                                ))}
+                              <div className="text-right">
+                                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Cena</p>
+                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                                  {formatCurrency(displayPrice, "EUR")}
+                                </p>
                               </div>
-                            )}
+                            </button>
                           </div>
                         );
                       })
@@ -876,33 +838,33 @@ function OrdersContent() {
               </div>
 
               {selectedProduct ? (
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
                   <div className="flex items-center gap-3">
                     {(() => {
                       const images = selectedProduct.images ?? [];
                       const mainImage = images.find((image) => image.isMain) ?? images[0];
                       if (mainImage?.url) {
                         return (
-                          <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200">
+                          <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={mainImage.url} alt={selectedProduct.name} className="h-full w-full object-cover" />
                           </div>
                         );
                       }
                       return (
-                        <div className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-300 text-[10px] uppercase text-slate-400">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-300 text-[10px] uppercase text-slate-400 dark:border-slate-600 dark:text-slate-300">
                           N/A
                         </div>
                       );
                     })()}
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">{selectedProduct.name}</p>
-                      {selectedVariantForPreview ? <p className="text-xs text-slate-600">{selectedVariantForPreview.label}</p> : null}
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{selectedProduct.name}</p>
+                      {selectedVariantForPreview ? <p className="text-xs text-slate-600 dark:text-slate-300">{selectedVariantForPreview.label}</p> : null}
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Prodajna cena</p>
-                    <p className="text-base font-semibold text-slate-900">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Prodajna cena</p>
+                    <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
                       {formatCurrency(selectedVariantForPreview?.prodajnaCena ?? selectedProduct.prodajnaCena, "EUR")}
                     </p>
                   </div>
@@ -923,7 +885,9 @@ function OrdersContent() {
                         <label
                           key={variant.id}
                           className={`cursor-pointer rounded-md border px-3 py-2 text-sm transition ${
-                            isActive ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" : "border-slate-200 hover:border-slate-300"
+                            isActive
+                              ? "border-blue-500 bg-blue-50 shadow-sm dark:border-blue-400 dark:bg-blue-500/10"
+                              : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:border-slate-500"
                           }`}
                         >
                           <input
@@ -937,16 +901,32 @@ function OrdersContent() {
                                 setProductInput(composedLabel);
                               }
                               setProductMenuOpen(false);
-                              setExpandedProductId(null);
                             }}
                             className="sr-only"
                           />
-                          <span className="font-medium text-slate-800">{composedLabel}</span>
-                          <span className="text-xs text-slate-500">
+                          <span
+                            className={`font-medium ${
+                              isActive ? "text-blue-800 dark:text-blue-50" : "text-slate-800 dark:text-slate-100"
+                            }`}
+                          >
+                            {composedLabel}
+                          </span>
+                          <span className={`text-xs ${isActive ? "text-blue-700 dark:text-blue-200" : "text-slate-500 dark:text-slate-400"}`}>
                             Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
                           </span>
-                          <RichTextSnippet text={variant.opis || selectedProduct?.opisFbInsta || selectedProduct?.opisKp || selectedProduct?.opis} />
-                          {variant.isDefault ? <span className="text-[11px] font-semibold text-emerald-600">Podrazumevano</span> : null}
+                          <RichTextSnippet
+                            text={variant.opis || selectedProduct?.opisFbInsta || selectedProduct?.opisKp || selectedProduct?.opis}
+                            className="text-[11px] text-slate-500 dark:text-slate-400"
+                          />
+                          {variant.isDefault ? (
+                            <span
+                              className={`text-[11px] font-semibold ${
+                                isActive ? "text-emerald-600 dark:text-emerald-300" : "text-emerald-600 dark:text-emerald-400"
+                              }`}
+                            >
+                              Podrazumevano
+                            </span>
+                          ) : null}
                         </label>
                       );
                     })}
@@ -958,7 +938,7 @@ function OrdersContent() {
                 <div>
                   <FormLabel>Dobavljac</FormLabel>
                   <select
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                     name="supplierId"
                     value={itemSupplierId}
                     onChange={(event) => setItemSupplierId(event.target.value)}
@@ -1152,7 +1132,7 @@ function OrdersContent() {
                   <FormItem>
                 <FormLabel>Nacin transporta</FormLabel>
                 <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                   ref={field.ref}
                   name={field.name}
                   value={field.value ?? ""}
@@ -1174,7 +1154,7 @@ function OrdersContent() {
               <FormField
                 name="pickup"
                 render={({ field }) => (
-                  <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-3">
+                  <FormItem className="flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-3">
                     <input
                       id="pickup"
                       ref={field.ref}
@@ -1185,11 +1165,11 @@ function OrdersContent() {
                       onBlur={field.onBlur}
                       className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <div className="space-y-0.5">
+                    <div className="space-y-0.5 flex flex-col items-center">
                       <FormLabel htmlFor="pickup" className="m-0 cursor-pointer">
-                        LiÄno preuzimanje
+                        Licno preuzimanje
                       </FormLabel>
-                      <p className="text-xs text-slate-500">Oznaci ako kupac preuzima bez kurira.</p>
+                      <p className=" text-xs text-slate-500">Oznaci ako kupac preuzima bez kurira.</p>
                     </div>
                   </FormItem>
                 )}

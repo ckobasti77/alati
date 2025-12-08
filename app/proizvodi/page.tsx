@@ -325,8 +325,9 @@ export default function ProductsPage() {
 
 function ProductsContent() {
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const sessionToken = token as string;
+  const isKodMajstor = user?.username === "kodmajstora";
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [images, setImages] = useState<DraftImage[]>([]);
@@ -734,7 +735,7 @@ function ProductsContent() {
     const bestOfferForProduct = resolveBestOffer(defaultVariant?.id);
     const fbName = values.name.trim();
     const kpName = values.kpName.trim() || fbName;
-    const payload = {
+    const basePayload = {
       token: sessionToken,
       name: fbName,
       kpName,
@@ -758,6 +759,16 @@ function ProductsContent() {
       supplierOffers: normalizedOffers.length ? normalizedOffers : undefined,
       adImage: buildAdImagePayload(adImage),
     };
+    const payload = isKodMajstor
+      ? basePayload
+      : {
+          ...basePayload,
+          publishKp: editingProduct?.publishKp ?? false,
+          publishFb: editingProduct?.publishFb ?? false,
+          publishIg: editingProduct?.publishIg ?? false,
+          publishFbProfile: editingProduct?.publishFbProfile ?? false,
+          publishMarketplace: editingProduct?.publishMarketplace ?? false,
+        };
 
     try {
       if (editingProduct) {
@@ -2444,7 +2455,8 @@ function ProductsContent() {
                 )}
               />
             </div>
-            <div className="space-y-3">
+            {isKodMajstor ? (
+              <div className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 <FormField
                   name="publishKp"
@@ -2563,7 +2575,8 @@ function ProductsContent() {
                   </p>
                 </div>
               ) : null}
-            </div>
+              </div>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               <FormField
                 name="pickupAvailable"
@@ -3853,9 +3866,9 @@ function ProductsContent() {
                         </span>
                       ) : null}
                     </div>
-                    <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pr-16 pb-6 pt-8 text-left">
+                    <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pr-16 pb-6 pt-10 text-left">
                       {productCategories.length > 0 ? (
-                        <div className="mb-1 flex flex-wrap gap-1 text-[11px] font-semibold text-slate-200 -translate-y-5">
+                        <div className="mb-1 flex flex-wrap gap-1 text-[11px] font-semibold text-slate-200 -translate-y-6">
                           {productCategories.slice(0, 2).map((category) => (
                             <span key={category._id} className="rounded-full bg-white/20 px-2 py-0.5 backdrop-blur">
                               {category.name}
@@ -3863,9 +3876,9 @@ function ProductsContent() {
                           ))}
                         </div>
                       ) : null}
-                      <div className="flex items-center gap-2 -translate-y-5">
-                        <p className="w-full truncate text-sm font-semibold text-white mb-1">{product.kpName ?? product.name}</p>
-                        <ArrowUpRight className="h-4 w-4 shrink-0 text-white/80" />
+                      <div className="flex items-start gap-2 -translate-y-6">
+                        <p className="w-full wrap-break-word text-sm font-semibold leading-snug text-white">{product.kpName ?? product.name}</p>
+                        <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-white/80" />
                       </div>
                     </div>
                   </button>
