@@ -67,7 +67,7 @@ export const orderTotals = (order: { items?: OrderItem[] } & Partial<Order>) => 
     items.length > 0
       ? items.reduce((sum, item) => sum + item.nabavnaCena * item.kolicina, 0)
       : ukupnoNabavno(normalizeQuantity(order.kolicina ?? 0), sanitizePrice(order.nabavnaCena));
-  const transport = order.pickup ? 0 : order.transportCost ?? 0;
+  const transport = order.transportCost ?? 0;
   const profitValue = profit(totalProdajno, totalNabavno, transport);
   const myShare = order.stage === "legle_pare" ? myProfitShare(profitValue, order.myProfitPercent ?? 0) : 0;
   return {

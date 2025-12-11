@@ -53,7 +53,7 @@ export const summary = query({
         const items = resolveItems(order);
         const prodajno = items.reduce((sum, item) => sum + item.prodajnaCena * item.kolicina, 0);
         const nabavno = items.reduce((sum, item) => sum + item.nabavnaCena * item.kolicina, 0);
-        const transport = order.pickup ? 0 : order.transportCost ?? 0;
+        const transport = order.transportCost ?? 0;
         const profit = prodajno - nabavno - transport;
         const canCountMyShare = order.stage === "legle_pare";
         const myShare = canCountMyShare ? profit * ((order.myProfitPercent ?? 0) / 100) : 0;

@@ -253,8 +253,8 @@ function OrderDetails({ orderId }: { orderId: string }) {
     nabavnaCena: current.nabavnaCena,
     prodajnaCena: current.prodajnaCena,
     napomena: current.napomena,
-    transportCost: current.pickup ? 0 : current.transportCost,
-    transportMode: current.pickup ? undefined : current.transportMode,
+    transportCost: current.transportCost,
+    transportMode: current.transportMode,
     customerName: current.customerName,
     address: current.address,
     phone: current.phone,
@@ -392,8 +392,6 @@ function OrderDetails({ orderId }: { orderId: string }) {
       (current) => ({
         ...current,
         pickup: value,
-        transportCost: value ? 0 : current.transportCost,
-        transportMode: value ? undefined : current.transportMode,
       }),
       "Sacuvano.",
     );

@@ -223,7 +223,7 @@ const normalizeOrderItems = async (
 const orderTotals = (order: Doc<"orders">) => {
   const items = resolveItemsFromOrder(order);
   const totals = summarizeItems(items);
-  const transport = order.pickup ? 0 : order.transportCost ?? 0;
+  const transport = order.transportCost ?? 0;
   const profit = totals.totalProdajno - totals.totalNabavno - transport;
   const myShare = order.stage === "legle_pare" ? profit * ((order.myProfitPercent ?? 0) / 100) : 0;
   return { items, totals, transport, profit, myShare };
@@ -420,8 +420,8 @@ export const create = mutation({
     const { user } = await requireUser(ctx, args.token);
     const now = Date.now();
     const pickup = Boolean(args.pickup);
-    const transportCost = pickup ? 0 : normalizeTransportCost(args.transportCost);
-    const transportMode = pickup ? undefined : normalizeTransportMode(args.transportMode);
+    const transportCost = normalizeTransportCost(args.transportCost);
+    const transportMode = normalizeTransportMode(args.transportMode);
 
     const baseItems: IncomingItem[] =
       args.items && args.items.length > 0
@@ -507,8 +507,8 @@ export const update = mutation({
     }
 
     const pickup = args.pickup ?? existing.pickup ?? false;
-    const transportCost = pickup ? 0 : normalizeTransportCost(args.transportCost);
-    const transportMode = pickup ? undefined : normalizeTransportMode(args.transportMode);
+    const transportCost = normalizeTransportCost(args.transportCost);
+    const transportMode = normalizeTransportMode(args.transportMode);
 
     const baseItems: IncomingItem[] =
       args.items && args.items.length > 0

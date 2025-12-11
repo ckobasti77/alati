@@ -587,8 +587,8 @@ function OrdersContent() {
       const payload = {
         stage: values.stage,
         title: payloadItems[0]?.title ?? "Narudzbina",
-        transportCost: pickup ? 0 : values.transportCost,
-        transportMode: pickup ? undefined : values.transportMode,
+        transportCost: values.transportCost,
+        transportMode: values.transportMode,
         customerName: values.customerName.trim(),
         address: values.address.trim(),
         phone: values.phone.trim(),
