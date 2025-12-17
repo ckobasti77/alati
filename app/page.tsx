@@ -39,6 +39,7 @@ function DashboardContent() {
 
   const stageLabels: Record<string, string> = {
     poruceno: "Poruceno",
+    na_stanju: "Na stanju",
     poslato: "Poslato",
     stiglo: "Stiglo",
     legle_pare: "Leglo",
@@ -61,18 +62,13 @@ function DashboardContent() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-3">
         <StatCard title="Ukupno prodajno" value={formatCurrency(summary?.ukupnoProdajno ?? 0, "EUR")} />
         <StatCard title="Ukupno nabavno" value={formatCurrency(summary?.ukupnoNabavno ?? 0, "EUR")} />
         <StatCard
           title="Profit"
           value={formatCurrency(summary?.profit ?? 0, "EUR")}
           description={`${summary?.brojNarudzbina ?? 0} narudzbina`}
-        />
-        <StatCard
-          title="Moj deo profita"
-          value={formatCurrency(summary?.mojProfit ?? 0, "EUR")}
-          description="Na osnovu unetog procenta"
         />
       </section>
 
@@ -88,7 +84,6 @@ function DashboardContent() {
               <div className="grid gap-3 md:hidden">
                 {rows.map((order) => {
                   const totals = orderTotals(order);
-                  const shouldShowMyShare = order.stage === "legle_pare" && order.myProfitPercent !== undefined;
                   return (
                     <button
                       key={order._id}
@@ -128,17 +123,6 @@ function DashboardContent() {
                             {formatCurrency(totals.profit, "EUR")}
                           </p>
                         </div>
-                        <div className="col-span-2 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                          <span className="text-[11px] uppercase tracking-wide text-slate-500">Moj deo</span>
-                          {shouldShowMyShare ? (
-                            <span className="text-sm font-semibold text-emerald-700">
-                              {formatCurrency(totals.myShare, "EUR")}{" "}
-                              <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-400">Bice dostupno kada legne.</span>
-                          )}
-                        </div>
                       </div>
                     </button>
                   );
@@ -156,14 +140,11 @@ function DashboardContent() {
                       <TableHead className="text-right">Nabavno</TableHead>
                       <TableHead className="text-right">Transport</TableHead>
                       <TableHead className="text-right">Profit</TableHead>
-                      <TableHead className="text-right">Moj deo</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.map((order) => {
                       const totals = orderTotals(order);
-                      const shouldShowMyShare = order.stage === "legle_pare" && order.myProfitPercent !== undefined;
-
                       return (
                         <TableRow
                           key={order._id}
@@ -185,16 +166,6 @@ function DashboardContent() {
                             <span className={totals.profit < 0 ? "text-red-600" : ""}>
                               {formatCurrency(totals.profit, "EUR")}
                             </span>
-                          </TableCell>
-                          <TableCell className="text-right font-semibold text-emerald-700">
-                            {shouldShowMyShare ? (
-                              <span>
-                                {formatCurrency(totals.myShare, "EUR")}{" "}
-                                <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">-</span>
-                            )}
                           </TableCell>
                         </TableRow>
                       );

@@ -59,7 +59,7 @@ function LoginContent() {
       <Card>
         <CardHeader>
           <CardTitle>Unesi kredencijale</CardTitle>
-          <CardDescription>Svaki nalog ima svoj panel sa proizvodima i narudzbinama.</CardDescription>
+          <CardDescription>Pristup panelu je ogranicen na kodmajstora nalog.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>

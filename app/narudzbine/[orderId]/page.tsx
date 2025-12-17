@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Check, Copy, Loader2, PenLine, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import type { OrderStage, OrderWithProduct } from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
+  { value: "na_stanju", label: "Na stanju", tone: "border-indigo-200 bg-indigo-50 text-indigo-800" },
   { value: "poslato", label: "Poslato", tone: "border-blue-200 bg-blue-50 text-blue-800" },
   { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
@@ -46,10 +47,11 @@ type InlineFieldProps = {
   value?: string | number | null;
   multiline?: boolean;
   formatter?: (value?: string | number | null) => string;
+  renderDisplay?: (valueAsString: string) => ReactNode;
   onSave: (nextValue: string) => Promise<void>;
 };
 
-function InlineField({ label, value, multiline = false, formatter, onSave }: InlineFieldProps) {
+function InlineField({ label, value, multiline = false, formatter, renderDisplay, onSave }: InlineFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [draft, setDraft] = useState<string>(value ? String(value) : "");
@@ -140,7 +142,9 @@ function InlineField({ label, value, multiline = false, formatter, onSave }: Inl
               />
             )
           ) : (
-            <p className="text-base font-semibold text-slate-900">{displayValue}</p>
+            <div className="text-base font-semibold text-slate-900">
+              {renderDisplay ? renderDisplay(displayValue) : displayValue}
+            </div>
           )}
         </div>
         <div className="flex items-center gap-1 rounded-full bg-white/90 px-1 py-0.5 text-slate-500 shadow-sm opacity-100 transition md:absolute md:right-3 md:top-3 md:opacity-0 md:group-hover:opacity-100">
@@ -258,7 +262,6 @@ function OrderDetails({ orderId }: { orderId: string }) {
     customerName: current.customerName,
     address: current.address,
     phone: current.phone,
-    myProfitPercent: current.myProfitPercent,
     pickup: current.pickup ?? false,
     items: current.items?.map((item) => {
       const { product, ...rest } = item as any;
@@ -299,7 +302,6 @@ function OrderDetails({ orderId }: { orderId: string }) {
       | "customerName"
       | "address"
       | "phone"
-      | "myProfitPercent"
       | "napomena",
     value: string,
   ) => {
@@ -348,20 +350,6 @@ function OrderDetails({ orderId }: { orderId: string }) {
       return;
     }
 
-    if (field === "myProfitPercent") {
-      if (!trimmed) {
-        await applyOrderUpdate((current) => ({ ...current, myProfitPercent: undefined }), "Sacuvano.");
-        return;
-      }
-      const percent = parseNumber(trimmed);
-      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-        toast.error("Procenat mora biti izmedju 0 i 100.");
-        throw new Error("Invalid percent");
-      }
-      await applyOrderUpdate((current) => ({ ...current, myProfitPercent: percent }), "Sacuvano.");
-      return;
-    }
-
     if (field === "napomena") {
       await applyOrderUpdate(
         (current) => ({
@@ -402,8 +390,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
   const nabavnoUkupno = totals?.totalNabavno ?? 0;
   const transport = totals?.transport ?? 0;
   const prof = totals?.profit ?? 0;
-  const mojDeo = totals?.myShare ?? 0;
-  const shouldShowMyShare = order?.stage === "legle_pare" && order?.myProfitPercent !== undefined;
+  const telHref = order ? `tel:${order.phone.replace(/[^+\d]/g, "")}` : "";
 
   const handleStageChange = async (nextStage: OrderStage) => {
     if (!order) return;
@@ -526,6 +513,11 @@ function OrderDetails({ orderId }: { orderId: string }) {
                       <p className="text-xs uppercase tracking-wide text-slate-500">Prodajna</p>
                       <p className="font-semibold text-slate-900">{formatCurrency(item.prodajnaCena, "EUR")}</p>
                       <p className="text-xs text-slate-500">Nabavna {formatCurrency(item.nabavnaCena, "EUR")}</p>
+                      {item.manualProdajna ? (
+                        <span className="inline-flex justify-end text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                          Rucno uneta cena
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -549,7 +541,20 @@ function OrderDetails({ orderId }: { orderId: string }) {
                 value={order.customerName}
                 onSave={(val) => handleOrderFieldSave("customerName", val)}
               />
-              <InlineField label="Telefon" value={order.phone} onSave={(val) => handleOrderFieldSave("phone", val)} />
+              <InlineField
+                label="Telefon"
+                value={order.phone}
+                renderDisplay={(val) => (
+                  <a
+                    href={`tel:${val.replace(/[^+\d]/g, "")}`}
+                    className="inline-flex items-center gap-2 text-blue-700 hover:underline"
+                  >
+                    <PhoneCall className="h-4 w-4" />
+                    <span className="text-slate-900">{val || "-"}</span>
+                  </a>
+                )}
+                onSave={(val) => handleOrderFieldSave("phone", val)}
+              />
               <InlineField
                 label="Adresa"
                 value={order.address}
@@ -603,46 +608,32 @@ function OrderDetails({ orderId }: { orderId: string }) {
 
         <Card>
           <CardHeader>
-          <CardTitle>Finansije</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <InlineField
-              label="Moj procenat profita"
-              value={order.myProfitPercent ?? ""}
-              formatter={(val) => (val === undefined || val === null || val === "" ? "-" : `${val}%`)}
-              onSave={(val) => handleOrderFieldSave("myProfitPercent", val)}
-            />
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Ukupna kolicina</p>
-              <p className="text-base font-semibold text-slate-900">{totals?.totalQty ?? order.kolicina}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
+            <CardTitle>Finansije</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Ukupna kolicina</p>
+                <p className="text-base font-semibold text-slate-900">{totals?.totalQty ?? order.kolicina}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Prodajno ukupno</p>
                 <p className="text-base font-semibold text-slate-900">{formatCurrency(prodajnoUkupno, "EUR")}</p>
               </div>
-              <div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Nabavno ukupno</p>
                 <p className="text-base font-semibold text-slate-900">{formatCurrency(nabavnoUkupno, "EUR")}</p>
               </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Profit</p>
-                <p className={`text-base font-semibold ${prof < 0 ? "text-red-600" : "text-slate-900"}`}>
-                  {formatCurrency(prof, "EUR")}
-                </p>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Transport</p>
+                <p className="text-base font-semibold text-slate-900">{formatCurrency(transport, "EUR")}</p>
               </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Moj deo</p>
-                {shouldShowMyShare ? (
-                  <p className="text-base font-semibold text-emerald-700">
-                    {formatCurrency(mojDeo, "EUR")} <span className="text-xs text-slate-500">({order.myProfitPercent}%)</span>
-                  </p>
-                ) : (
-                  <p className="text-sm text-slate-500">Bice dostupno kada stage bude "legle pare".</p>
-                )}
-              </div>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Profit</p>
+              <p className={`text-base font-semibold ${prof < 0 ? "text-red-600" : "text-slate-900"}`}>
+                {formatCurrency(prof, "EUR")}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -659,15 +650,16 @@ function OrderDetails({ orderId }: { orderId: string }) {
             multiline
             onSave={(val) => handleOrderFieldSave("napomena", val)}
           />
-          <p className="text-xs text-slate-500">Telefon: {order.phone} - Adresa: {order.address}</p>
+          <p className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <a href={telHref} className="inline-flex items-center gap-1 text-blue-700 hover:underline">
+              <PhoneCall className="h-3.5 w-3.5" />
+              {order.phone}
+            </a>
+            <span className="text-slate-400">·</span>
+            <span>Adresa: {order.address}</span>
+          </p>
         </CardContent>
       </Card>
     </div>
   );
 }
-
-
-
-
-
-

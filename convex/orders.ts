@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
 
-const orderStages = ["poruceno", "poslato", "stiglo", "legle_pare"] as const;
+const orderStages = ["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"] as const;
 const transportModes = ["Kol", "Joe", "Posta", "Bex", "Aks"] as const;
 
 const stageSchema = v.union(
@@ -11,6 +11,7 @@ const stageSchema = v.union(
   v.literal(orderStages[1]),
   v.literal(orderStages[2]),
   v.literal(orderStages[3]),
+  v.literal(orderStages[4]),
 );
 const transportModeSchema = v.union(
   v.literal(transportModes[0]),
@@ -23,11 +24,6 @@ const transportModeSchema = v.union(
 const normalizeStage = (stage?: (typeof orderStages)[number]) => {
   if (!stage) return orderStages[0];
   return orderStages.includes(stage) ? stage : orderStages[0];
-};
-
-const clampPercent = (percent?: number) => {
-  if (percent === undefined || Number.isNaN(percent)) return undefined;
-  return Math.min(Math.max(percent, 0), 100);
 };
 
 const normalizeTransportCost = (value?: number) => {
@@ -99,6 +95,7 @@ type OrderItemRecord = {
   kolicina: number;
   nabavnaCena: number;
   prodajnaCena: number;
+  manualProdajna?: boolean;
 };
 
 type OrderItemWithProduct = OrderItemRecord & { product?: any };
@@ -118,6 +115,7 @@ const resolveItemsFromOrder = (order: Doc<"orders">): OrderItemRecord[] => {
       kolicina: normalizeQuantity(item.kolicina),
       nabavnaCena: sanitizePrice(item.nabavnaCena),
       prodajnaCena: sanitizePrice(item.prodajnaCena),
+      manualProdajna: Boolean((item as any).manualProdajna),
     }))
     .filter((item) => item.title && item.kolicina > 0);
   if (normalized.length > 0) return normalized;
@@ -132,6 +130,7 @@ const resolveItemsFromOrder = (order: Doc<"orders">): OrderItemRecord[] => {
       kolicina: normalizeQuantity(order.kolicina),
       nabavnaCena: sanitizePrice(order.nabavnaCena),
       prodajnaCena: sanitizePrice(order.prodajnaCena),
+      manualProdajna: false,
     },
   ];
 };
@@ -168,6 +167,7 @@ const normalizeOrderItems = async (
     let title = item.title?.trim();
     let nabavnaCena = item.nabavnaCena;
     let prodajnaCena = item.prodajnaCena;
+    const manualProdajna = item.manualProdajna === true;
     let product: Doc<"products"> | null = null;
 
     if (productId) {
@@ -194,13 +194,21 @@ const normalizeOrderItems = async (
         variantId = undefined;
         variantLabel = undefined;
       }
-      prodajnaCena = resolvedVariant?.prodajnaCena ?? product.prodajnaCena;
+      const defaultProdajna = resolvedVariant?.prodajnaCena ?? product.prodajnaCena;
+      prodajnaCena =
+        manualProdajna && prodajnaCena !== undefined ? sanitizePrice(prodajnaCena) : defaultProdajna;
       const supplierChoice = resolveSupplierPrice(product, variantId, supplierId);
       supplierId = supplierChoice.supplierId ?? supplierId;
       nabavnaCena = supplierChoice.price ?? resolvedVariant?.nabavnaCena ?? product.nabavnaCena;
       if (!title) {
         title = variantLabel ?? product.name;
       }
+    }
+    if (!product) {
+      prodajnaCena = sanitizePrice(prodajnaCena);
+    }
+    if (manualProdajna && (prodajnaCena === undefined || Number.isNaN(prodajnaCena))) {
+      throw new Error("Unesi prodajnu cenu.");
     }
 
     const normalizedItem: OrderItemRecord = {
@@ -213,6 +221,7 @@ const normalizeOrderItems = async (
       kolicina: qty,
       nabavnaCena: sanitizePrice(nabavnaCena),
       prodajnaCena: sanitizePrice(prodajnaCena),
+      manualProdajna,
     };
     normalized.push(normalizedItem);
   }
@@ -225,8 +234,7 @@ const orderTotals = (order: Doc<"orders">) => {
   const totals = summarizeItems(items);
   const transport = order.transportCost ?? 0;
   const profit = totals.totalProdajno - totals.totalNabavno - transport;
-  const myShare = order.stage === "legle_pare" ? profit * ((order.myProfitPercent ?? 0) / 100) : 0;
-  return { items, totals, transport, profit, myShare };
+  return { items, totals, transport, profit };
 };
 
 const loadProductWithAssets = async (ctx: any, productId: Id<"products">, userId: Id<"users">) => {
@@ -267,6 +275,7 @@ const itemArgSchema = v.object({
   kolicina: v.optional(v.number()),
   nabavnaCena: v.optional(v.number()),
   prodajnaCena: v.optional(v.number()),
+  manualProdajna: v.optional(v.boolean()),
 });
 
 export const latest = query({
@@ -294,12 +303,11 @@ export const summary = query({
       .collect();
     return orders.reduce(
       (acc, order) => {
-        const { totals, transport, profit, myShare } = orderTotals(order);
+        const { totals, transport, profit } = orderTotals(order);
         acc.brojNarudzbina += 1;
         acc.ukupnoProdajno += totals.totalProdajno;
         acc.ukupnoNabavno += totals.totalNabavno;
         acc.profit += profit;
-        acc.mojProfit += myShare;
         return acc;
       },
       {
@@ -307,7 +315,6 @@ export const summary = query({
         ukupnoProdajno: 0,
         ukupnoNabavno: 0,
         profit: 0,
-        mojProfit: 0,
       },
     );
   },
@@ -412,7 +419,6 @@ export const create = mutation({
     customerName: v.string(),
     address: v.string(),
     phone: v.string(),
-    myProfitPercent: v.optional(v.number()),
     pickup: v.optional(v.boolean()),
     items: v.optional(v.array(itemArgSchema)),
   },
@@ -437,6 +443,7 @@ export const create = mutation({
               kolicina: args.kolicina,
               nabavnaCena: args.nabavnaCena,
               prodajnaCena: args.prodajnaCena,
+              manualProdajna: false,
             },
           ];
 
@@ -465,7 +472,6 @@ export const create = mutation({
       customerName: args.customerName.trim(),
       address: args.address.trim(),
       phone: args.phone.trim(),
-      myProfitPercent: clampPercent(args.myProfitPercent),
       pickup,
       items: normalizedItems,
       kreiranoAt: now,
@@ -492,7 +498,6 @@ export const update = mutation({
     customerName: v.string(),
     address: v.string(),
     phone: v.string(),
-    myProfitPercent: v.optional(v.number()),
     pickup: v.optional(v.boolean()),
     items: v.optional(v.array(itemArgSchema)),
   },
@@ -539,7 +544,6 @@ export const update = mutation({
       customerName: args.customerName.trim(),
       address: args.address.trim(),
       phone: args.phone.trim(),
-      myProfitPercent: clampPercent(args.myProfitPercent),
       pickup,
       items: normalizedItems,
     });

@@ -1,12 +1,12 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, Plus, Trash2 } from "lucide-react";
+import { ArrowUpRight, PhoneCall, Plus, Trash2 } from "lucide-react";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
+  { value: "na_stanju", label: "Na stanju", tone: "border-indigo-200 bg-indigo-50 text-indigo-800" },
   { value: "poslato", label: "Poslato", tone: "border-blue-200 bg-blue-50 text-blue-800" },
   { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
@@ -39,7 +40,7 @@ const stageLabels = stageOptions.reduce((acc, item) => {
 }, {} as Record<OrderStage, { label: string; tone: string }>);
 
 const orderSchema = z.object({
-  stage: z.enum(["poruceno", "poslato", "stiglo", "legle_pare"]),
+  stage: z.enum(["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"]),
   customerName: z.string().min(3, "Ime i prezime porucioca je obavezno."),
   address: z.string().min(5, "Adresa je obavezna."),
   phone: z.string().min(5, "Broj telefona je obavezan."),
@@ -50,25 +51,17 @@ const orderSchema = z.object({
       const parsed = Number(normalized);
       return Number.isFinite(parsed) ? parsed : undefined;
     },
-    z.number().min(0, "Transport mora biti 0 ili vise.").optional(),
+    z.number().min(0, "Transport je obavezan i mora biti 0 ili vise."),
   ),
   transportMode: z.preprocess(
     (value) => {
       if (value === "" || value === undefined || value === null) return undefined;
       return typeof value === "string" ? value : undefined;
     },
-    z.enum(transportModes).optional(),
+    z.enum(transportModes, { errorMap: () => ({ message: "Izaberi nacin transporta." }) }),
   ),
   pickup: z.boolean().optional(),
-  myProfitPercent: z.preprocess(
-    (value) => {
-      if (value === "" || value === undefined || value === null) return undefined;
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : undefined;
-    },
-    z.number().min(0, "Minimalno 0%").max(100, "Maksimalno 100%").optional(),
-  ),
-  note: z.string().optional(),
+  note: z.string().trim().min(1, "Napomena je obavezna."),
 });
 
 type OrderFormValues = z.infer<typeof orderSchema>;
@@ -81,7 +74,6 @@ const defaultFormValues: OrderFormValues = {
   transportCost: undefined,
   transportMode: undefined,
   pickup: false,
-  myProfitPercent: undefined,
   note: "",
 };
 
@@ -91,7 +83,6 @@ const orderFocusOrder: (keyof OrderFormValues)[] = [
   "phone",
   "transportCost",
   "transportMode",
-  "myProfitPercent",
   "note",
 ];
 
@@ -138,6 +129,7 @@ type OrderItemDraft = {
   kolicina: number;
   nabavnaCena: number;
   prodajnaCena: number;
+  manualProdajna?: boolean;
   variantLabel?: string;
   title: string;
 };
@@ -239,6 +231,8 @@ function OrdersContent() {
   const [itemVariantId, setItemVariantId] = useState("");
   const [itemSupplierId, setItemSupplierId] = useState("");
   const [itemQuantity, setItemQuantity] = useState(1);
+  const [useManualSalePrice, setUseManualSalePrice] = useState(false);
+  const [manualSalePrice, setManualSalePrice] = useState("");
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const ordersLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMoreOrdersTimerRef = useRef<number | null>(null);
@@ -261,11 +255,11 @@ function OrdersContent() {
         const totals = orderTotals(order);
         return {
           order,
+          totalQty: totals.totalQty,
           prodajnoUkupno: totals.totalProdajno,
           nabavnoUkupno: totals.totalNabavno,
           transport: totals.transport,
           prof: totals.profit,
-          mojDeo: totals.myShare,
         };
       }),
     [orders],
@@ -488,6 +482,8 @@ function OrdersContent() {
     setItemVariantId("");
     setItemSupplierId("");
     setItemQuantity(1);
+    setUseManualSalePrice(false);
+    setManualSalePrice("");
     if (options?.closeModal) {
       setIsModalOpen(false);
     }
@@ -517,7 +513,20 @@ function OrdersContent() {
         ? supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ?? bestSupplierLocal?.price
         : bestSupplierLocal?.price;
     const nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? selectedProduct.nabavnaCena;
-    const prodajnaCena = variant?.prodajnaCena ?? selectedProduct.prodajnaCena;
+    let prodajnaCena = variant?.prodajnaCena ?? selectedProduct.prodajnaCena;
+    if (useManualSalePrice) {
+      const manualInput = manualSalePrice.trim();
+      if (manualInput.length === 0) {
+        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
+        return;
+      }
+      const parsed = Number(manualInput.replace(",", "."));
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
+        return;
+      }
+      prodajnaCena = parsed;
+    }
     const variantLabel = variant ? composeVariantLabel(selectedProduct, variant) : undefined;
     const title = variantLabel ?? selectedProduct.name;
     const qty = Math.max(itemQuantity, 1);
@@ -529,6 +538,7 @@ function OrdersContent() {
       kolicina: qty,
       nabavnaCena,
       prodajnaCena,
+      manualProdajna: useManualSalePrice,
       variantLabel,
       title,
     };
@@ -537,6 +547,8 @@ function OrdersContent() {
     setItemVariantId("");
     setItemSupplierId("");
     setItemQuantity(1);
+    setUseManualSalePrice(false);
+    setManualSalePrice("");
     setProductInput("");
     setProductMenuOpen(false);
   };
@@ -583,6 +595,7 @@ function OrdersContent() {
         kolicina: item.kolicina,
         nabavnaCena: item.nabavnaCena,
         prodajnaCena: item.prodajnaCena,
+        manualProdajna: Boolean(item.manualProdajna),
       }));
       const payload = {
         stage: values.stage,
@@ -593,7 +606,6 @@ function OrdersContent() {
         address: values.address.trim(),
         phone: values.phone.trim(),
         pickup,
-        myProfitPercent: values.myProfitPercent,
         napomena: values.note?.trim() || undefined,
         items: payloadItems,
         token: sessionToken,
@@ -651,7 +663,6 @@ function OrdersContent() {
         phone: order.phone,
         transportCost: order.transportCost,
         transportMode: order.transportMode,
-        myProfitPercent: order.myProfitPercent,
         pickup: order.pickup,
         napomena: order.napomena,
         items: order.items,
@@ -785,6 +796,8 @@ function OrdersContent() {
                                 setProductInput(product.name);
                                 setItemVariantId(defaultVariant?.id ?? "");
                                 setItemSupplierId("");
+                                setUseManualSalePrice(false);
+                                setManualSalePrice("");
                                 setItemQuantity(1);
                                 setProductMenuOpen(false);
                               }}
@@ -966,6 +979,7 @@ function OrdersContent() {
                       name="itemQuantity"
                       type="number"
                       min={1}
+                      required
                       value={itemQuantity}
                       onChange={(event) => {
                         const next = Number(event.target.value);
@@ -977,7 +991,38 @@ function OrdersContent() {
                       }}
                     />
                   </div>
-                  <div className="md:col-span-2 flex flex-wrap items-center gap-2">
+                  <div>
+                    <FormLabel className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={useManualSalePrice}
+                        onChange={(event) => {
+                          setUseManualSalePrice(event.target.checked);
+                          if (!event.target.checked) {
+                            setManualSalePrice("");
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      Rucno unosim prodajnu cenu
+                    </FormLabel>
+                    <Input
+                      name="manualSalePrice"
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      disabled={!useManualSalePrice}
+                      required={useManualSalePrice}
+                      value={manualSalePrice}
+                      onChange={(event) => setManualSalePrice(event.target.value)}
+                      placeholder="npr. 120"
+                      className={!useManualSalePrice ? "bg-slate-100" : undefined}
+                    />
+                    <p className="text-xs text-slate-500">
+                      Podrazumevano se uzima cena proizvoda. U retkim slucajevima ukljuci ovu opciju i unesi prodajnu cenu.
+                    </p>
+                  </div>
+                  <div className="md:col-span-1 flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleAddItem} className="gap-2">
                       <Plus className="h-4 w-4" />
                       Dodaj u narudzbinu
@@ -990,6 +1035,8 @@ function OrdersContent() {
                         setItemVariantId("");
                         setItemSupplierId("");
                         setProductInput("");
+                        setUseManualSalePrice(false);
+                        setManualSalePrice("");
                         setItemQuantity(1);
                       }}
                     >
@@ -1018,8 +1065,13 @@ function OrdersContent() {
                           <p className="text-sm font-semibold text-slate-900">{item.title}</p>
                           {item.variantLabel ? <p className="text-xs text-slate-500">{item.variantLabel}</p> : null}
                           <p className="text-xs text-slate-500">
-                            Kolicina: {item.kolicina} • Nabavna {formatCurrency(item.nabavnaCena, "EUR")} • Prodajna {formatCurrency(item.prodajnaCena, "EUR")}
+                            Kolicina: {item.kolicina} / Nabavna {formatCurrency(item.nabavnaCena, "EUR")} / Prodajna {formatCurrency(item.prodajnaCena, "EUR")}
                           </p>
+                          {item.manualProdajna ? (
+                            <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                              Rucno uneta cena
+                            </span>
+                          ) : null}
                         </div>
                         <Button
                           type="button"
@@ -1041,7 +1093,7 @@ function OrdersContent() {
                 render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel>Ime i prezime porucioca</FormLabel>
-                    <Input placeholder="npr. Marko Markovic" {...field} />
+                    <Input placeholder="npr. Marko Markovic" required {...field} />
                     <FormMessage>{fieldState.error?.message}</FormMessage>
                   </FormItem>
                 )}
@@ -1051,7 +1103,7 @@ function OrdersContent() {
                 render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel>Broj telefona</FormLabel>
-                    <Input placeholder="npr. +381 6x xxx xxxx" {...field} />
+                    <Input placeholder="npr. +381 6x xxx xxxx" required {...field} />
                     <FormMessage>{fieldState.error?.message}</FormMessage>
                   </FormItem>
                 )}
@@ -1061,42 +1113,13 @@ function OrdersContent() {
                 render={({ field, fieldState }) => (
                   <FormItem className="md:col-span-2">
                     <FormLabel>Adresa</FormLabel>
-                    <Input placeholder="Ulica, broj, mesto" {...field} />
+                    <Input placeholder="Ulica, broj, mesto" required {...field} />
                     <FormMessage>{fieldState.error?.message}</FormMessage>
                   </FormItem>
                 )}
               />
             </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              <FormField
-                name="myProfitPercent"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                <FormLabel>Moj procenat profita</FormLabel>
-                <div className="flex items-center gap-2">
-                  <Input
-                    ref={field.ref}
-                    name={field.name}
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    placeholder="npr. 40"
-                    value={field.value ?? ""}
-                    onChange={(event) =>
-                      field.onChange(event.target.value === "" ? undefined : Number(event.target.value))
-                    }
-                    onBlur={field.onBlur}
-                  />
-                      <span className="text-sm text-slate-500">%</span>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      Racuna se od profita (prodajna - nabavna). Unesi koliko % ide tebi.
-                    </p>
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
-                  </FormItem>
-                )}
-              />
+            <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 name="transportCost"
                 render={({ field, fieldState }) => (
@@ -1108,6 +1131,7 @@ function OrdersContent() {
                   type="text"
                   inputMode="decimal"
                   placeholder="npr. 15 ili 15.5"
+                  required
                   value={field.value ?? ""}
                   onChange={(event) => {
                     const normalized = event.target.value.replace(",", ".").trim();
@@ -1135,6 +1159,7 @@ function OrdersContent() {
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                   ref={field.ref}
                   name={field.name}
+                  required
                   value={field.value ?? ""}
                   onChange={(event) => field.onChange(event.target.value || undefined)}
                   onBlur={field.onBlur}
@@ -1154,7 +1179,7 @@ function OrdersContent() {
               <FormField
                 name="pickup"
                 render={({ field }) => (
-                  <FormItem className="flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-3">
+                  <FormItem className="flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-2">
                     <input
                       id="pickup"
                       ref={field.ref}
@@ -1177,9 +1202,10 @@ function OrdersContent() {
               <FormField
                 name="note"
                 render={({ field }) => (
-                  <FormItem className="md:col-span-3">
+                  <FormItem className="md:col-span-2">
                     <FormLabel>Napomena</FormLabel>
-                    <Textarea rows={3} placeholder="Dodatne napomene" {...field} />
+                    <Textarea rows={3} placeholder="Dodatne napomene" required {...field} />
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -1250,11 +1276,10 @@ function OrdersContent() {
                 <TableHead>Naslov</TableHead>
                 <TableHead>Kontakt</TableHead>
                 <TableHead>Kolicina</TableHead>
-                <TableHead className="text-right">Prodajno (EUR)</TableHead>
                 <TableHead className="text-right">Nabavno (EUR)</TableHead>
                 <TableHead className="text-right">Transport (EUR)</TableHead>
+                <TableHead className="text-right">Prodajno (EUR)</TableHead>
                 <TableHead className="text-right">Profit (EUR)</TableHead>
-                <TableHead className="text-right">Moj deo (EUR)</TableHead>
                 <TableHead>Napomena</TableHead>
                 <TableHead>Akcije</TableHead>
               </TableRow>
@@ -1262,18 +1287,18 @@ function OrdersContent() {
             <TableBody>
               {isOrdersLoading ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-sm text-slate-500">
+                  <TableCell colSpan={11} className="text-center text-sm text-slate-500">
                     Ucitavanje...
                   </TableCell>
                 </TableRow>
               ) : orderEntries.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-sm text-slate-500">
+                  <TableCell colSpan={11} className="text-center text-sm text-slate-500">
                     Jos nema narudzbina.
                   </TableCell>
                 </TableRow>
               ) : (
-                orderEntries.map(({ order, prodajnoUkupno, nabavnoUkupno, transport, prof, mojDeo }) => (
+                orderEntries.map(({ order, totalQty, prodajnoUkupno, nabavnoUkupno, transport, prof }) => (
                   <TableRow
                     key={order._id}
                     className="cursor-pointer transition hover:bg-slate-50"
@@ -1284,30 +1309,48 @@ function OrdersContent() {
                       <StageBadge stage={order.stage} />
                     </TableCell>
                     <TableCell className="font-medium text-slate-700">
-                      <span className="inline-flex items-center gap-1">
-                        {order.title}
-                        <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                      </span>
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center gap-1">
+                          {order.title}
+                          <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                        </span>
+                        {order.items && order.items.length > 0 ? (
+                          <p className="text-xs text-slate-500">
+                            {order.items
+                              .slice(0, 2)
+                              .map((item) => `${item.title}${item.kolicina > 1 ? ` x${item.kolicina}` : ""}`)
+                              .join(" · ")}
+                            {order.items.length > 2 ? ` +${order.items.length - 2}` : ""}
+                          </p>
+                        ) : null}
+                        {order.items && order.items.length > 1 ? (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                            {order.items.length} proizvoda
+                          </span>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="max-w-[220px]">
-                      <p className="font-medium text-slate-800">{order.customerName}</p>
-                      <p className="text-xs text-slate-500">{order.phone}</p>
+                      <a
+                        href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
+                        className="flex flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <span className="font-medium text-slate-800">{order.customerName}</span>
+                        <span className="flex items-center gap-1 text-xs text-slate-500">
+                          <PhoneCall className="h-4 w-4 text-blue-500" />
+                          {order.phone}
+                        </span>
+                      </a>
                     </TableCell>
-                    <TableCell>{order.kolicina}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
+                    <TableCell>{totalQty}</TableCell>
                     <TableCell className="text-right">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(transport, "EUR")}
                     </TableCell>
+                    <TableCell className="text-right">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
                     <TableCell className="text-right font-semibold">
                       <span className={prof < 0 ? "text-red-600" : ""}>{formatCurrency(prof, "EUR")}</span>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold text-emerald-700">
-                      {order.myProfitPercent !== undefined ? (
-                        <span>{formatCurrency(mojDeo, "EUR")}</span>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
                     </TableCell>
                     <TableCell className="max-w-[180px] truncate text-sm text-slate-500">
                       {order.napomena || "-"}

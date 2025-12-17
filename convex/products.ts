@@ -476,7 +476,7 @@ export const stats = query({
     >();
 
     orders.forEach((order) => {
-      if (order.stage !== "legle_pare") return;
+      if (order.stage !== "legle_pare" && order.stage !== "na_stanju") return;
       const items = resolveOrderItems(order);
       const transport = order.transportCost ?? 0;
       const totalProdajno = items.reduce((sum, item) => sum + item.prodajnaCena * item.kolicina, 0);

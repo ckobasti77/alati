@@ -55,14 +55,11 @@ export const summary = query({
         const nabavno = items.reduce((sum, item) => sum + item.nabavnaCena * item.kolicina, 0);
         const transport = order.transportCost ?? 0;
         const profit = prodajno - nabavno - transport;
-        const canCountMyShare = order.stage === "legle_pare";
-        const myShare = canCountMyShare ? profit * ((order.myProfitPercent ?? 0) / 100) : 0;
 
         acc.brojNarudzbina += 1;
         acc.ukupnoProdajno += prodajno;
         acc.ukupnoNabavno += nabavno;
         acc.profit += profit;
-        acc.mojProfit += myShare;
         return acc;
       },
       {
@@ -70,7 +67,6 @@ export const summary = query({
         ukupnoProdajno: 0,
         ukupnoNabavno: 0,
         profit: 0,
-        mojProfit: 0,
       },
     );
   },

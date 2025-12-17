@@ -171,49 +171,24 @@ export const createUser = mutation({
     password: v.string(),
   },
   handler: async (ctx, args) => {
-    const { user: admin } = await requireAdmin(ctx, args.token);
-    const username = normalizeUsername(args.username);
-    if (!username) {
-      throw new Error("Korisnicko ime je obavezno.");
-    }
-    const existing = await findUserByUsername(ctx, username);
-    if (existing) {
-      throw new Error("Korisnicko ime vec postoji.");
-    }
-    const salt = randomHex(16);
-    const passwordHash = await hashPassword(args.password, salt);
-    const userId = await ctx.db.insert("users", {
-      username,
-      passwordHash,
-      salt,
-      role: "user",
-      createdAt: Date.now(),
-      createdBy: admin._id,
-    });
-    const created = await ctx.db.get(userId);
-    return {
-      id: userId,
-      username,
-      role: "user",
-      createdAt: created?.createdAt ?? Date.now(),
-    };
+    await requireUser(ctx, args.token);
+    throw new Error("Dodavanje novih profila je iskljuceno. Koristi postojeci kodmajstora nalog.");
   },
 });
 
 export const listUsers = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx, args.token);
-    const users = await ctx.db.query("users").collect();
-    return users
-      .map((user) => ({
+    const { user } = await requireUser(ctx, args.token);
+    return [
+      {
         id: user._id,
         username: user.username,
         role: user.role,
-        createdAt: user.createdAt,
+        createdAt: user.createdAt ?? Date.now(),
         createdBy: user.createdBy,
-      }))
-      .sort((a, b) => b.createdAt - a.createdAt);
+      },
+    ];
   },
 });
 

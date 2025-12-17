@@ -9,9 +9,6 @@ export const ukupnoNabavno = (kolicina: number, nabavna: number) =>
 export const profit = (prodajnoUkupno: number, nabavnoUkupno: number, transportCost = 0) =>
   prodajnoUkupno - nabavnoUkupno - transportCost;
 
-export const myProfitShare = (profitValue: number, percent: number) =>
-  profitValue * (Math.min(Math.max(percent, 0), 100) / 100);
-
 const normalizeQuantity = (value?: number) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return 1;
@@ -32,6 +29,7 @@ export const resolveOrderItems = (order: { items?: OrderItem[] } & Partial<Order
       kolicina: normalizeQuantity(item.kolicina),
       nabavnaCena: sanitizePrice(item.nabavnaCena),
       prodajnaCena: sanitizePrice(item.prodajnaCena),
+      manualProdajna: item.manualProdajna,
     }))
     .filter((item) => item.kolicina > 0);
   if (normalized.length > 0) return normalized;
@@ -49,6 +47,7 @@ export const resolveOrderItems = (order: { items?: OrderItem[] } & Partial<Order
       kolicina: normalizeQuantity(order.kolicina),
       nabavnaCena: sanitizePrice(order.nabavnaCena),
       prodajnaCena: sanitizePrice(order.prodajnaCena),
+      manualProdajna: false,
     },
   ];
 };
@@ -69,7 +68,6 @@ export const orderTotals = (order: { items?: OrderItem[] } & Partial<Order>) => 
       : ukupnoNabavno(normalizeQuantity(order.kolicina ?? 0), sanitizePrice(order.nabavnaCena));
   const transport = order.transportCost ?? 0;
   const profitValue = profit(totalProdajno, totalNabavno, transport);
-  const myShare = order.stage === "legle_pare" ? myProfitShare(profitValue, order.myProfitPercent ?? 0) : 0;
   return {
     items,
     totalQty,
@@ -77,6 +75,5 @@ export const orderTotals = (order: { items?: OrderItem[] } & Partial<Order>) => 
     totalNabavno,
     transport,
     profit: profitValue,
-    myShare,
   };
 };

@@ -26,7 +26,6 @@ type AuthContextValue = {
   status: AuthStatus;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  createProfile: (username: string, password: string) => Promise<void>;
 };
 
 const STORAGE_KEY = "evidencija.sessionToken";
@@ -72,9 +71,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string;
   }, { token: string; user: AuthUser }>("auth:login");
   const logoutMutation = useConvexMutation<{ token: string }>("auth:logout");
-  const createUserMutation = useConvexMutation<{ token: string; username: string; password: string }>(
-    "auth:createUser",
-  );
 
   const login = useCallback(
     async (username: string, password: string) => {
@@ -114,17 +110,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [logoutMutation, token]);
 
-  const createProfile = useCallback(
-    async (username: string, password: string) => {
-      if (!token || !user || user.role !== "admin") {
-        throw new Error("Samo admin moze da dodaje profile.");
-      }
-      await createUserMutation({ token, username, password });
-      toast.success("Profil uspesno dodat.");
-    },
-    [createUserMutation, token, user],
-  );
-
   const value = useMemo(
     () => ({
       user,
@@ -132,9 +117,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status,
       login,
       logout,
-      createProfile,
     }),
-    [user, token, status, login, logout, createProfile],
+    [user, token, status, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

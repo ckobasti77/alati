@@ -1,12 +1,13 @@
-# Evidencija narudzbina
+﻿# Evidencija narudzbina
 
 Ultralaka evidencija za internu upotrebu. Fokus je na brzom dodavanju proizvoda i narudzbina kroz faze, sve izrazena u evrima.
 
 ## Sta aplikacija radi
 - Cuva listu proizvoda sa nabavnom i prodajnom cenom (EUR).
 - Omogucava brzo dodavanje narudzbine (pretraga proizvoda, biranje varijante, kupac/adresa/telefon).
-- Prati stage narudzbine: poruceno → poslato → stiglo → legle pare.
-- Cuva procenat i izracunava tvoj deo profita po narudzbini i zbirno.
+- Prati stage narudzbine: poruceno -> na stanju -> poslato -> stiglo -> legle pare.
+- Racuna profit po narudzbini i zbirno (bez dodatnih procenata).
+- Jedan profil (kodmajstora) bez dodavanja novih korisnika.
 
 ## Tehnologije
 - Next.js 16 (App Router) + TypeScript
@@ -15,7 +16,7 @@ Ultralaka evidencija za internu upotrebu. Fokus je na brzom dodavanju proizvoda 
 
 ## Struktura
 - / - kontrolna tabla sa zbirnim karticama i poslednjim narudzbinama
-- /narudzbine - lista narudzbina sa pretragom, stage-ovima i unosom profita
+- /narudzbine - lista narudzbina sa pretragom i stage-ovima
 - /proizvodi - lista proizvoda i forma za dodavanje
 
 ## Pokretanje

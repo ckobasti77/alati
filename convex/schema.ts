@@ -124,7 +124,13 @@ export default defineSchema({
     .index("by_user_createdAt", ["userId", "createdAt"]),
   orders: defineTable({
     userId: v.optional(v.id("users")),
-    stage: v.union(v.literal("poruceno"), v.literal("poslato"), v.literal("stiglo"), v.literal("legle_pare")),
+    stage: v.union(
+      v.literal("poruceno"),
+      v.literal("na_stanju"),
+      v.literal("poslato"),
+      v.literal("stiglo"),
+      v.literal("legle_pare"),
+    ),
     productId: v.optional(v.id("products")),
     supplierId: v.optional(v.id("suppliers")),
     variantId: v.optional(v.string()),
@@ -138,10 +144,10 @@ export default defineSchema({
     transportMode: v.optional(
       v.union(v.literal("Kol"), v.literal("Joe"), v.literal("Posta"), v.literal("Bex"), v.literal("Aks")),
     ),
+    myProfitPercent: v.optional(v.number()),
     customerName: v.string(),
     address: v.string(),
     phone: v.string(),
-    myProfitPercent: v.optional(v.number()),
     pickup: v.optional(v.boolean()),
     items: v.optional(
       v.array(
@@ -155,6 +161,7 @@ export default defineSchema({
           kolicina: v.number(),
           nabavnaCena: v.number(),
           prodajnaCena: v.number(),
+          manualProdajna: v.optional(v.boolean()),
         }),
       ),
     ),

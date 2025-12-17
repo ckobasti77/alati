@@ -14,7 +14,6 @@ const navLinks = [
   { href: "/narudzbine", label: "Narudzbine" },
   { href: "/proizvodi", label: "Proizvodi" },
   { href: "/objave", label: "Objave", adminOnly: true },
-  { href: "/profili", label: "Profili", adminOnly: true },
 ];
 
 export function AppHeader() {
@@ -77,30 +76,16 @@ export function AppHeader() {
           {status === "authenticated" ? navigation : null}
           <div className="flex items-center gap-3 text-sm text-slate-600">
             <ThemeToggle />
-            {status === "checking" ? (
-              <span className="text-slate-500">Provera naloga...</span>
-            ) : status === "authenticated" && user ? (
-              <>
-                <span className="hidden whitespace-nowrap md:inline">
-                  Prijavljen:{" "}
-                  <span className="font-semibold text-slate-800">
-                    {user.username}
-                  </span>
-                  {user.role === "admin" && (
-                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs">
-                      Admin
-                    </span>
-                  )}
-                </span>
-                <Button size="sm" variant="outline" onClick={logout}>
-                  Odjava
-                </Button>
-              </>
-            ) : (
+            {status === "checking" ? <span className="text-slate-500">Provera naloga...</span> : null}
+            {status === "authenticated" && user ? (
+              <Button size="sm" variant="outline" onClick={logout}>
+                Odjava
+              </Button>
+            ) : status !== "checking" ? (
               <Button size="sm" asChild>
                 <Link href="/login">Prijava</Link>
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
         {status === "authenticated" && (
@@ -111,17 +96,11 @@ export function AppHeader() {
           >
             <div className="space-y-4">
               {navigation}
-              <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <div className="flex flex-col">
-                  <span className="font-semibold">{user?.username}</span>
-                  {user?.role === "admin" ? <span className="text-[11px] text-amber-600">Admin</span> : null}
-                </div>
-                <div className="flex items-center gap-2">
-                  <ThemeToggle withLabel={false} />
-                  <Button size="sm" variant="outline" onClick={logout}>
-                    Odjava
-                  </Button>
-                </div>
+              <div className="flex items-center justify-end gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <ThemeToggle withLabel={false} />
+                <Button size="sm" variant="outline" onClick={logout}>
+                  Odjava
+                </Button>
               </div>
             </div>
           </div>
