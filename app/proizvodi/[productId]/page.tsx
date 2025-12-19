@@ -296,6 +296,7 @@ function ProductDetailsContent() {
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isUploadingAdImage, setIsUploadingAdImage] = useState(false);
   const [isGalleryDropActive, setIsGalleryDropActive] = useState(false);
+  const [imageUploadTarget, setImageUploadTarget] = useState<"product" | string>("product");
   const [isAdDropActive, setIsAdDropActive] = useState(false);
   const [publishing, setPublishing] = useState<SocialPlatform | null>(null);
   const [isTouchDevice, setIsTouchDevice] = useState(() => {
@@ -407,6 +408,18 @@ function ProductDetailsContent() {
     () => new Map((product?.variants ?? []).map((variant) => [variant.id, variant])),
     [product?.variants],
   );
+  useEffect(() => {
+    if (imageUploadTarget === "product") return;
+    const exists = (product?.variants ?? []).some((variant) => variant.id === imageUploadTarget);
+    if (!exists) {
+      setImageUploadTarget("product");
+    }
+  }, [imageUploadTarget, product?.variants]);
+  const uploadTargetLabel = useMemo(() => {
+    if (imageUploadTarget === "product") return "proizvod";
+    const variantLabel = variantMap.get(imageUploadTarget)?.label;
+    return variantLabel ? `tip \"${variantLabel}\"` : "izabrani tip";
+  }, [imageUploadTarget, variantMap]);
   const supplierOffers = useMemo(() => product?.supplierOffers ?? [], [product]);
   const bestSupplierOffer = useMemo(() => {
     if (!supplierOffers.length) return null;
@@ -1474,8 +1487,32 @@ function ProductDetailsContent() {
     return "";
   };
 
-  const uploadImages = async (fileList: FileList | File[]) => {
-    if (!product) return;
+  const resolveUploadTarget = useCallback(
+    (override?: { type: "product" } | { type: "variant"; variantId: string }) => {
+      if (override) return override;
+      if (imageUploadTarget !== "product") {
+        return { type: "variant" as const, variantId: imageUploadTarget };
+      }
+      return { type: "product" as const };
+    },
+    [imageUploadTarget],
+  );
+
+  const uploadImages = async (
+    fileList: FileList | File[],
+    targetOverride?: { type: "product" } | { type: "variant"; variantId: string },
+  ) => {
+    const currentProduct = productRef.current;
+    if (!currentProduct) return;
+    const target = resolveUploadTarget(targetOverride);
+    if (target.type === "variant") {
+      const exists = (currentProduct.variants ?? []).some((variant) => variant.id === target.variantId);
+      if (!exists) {
+        toast.error("Izabrani tip vise ne postoji.");
+        setImageUploadTarget("product");
+        return;
+      }
+    }
     const accepted = Array.from(fileList instanceof FileList ? Array.from(fileList) : fileList).filter((file) => {
       if (file.type) return file.type.startsWith("image/");
       return /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name);
@@ -1512,6 +1549,15 @@ function ProductDetailsContent() {
 
       await applyUpdate(
         (current) => {
+          if (target.type === "variant") {
+            const variants = current.variants ?? [];
+            const updatedVariants = variants.map((variant) => {
+              if (variant.id !== target.variantId) return variant;
+              const merged = ensureMainImage([...(variant.images ?? []), ...additions]);
+              return { ...variant, images: merged };
+            });
+            return { ...current, variants: updatedVariants };
+          }
           const baseImages = current.images ?? [];
           const merged = ensureMainImage([...baseImages, ...additions]);
           return { ...current, images: merged };
@@ -1776,6 +1822,19 @@ function ProductDetailsContent() {
               <p className="text-sm text-slate-500">Kreativan grid sa slikama proizvoda i tipova.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Select value={imageUploadTarget} onValueChange={setImageUploadTarget}>
+                <SelectTrigger className="w-[190px]">
+                  <SelectValue placeholder="Gde dodati slike" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="product">Slike proizvoda</SelectItem>
+                  {(product.variants ?? []).map((variant) => (
+                    <SelectItem key={variant.id} value={variant.id}>
+                      {variant.label || "Tip"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <input
                 id={uploadInputId}
                 type="file"
@@ -1802,6 +1861,9 @@ function ProductDetailsContent() {
             </div>
           </CardHeader>
           <CardContent>
+            <p className="mb-3 text-xs text-slate-500">
+              Dodavanje novih fajlova ide na {uploadTargetLabel}.
+            </p>
             <div
               className={`relative rounded-xl border border-transparent transition ${
                 showGalleryDropOverlay ? "border-2 border-dashed border-blue-300 bg-blue-50/60" : ""
@@ -1815,7 +1877,7 @@ function ProductDetailsContent() {
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-blue-100/80 backdrop-blur-sm">
                   <div className="flex items-center gap-3 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-blue-700 shadow">
                     <UploadCloud className="h-4 w-4" />
-                    <span>Otpusti da dodas slike</span>
+                    <span>Otpusti da dodas slike za {uploadTargetLabel}</span>
                   </div>
                 </div>
               ) : null}

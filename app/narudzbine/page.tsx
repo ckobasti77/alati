@@ -1018,9 +1018,6 @@ function OrdersContent() {
                       placeholder="npr. 120"
                       className={!useManualSalePrice ? "bg-slate-100" : undefined}
                     />
-                    <p className="text-xs text-slate-500">
-                      Podrazumevano se uzima cena proizvoda. U retkim slucajevima ukljuci ovu opciju i unesi prodajnu cenu.
-                    </p>
                   </div>
                   <div className="md:col-span-1 flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleAddItem} className="gap-2">
@@ -1204,7 +1201,7 @@ function OrdersContent() {
                 render={({ field }) => (
                   <FormItem className="md:col-span-2">
                     <FormLabel>Napomena</FormLabel>
-                    <Textarea rows={3} placeholder="Dodatne napomene" required {...field} />
+                    <Textarea rows={3} placeholder="Dodatne napomene" {...field} />
                     <FormMessage />
                   </FormItem>
                 )}
