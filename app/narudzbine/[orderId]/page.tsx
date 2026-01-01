@@ -42,6 +42,11 @@ const StageBadge = ({ stage }: { stage: OrderStage }) => {
   );
 };
 
+const resolveProfitPercent = (value?: number) => (Number.isFinite(value) ? value : 100);
+
+const formatPercent = (value: number) =>
+  `${value.toLocaleString("sr-RS", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
+
 type InlineFieldProps = {
   label: string;
   value?: string | number | null;
@@ -259,6 +264,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
     napomena: current.napomena,
     transportCost: current.transportCost,
     transportMode: current.transportMode,
+    myProfitPercent: current.myProfitPercent,
     customerName: current.customerName,
     address: current.address,
     phone: current.phone,
@@ -299,6 +305,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
       | "prodajnaCena"
       | "transportCost"
       | "transportMode"
+      | "myProfitPercent"
       | "customerName"
       | "address"
       | "phone"
@@ -341,6 +348,20 @@ function OrderDetails({ orderId }: { orderId: string }) {
         throw new Error("Invalid transport");
       }
       await applyOrderUpdate((current) => ({ ...current, transportCost: cost }), "Sacuvano.");
+      return;
+    }
+
+    if (field === "myProfitPercent") {
+      if (!trimmed) {
+        toast.error("Unesi procenat profita.");
+        throw new Error("Invalid percent");
+      }
+      const percent = parseNumber(trimmed);
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+        toast.error("Procenat mora biti izmedju 0 i 100.");
+        throw new Error("Invalid percent");
+      }
+      await applyOrderUpdate((current) => ({ ...current, myProfitPercent: percent }), "Sacuvano.");
       return;
     }
 
@@ -390,6 +411,8 @@ function OrderDetails({ orderId }: { orderId: string }) {
   const nabavnoUkupno = totals?.totalNabavno ?? 0;
   const transport = totals?.transport ?? 0;
   const prof = totals?.profit ?? 0;
+  const myProfitPercent = resolveProfitPercent(order?.myProfitPercent);
+  const myProfit = prof * (myProfitPercent / 100);
   const telHref = order ? `tel:${order.phone.replace(/[^+\d]/g, "")}` : "";
 
   const handleStageChange = async (nextStage: OrderStage) => {
@@ -629,11 +652,20 @@ function OrderDetails({ orderId }: { orderId: string }) {
                 <p className="text-base font-semibold text-slate-900">{formatCurrency(transport, "EUR")}</p>
               </div>
             </div>
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Profit</p>
-              <p className={`text-base font-semibold ${prof < 0 ? "text-red-600" : "text-slate-900"}`}>
-                {formatCurrency(prof, "EUR")}
-              </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <InlineField
+                label="Moj procenat profita"
+                value={myProfitPercent}
+                formatter={(val) => formatPercent(Number(val ?? 0))}
+                onSave={(val) => handleOrderFieldSave("myProfitPercent", val)}
+              />
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Moj profit</p>
+                <p className={`text-base font-semibold ${myProfit < 0 ? "text-red-600" : "text-slate-900"}`}>
+                  {formatCurrency(myProfit, "EUR")}
+                </p>
+                <p className="text-xs text-slate-500">Ukupno {formatCurrency(prof, "EUR")}</p>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
 import { requireUser } from "./auth";
 
 const productImageArg = v.object({
@@ -61,6 +62,13 @@ type OrderItemTotals = {
   nabavnaCena: number;
   prodajnaCena: number;
 };
+
+type ProductSortOption =
+  | "created_desc"
+  | "price_desc"
+  | "price_asc"
+  | "sales_desc"
+  | "profit_desc";
 
 const normalizeSearchText = (value: string) => {
   const map: Record<string, string> = {
@@ -268,6 +276,16 @@ function normalizeCategoryIds(incoming?: Id<"categories">[]) {
   return normalized;
 }
 
+function resolvePrimaryVariant(product: Doc<"products">) {
+  const variants = product.variants ?? [];
+  return variants.find((variant) => variant.isDefault) ?? variants[0];
+}
+
+function resolveProductSalePrice(product: Doc<"products">) {
+  const primary = resolvePrimaryVariant(product);
+  return primary?.prodajnaCena ?? product.prodajnaCena ?? 0;
+}
+
 export const get = query({
   args: { token: v.string(), id: v.id("products") },
   handler: async (ctx, args) => {
@@ -349,11 +367,23 @@ export const listPaginated = query({
     search: v.optional(v.string()),
     page: v.optional(v.number()),
     pageSize: v.optional(v.number()),
+    sortBy: v.optional(
+      v.union(
+        v.literal("created_desc"),
+        v.literal("price_desc"),
+        v.literal("price_asc"),
+        v.literal("sales_desc"),
+        v.literal("profit_desc"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const page = Math.max(args.page ?? 1, 1);
     const pageSize = Math.max(Math.min(args.pageSize ?? 20, 100), 1);
+    const sortBy: ProductSortOption = args.sortBy ?? "created_desc";
+    const needsStats = sortBy === "sales_desc" || sortBy === "profit_desc";
+    const statsMap = needsStats ? await buildProductStatsMap(ctx, user._id) : null;
 
     let items = await ctx.db
       .query("products")
@@ -385,7 +415,28 @@ export const listPaginated = query({
       });
     }
 
-    items = items.sort((a, b) => b.createdAt - a.createdAt);
+    const compareCreatedAt = (a: Doc<"products">, b: Doc<"products">) => (b.createdAt ?? 0) - (a.createdAt ?? 0);
+    items = items.sort((a, b) => {
+      switch (sortBy) {
+        case "price_asc":
+          return resolveProductSalePrice(a) - resolveProductSalePrice(b) || compareCreatedAt(a, b);
+        case "price_desc":
+          return resolveProductSalePrice(b) - resolveProductSalePrice(a) || compareCreatedAt(a, b);
+        case "sales_desc": {
+          const salesA = statsMap?.get(a._id)?.salesCount ?? 0;
+          const salesB = statsMap?.get(b._id)?.salesCount ?? 0;
+          return salesB - salesA || compareCreatedAt(a, b);
+        }
+        case "profit_desc": {
+          const profitA = statsMap?.get(a._id)?.profit ?? 0;
+          const profitB = statsMap?.get(b._id)?.profit ?? 0;
+          return profitB - profitA || compareCreatedAt(a, b);
+        }
+        case "created_desc":
+        default:
+          return compareCreatedAt(a, b);
+      }
+    });
     const total = items.length;
     const offset = (page - 1) * pageSize;
     const pageItems = items.slice(offset, offset + pageSize);
@@ -428,19 +479,19 @@ export const listPaginated = query({
   },
 });
 
-const normalizeOrderQuantity = (value?: number) => {
+function normalizeOrderQuantity(value?: number) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return 1;
   return Math.max(Math.round(parsed), 1);
-};
+}
 
-const sanitizeOrderPrice = (value?: number) => {
+function sanitizeOrderPrice(value?: number) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return 0;
   return parsed;
-};
+}
 
-const resolveOrderItems = (order: any): OrderItemTotals[] => {
+function resolveOrderItems(order: any): OrderItemTotals[] {
   const stored = order.items ?? [];
   const normalized = stored
     .map((item: any) => ({
@@ -459,45 +510,53 @@ const resolveOrderItems = (order: any): OrderItemTotals[] => {
       prodajnaCena: sanitizeOrderPrice(order.prodajnaCena),
     },
   ];
-};
+}
+
+type ProductStatsMap = Map<
+  Id<"products">,
+  { salesCount: number; revenue: number; profit: number }
+>;
+
+async function buildProductStatsMap(ctx: Pick<QueryCtx, "db">, userId: Id<"users">): Promise<ProductStatsMap> {
+  const orders = await ctx.db
+    .query("orders")
+    .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", userId))
+    .collect();
+
+  const statsMap: ProductStatsMap = new Map();
+
+  orders.forEach((order) => {
+    if (order.stage !== "legle_pare" && order.stage !== "na_stanju") return;
+    const items = resolveOrderItems(order);
+    const transport = order.transportCost ?? 0;
+    const totalProdajno = items.reduce((sum, item) => sum + item.prodajnaCena * item.kolicina, 0);
+    items.forEach((item) => {
+      if (!item.productId) return;
+      const itemProdajno = item.prodajnaCena * item.kolicina;
+      const transportShare =
+        totalProdajno > 0 ? (transport * itemProdajno) / totalProdajno : transport / items.length;
+      const itemNabavno = item.nabavnaCena * item.kolicina;
+      const key = item.productId as Id<"products">;
+      const current = statsMap.get(key) ?? {
+        salesCount: 0,
+        revenue: 0,
+        profit: 0,
+      };
+      current.salesCount += item.kolicina;
+      current.revenue += itemProdajno;
+      current.profit += itemProdajno - itemNabavno - (Number.isFinite(transportShare) ? transportShare : 0);
+      statsMap.set(key, current);
+    });
+  });
+
+  return statsMap;
+}
 
 export const stats = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
-    const orders = await ctx.db
-      .query("orders")
-      .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
-      .collect();
-
-    const statsMap = new Map<
-      Id<"products">,
-      { salesCount: number; revenue: number; profit: number }
-    >();
-
-    orders.forEach((order) => {
-      if (order.stage !== "legle_pare" && order.stage !== "na_stanju") return;
-      const items = resolveOrderItems(order);
-      const transport = order.transportCost ?? 0;
-      const totalProdajno = items.reduce((sum, item) => sum + item.prodajnaCena * item.kolicina, 0);
-      items.forEach((item) => {
-        if (!item.productId) return;
-        const itemProdajno = item.prodajnaCena * item.kolicina;
-        const transportShare =
-          totalProdajno > 0 ? (transport * itemProdajno) / totalProdajno : transport / items.length;
-        const itemNabavno = item.nabavnaCena * item.kolicina;
-        const key = item.productId as Id<"products">;
-        const current = statsMap.get(key) ?? {
-          salesCount: 0,
-          revenue: 0,
-          profit: 0,
-        };
-        current.salesCount += item.kolicina;
-        current.revenue += itemProdajno;
-        current.profit += itemProdajno - itemNabavno - (Number.isFinite(transportShare) ? transportShare : 0);
-        statsMap.set(key, current);
-      });
-    });
+    const statsMap = await buildProductStatsMap(ctx, user._id);
 
     return Array.from(statsMap.entries()).map(([productId, data]) => ({
       productId,

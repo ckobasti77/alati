@@ -36,6 +36,13 @@ const normalizeTransportMode = (mode?: (typeof transportModes)[number]) => {
   return transportModes.includes(mode) ? mode : undefined;
 };
 
+const normalizeProfitPercent = (value?: number) => {
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isFinite(value)) return undefined;
+  if (value < 0 || value > 100) return undefined;
+  return value;
+};
+
 const generateItemId = () => Math.random().toString(36).slice(2);
 
 const normalizeQuantity = (value?: number) => {
@@ -301,12 +308,15 @@ export const summary = query({
       .query("orders")
       .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
       .collect();
-    return orders.reduce(
+    const paidOrders = orders.filter((order) => normalizeStage(order.stage as any) === "legle_pare");
+
+    return paidOrders.reduce(
       (acc, order) => {
         const { totals, transport, profit } = orderTotals(order);
         acc.brojNarudzbina += 1;
         acc.ukupnoProdajno += totals.totalProdajno;
         acc.ukupnoNabavno += totals.totalNabavno;
+        acc.ukupnoTransport += transport;
         acc.profit += profit;
         return acc;
       },
@@ -314,6 +324,7 @@ export const summary = query({
         brojNarudzbina: 0,
         ukupnoProdajno: 0,
         ukupnoNabavno: 0,
+        ukupnoTransport: 0,
         profit: 0,
       },
     );
@@ -416,6 +427,7 @@ export const create = mutation({
     napomena: v.optional(v.string()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
+    myProfitPercent: v.optional(v.number()),
     customerName: v.string(),
     address: v.string(),
     phone: v.string(),
@@ -428,6 +440,11 @@ export const create = mutation({
     const pickup = Boolean(args.pickup);
     const transportCost = normalizeTransportCost(args.transportCost);
     const transportMode = normalizeTransportMode(args.transportMode);
+    const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
+    if (args.myProfitPercent !== undefined && myProfitPercent === undefined) {
+      throw new Error("Procenat profita mora biti izmedju 0 i 100.");
+    }
+    const resolvedProfitPercent = myProfitPercent ?? 100;
 
     const baseItems: IncomingItem[] =
       args.items && args.items.length > 0
@@ -469,6 +486,7 @@ export const create = mutation({
       napomena: args.napomena?.trim() || undefined,
       transportCost,
       transportMode,
+      myProfitPercent: resolvedProfitPercent,
       customerName: args.customerName.trim(),
       address: args.address.trim(),
       phone: args.phone.trim(),
@@ -495,6 +513,7 @@ export const update = mutation({
     napomena: v.optional(v.string()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
+    myProfitPercent: v.optional(v.number()),
     customerName: v.string(),
     address: v.string(),
     phone: v.string(),
@@ -514,6 +533,12 @@ export const update = mutation({
     const pickup = args.pickup ?? existing.pickup ?? false;
     const transportCost = normalizeTransportCost(args.transportCost);
     const transportMode = normalizeTransportMode(args.transportMode);
+    const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
+    if (args.myProfitPercent !== undefined && myProfitPercent === undefined) {
+      throw new Error("Procenat profita mora biti izmedju 0 i 100.");
+    }
+    const resolvedProfitPercent =
+      args.myProfitPercent === undefined ? existing.myProfitPercent : myProfitPercent ?? 100;
 
     const baseItems: IncomingItem[] =
       args.items && args.items.length > 0
@@ -541,6 +566,7 @@ export const update = mutation({
       napomena: args.napomena?.trim() || undefined,
       transportCost,
       transportMode,
+      myProfitPercent: resolvedProfitPercent,
       customerName: args.customerName.trim(),
       address: args.address.trim(),
       phone: args.phone.trim(),

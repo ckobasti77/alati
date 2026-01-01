@@ -60,6 +60,18 @@ const orderSchema = z.object({
     },
     z.enum(transportModes, { errorMap: () => ({ message: "Izaberi nacin transporta." }) }),
   ),
+  myProfitPercent: z.preprocess(
+    (value) => {
+      if (value === "" || value === undefined || value === null) return undefined;
+      const normalized = typeof value === "string" ? value.replace(",", ".") : value;
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    },
+    z
+      .number()
+      .min(0, "Procenat profita mora biti izmedju 0 i 100.")
+      .max(100, "Procenat profita mora biti izmedju 0 i 100."),
+  ),
   pickup: z.boolean().optional(),
   note: z.string().trim().min(1, "Napomena je obavezna."),
 });
@@ -73,6 +85,7 @@ const defaultFormValues: DeepPartial<OrderFormValues> = {
   phone: "",
   transportCost: undefined,
   transportMode: undefined,
+  myProfitPercent: 100,
   pickup: false,
   note: "",
 };
@@ -83,6 +96,7 @@ const orderFocusOrder: (keyof OrderFormValues)[] = [
   "phone",
   "transportCost",
   "transportMode",
+  "myProfitPercent",
   "note",
 ];
 
@@ -199,6 +213,11 @@ const StageBadge = ({ stage }: { stage: OrderStage }) => {
   );
 };
 
+const resolveProfitPercent = (value?: number) => (Number.isFinite(value) ? value : 100);
+
+const formatPercent = (value: number) =>
+  `${value.toLocaleString("sr-RS", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
+
 export default function OrdersPage() {
   return (
     <RequireAuth>
@@ -253,13 +272,16 @@ function OrdersContent() {
     () =>
       orders.map((order) => {
         const totals = orderTotals(order);
+        const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
+        const myProfit = totals.profit * (myProfitPercent / 100);
         return {
           order,
           totalQty: totals.totalQty,
           prodajnoUkupno: totals.totalProdajno,
           nabavnoUkupno: totals.totalNabavno,
           transport: totals.transport,
-          prof: totals.profit,
+          myProfit,
+          myProfitPercent,
         };
       }),
     [orders],
@@ -602,6 +624,7 @@ function OrdersContent() {
         title: payloadItems[0]?.title ?? "Narudzbina",
         transportCost: values.transportCost,
         transportMode: values.transportMode,
+        myProfitPercent: values.myProfitPercent,
         customerName: values.customerName.trim(),
         address: values.address.trim(),
         phone: values.phone.trim(),
@@ -663,6 +686,7 @@ function OrdersContent() {
         phone: order.phone,
         transportCost: order.transportCost,
         transportMode: order.transportMode,
+        myProfitPercent: order.myProfitPercent,
         pickup: order.pickup,
         napomena: order.napomena,
         items: order.items,
@@ -1174,6 +1198,36 @@ function OrdersContent() {
                 )}
               />
               <FormField
+                name="myProfitPercent"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>Moj procenat profita (%)</FormLabel>
+                    <Input
+                      ref={field.ref}
+                      name={field.name}
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="npr. 50"
+                      required
+                      value={field.value ?? ""}
+                      onChange={(event) => {
+                        const normalized = event.target.value.replace(",", ".").trim();
+                        if (normalized === "") {
+                          field.onChange(undefined);
+                          return;
+                        }
+                        const parsed = Number(normalized);
+                        if (Number.isNaN(parsed)) return;
+                        field.onChange(parsed);
+                      }}
+                      onBlur={field.onBlur}
+                    />
+                    <p className="text-xs text-slate-500">Procenat profita koji pripada tebi (0-100).</p>
+                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
                 name="pickup"
                 render={({ field }) => (
                   <FormItem className="flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-2">
@@ -1276,7 +1330,7 @@ function OrdersContent() {
                 <TableHead className="text-right">Nabavno (EUR)</TableHead>
                 <TableHead className="text-right">Transport (EUR)</TableHead>
                 <TableHead className="text-right">Prodajno (EUR)</TableHead>
-                <TableHead className="text-right">Profit (EUR)</TableHead>
+                <TableHead className="text-right">Moj profit (EUR)</TableHead>
                 <TableHead>Napomena</TableHead>
                 <TableHead>Akcije</TableHead>
               </TableRow>
@@ -1295,7 +1349,7 @@ function OrdersContent() {
                   </TableCell>
                 </TableRow>
               ) : (
-                orderEntries.map(({ order, totalQty, prodajnoUkupno, nabavnoUkupno, transport, prof }) => (
+                orderEntries.map(({ order, totalQty, prodajnoUkupno, nabavnoUkupno, transport, myProfit, myProfitPercent }) => (
                   <TableRow
                     key={order._id}
                     className="cursor-pointer transition hover:bg-slate-50"
@@ -1347,7 +1401,10 @@ function OrdersContent() {
                     </TableCell>
                     <TableCell className="text-right">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
                     <TableCell className="text-right font-semibold">
-                      <span className={prof < 0 ? "text-red-600" : ""}>{formatCurrency(prof, "EUR")}</span>
+                      <div className="flex flex-col items-end">
+                        <span className={myProfit < 0 ? "text-red-600" : ""}>{formatCurrency(myProfit, "EUR")}</span>
+                        <span className="text-[11px] font-medium text-slate-500">{formatPercent(myProfitPercent)}</span>
+                      </div>
                     </TableCell>
                     <TableCell className="max-w-[180px] truncate text-sm text-slate-500">
                       {order.napomena || "-"}

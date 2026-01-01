@@ -204,7 +204,7 @@ const createVariantFormEntry = (
   id: generateId(),
   label: options.label ?? "",
   nabavnaCena: options.nabavnaCena ?? "",
-  nabavnaCenaIsReal: true,
+  nabavnaCenaIsReal: false,
   prodajnaCena: options.prodajnaCena ?? "",
   opis: options.opis ?? "",
   isDefault: options.isDefault ?? false,
@@ -264,7 +264,7 @@ const emptyProductForm = (): ProductFormValues => ({
   kpName: "",
   name: "",
   nabavnaCena: "",
-  nabavnaCenaIsReal: true,
+  nabavnaCenaIsReal: false,
   prodajnaCena: "",
   supplierOffers: [],
   categoryIds: [],
@@ -390,6 +390,7 @@ function ProductsContent() {
     search: productSearch.trim() || undefined,
     page: productPage,
     pageSize: PRODUCTS_PAGE_SIZE,
+    sortBy,
   });
   const productStats = useConvexQuery<ProductStats[]>("products:stats", { token: sessionToken });
   const createProduct = useConvexMutation("products:create");
@@ -508,6 +509,7 @@ function ProductsContent() {
   useEffect(() => {
     form.register("productType");
     form.register("supplierOffers");
+    form.register("nabavnaCenaIsReal");
   }, [form]);
   const productType = useWatch({ control: form.control, name: "productType" }) as ProductFormValues["productType"];
   const variants = (useWatch({ control: form.control, name: "variants" }) ?? []) as VariantFormEntry[];
@@ -700,7 +702,7 @@ function ProductsContent() {
   const handleSubmit = async (values: ProductFormValues) => {
     const isVariantProduct = values.productType === "variant";
     const baseNabavna = parsePrice(values.nabavnaCena);
-    const baseNabavnaIsReal = values.nabavnaCenaIsReal ?? true;
+    const baseNabavnaIsReal = values.nabavnaCenaIsReal ?? false;
     const baseProdajna = parsePrice(values.prodajnaCena);
     const variantEntries = (values.variants ?? []) as VariantFormEntry[];
     const normalizedOffers: NormalizedSupplierOffer[] = normalizeSupplierOffersInput(
@@ -723,7 +725,7 @@ function ProductsContent() {
               id: variant.id || generateId(),
               label: variant.label.trim() || `Tip ${index + 1}`,
               nabavnaCena,
-              nabavnaCenaIsReal: bestOffer ? true : variant.nabavnaCenaIsReal ?? true,
+              nabavnaCenaIsReal: bestOffer ? true : variant.nabavnaCenaIsReal ?? false,
               prodajnaCena: parsePrice(variant.prodajnaCena),
               opis: variant.opis?.trim() ? variant.opis.trim() : undefined,
               isDefault: variant.isDefault,
@@ -2024,7 +2026,7 @@ function ProductsContent() {
         id: variantId,
         label: variant.label || `Tip ${index + 1}`,
         nabavnaCena: variant.nabavnaCena.toString(),
-        nabavnaCenaIsReal: variant.nabavnaCenaIsReal ?? true,
+        nabavnaCenaIsReal: variant.nabavnaCenaIsReal ?? false,
         prodajnaCena: variant.prodajnaCena.toString(),
         opis: variant.opis ?? "",
         isDefault: variant.isDefault ?? index === 0,
@@ -2042,7 +2044,7 @@ function ProductsContent() {
       kpName: product.kpName ?? product.name,
       name: product.name,
       nabavnaCena: product.nabavnaCena.toString(),
-      nabavnaCenaIsReal: product.nabavnaCenaIsReal ?? true,
+      nabavnaCenaIsReal: product.nabavnaCenaIsReal ?? false,
       prodajnaCena: product.prodajnaCena.toString(),
       supplierOffers: mappedSupplierOffers,
       categoryIds: product.categoryIds ?? [],
@@ -2660,28 +2662,6 @@ function ProductsContent() {
                 )}
               />
             </div>
-            {!hasSupplierOffers && (
-              <FormField
-                name="nabavnaCenaIsReal"
-                render={({ field }) => (
-                  <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                    <input
-                      id="nabavna-is-real"
-                      type="checkbox"
-                      checked={field.value ?? true}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="flex flex-col">
-                      <FormLabel htmlFor="nabavna-is-real" className="m-0 cursor-pointer">
-                        Prava nabavna cena
-                      </FormLabel>
-                      <p className="text-xs text-slate-500">Odznači ako je cena procenjena.</p>
-                    </div>
-                  </FormItem>
-                )}
-              />
-            )}
             <div className="space-y-3 rounded-lg border border-blue-100 bg-slate-50/60 px-3 py-3">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -2914,39 +2894,17 @@ function ProductsContent() {
                           render={({ field, fieldState }) => (
                             <FormItem>
                               <FormLabel>Prodajna cena (EUR)</FormLabel>
-                                <Input
-                                  ref={field.ref}
-                                  name={field.name}
-                                  type="text"
-                                  inputMode="decimal"
-                                  placeholder="npr. 150.00"
-                                  value={field.value}
-                                  onChange={(event) => field.onChange(event.target.value)}
-                                  onBlur={field.onBlur}
-                                />
-                                <FormMessage>{fieldState.error?.message}</FormMessage>
-                              </FormItem>
-                            )}
-                          />
-                        <FormField
-                          name={`variants.${index}.nabavnaCenaIsReal` as const}
-                          render={({ field }) => (
-                            <FormItem className="md:col-span-2">
-                              <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                                <input
-                                  id={`variant-${index}-nabavna-real`}
-                                  type="checkbox"
-                                  checked={field.value ?? true}
-                                  onChange={(event) => field.onChange(event.target.checked)}
-                                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <div className="flex flex-col">
-                                  <FormLabel htmlFor={`variant-${index}-nabavna-real`} className="m-0 cursor-pointer">
-                                    Prava nabavna cena
-                                  </FormLabel>
-                                  <p className="text-xs text-slate-500">Odznači ako je cena procenjena.</p>
-                                </div>
-                              </div>
+                              <Input
+                                ref={field.ref}
+                                name={field.name}
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="npr. 150.00"
+                                value={field.value}
+                                onChange={(event) => field.onChange(event.target.value)}
+                                onBlur={field.onBlur}
+                              />
+                              <FormMessage>{fieldState.error?.message}</FormMessage>
                             </FormItem>
                           )}
                         />
@@ -3606,7 +3564,13 @@ function ProductsContent() {
                   aria-label="Pretraga proizvoda"
                 />
               </div>
-              <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
+              <Select
+                value={sortBy}
+                onValueChange={(value) => {
+                  setSortBy(value as SortOption);
+                  resetProductsFeed();
+                }}
+              >
                 <SelectTrigger className="md:w-56 text-slate-100" aria-label="Sortiranje proizvoda">
                   <SelectValue className="text-slate-100 data-placeholder:text-slate-400" placeholder="Sortiraj" />
                 </SelectTrigger>

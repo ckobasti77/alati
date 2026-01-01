@@ -1381,7 +1381,7 @@ function ProductDetailsContent() {
     const targetElement = document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
     const targetId = targetElement?.closest("[data-gallery-id]")?.getAttribute("data-gallery-id");
     if (!targetId || targetId === touchDraggingId) return;
-    const targetItem = gallery.find((item) => item.id === targetId);
+    const targetItem = filteredGallery.find((item) => item.id === targetId);
     if (!targetItem) return;
     if (!isSameGalleryGroup(draggingItem, targetItem)) return;
     await handleReorderGallery(draggingItem, targetItem);
@@ -1434,7 +1434,8 @@ function ProductDetailsContent() {
     setDragOverId((current) => (current === target.id ? null : current));
   };
 
-  const getGalleryGroup = (item: GalleryItem) => gallery.filter((candidate) => isSameGalleryGroup(item, candidate));
+  const getGalleryGroup = (item: GalleryItem) =>
+    filteredGallery.filter((candidate) => isSameGalleryGroup(item, candidate));
 
   const handleOpenReorderInput = (item: GalleryItem) => {
     const group = getGalleryGroup(item);
@@ -1707,15 +1708,25 @@ function ProductDetailsContent() {
           isMain: Boolean(image.isMain),
           publishFb: image.publishFb ?? true,
           publishIg: image.publishIg ?? true,
-        origin: { type: "variant" as const, variantId: variant.id },
-      })),
-    ) ?? [];
+          origin: { type: "variant" as const, variantId: variant.id },
+        })),
+      ) ?? [];
     return [...baseImages, ...variantImages].filter((item) => Boolean(item.url));
   }, [product]);
+  const filteredGallery = useMemo(() => {
+    if (!gallery.length) return [];
+    if (imageUploadTarget === "product") {
+      return gallery.filter((item) => item.origin.type === "product");
+    }
+    const variantItems = gallery.filter(
+      (item) => item.origin.type === "variant" && item.origin.variantId === imageUploadTarget,
+    );
+    return variantItems;
+  }, [gallery, imageUploadTarget]);
   const openLightbox = useCallback(
     (targetId?: string) => {
-      if (!gallery.length) return;
-      const items: LightboxItem[] = gallery
+      if (!filteredGallery.length) return;
+      const items: LightboxItem[] = filteredGallery
         .map((item) => ({
           id: item.id,
           url: item.url,
@@ -1729,7 +1740,7 @@ function ProductDetailsContent() {
           : 0;
       setImageLightbox({ items, index: startIndex < 0 ? 0 : startIndex });
     },
-    [gallery],
+    [filteredGallery],
   );
   const handleOpenPreview = useCallback(
     (item: GalleryItem) => {
@@ -1761,16 +1772,16 @@ function ProductDetailsContent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleCloseLightbox, handleStepLightbox, imageLightbox]);
   const draggingIndex = useMemo(
-    () => (draggingItem ? gallery.findIndex((item) => item.id === draggingItem.id) : -1),
-    [draggingItem, gallery],
+    () => (draggingItem ? filteredGallery.findIndex((item) => item.id === draggingItem.id) : -1),
+    [draggingItem, filteredGallery],
   );
   const targetIndex = useMemo(
-    () => (dragOverId ? gallery.findIndex((item) => item.id === dragOverId) : -1),
-    [dragOverId, gallery],
+    () => (dragOverId ? filteredGallery.findIndex((item) => item.id === dragOverId) : -1),
+    [dragOverId, filteredGallery],
   );
   const draggingSameGroup =
     draggingItem && dragOverId && targetIndex !== -1
-      ? isSameGalleryGroup(draggingItem, gallery[targetIndex])
+      ? isSameGalleryGroup(draggingItem, filteredGallery[targetIndex])
       : false;
   const baseNabavnaIsReal = product?.nabavnaCenaIsReal ?? true;
   const hasVariants = (product?.variants ?? []).length > 0;
@@ -1817,7 +1828,7 @@ function ProductDetailsContent() {
             <div>
               <CardTitle className="flex items-center gap-2">
                 Galerija slika
-                <Badge variant="default">{gallery.length}</Badge>
+                <Badge variant="default">{filteredGallery.length}</Badge>
               </CardTitle>
               <p className="text-sm text-slate-500">Kreativan grid sa slikama proizvoda i tipova.</p>
             </div>
@@ -1881,15 +1892,15 @@ function ProductDetailsContent() {
                   </div>
                 </div>
               ) : null}
-              {gallery.length === 0 ? (
+              {filteredGallery.length === 0 ? (
                 <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-slate-500">
                   <ImageOff className="h-8 w-8" />
-                  <p className="text-sm">Trenutno nema slika za ovaj proizvod.</p>
+                  <p className="text-sm">Trenutno nema slika za ovaj izbor.</p>
                   <p className="text-xs text-slate-500">Prevuci fotografije ovde ili klikni na dugme iznad.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-                  {gallery.map((item, index) => {
+                  {filteredGallery.map((item, index) => {
                   const shiftClass = getShiftClass(item, index);
                   const isDragOver = dragOverId === item.id && draggingSameGroup;
                   const fbActive = item.publishFb ?? true;

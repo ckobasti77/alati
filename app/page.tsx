@@ -45,6 +45,36 @@ function DashboardContent() {
     legle_pare: "Leglo",
   };
 
+  const {
+    totalProdajno,
+    totalNabavno,
+    totalTransport,
+    totalProfit,
+    percentLabels,
+  } = useMemo(() => {
+    const prodajnoTotal = summary?.ukupnoProdajno ?? 0;
+    const nabavnoTotal = summary?.ukupnoNabavno ?? 0;
+    const transportTotal = summary?.ukupnoTransport ?? 0;
+    const profitTotal = summary?.profit ?? 0;
+
+    const formatPercent = (value: number) =>
+      `${value.toLocaleString("sr-RS", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
+    const share = (part: number) => (prodajnoTotal > 0 ? (part / prodajnoTotal) * 100 : 0);
+
+    return {
+      totalProdajno: prodajnoTotal,
+      totalNabavno: nabavnoTotal,
+      totalTransport: transportTotal,
+      totalProfit: profitTotal,
+      percentLabels: {
+        prodajno: formatPercent(100),
+        nabavno: formatPercent(share(nabavnoTotal)),
+        transport: formatPercent(share(transportTotal)),
+        profit: formatPercent(share(profitTotal)),
+      },
+    };
+  }, [summary]);
+
   return (
     <div className="space-y-8">
       <section className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -62,12 +92,14 @@ function DashboardContent() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <StatCard title="Ukupno prodajno" value={formatCurrency(summary?.ukupnoProdajno ?? 0, "EUR")} />
-        <StatCard title="Ukupno nabavno" value={formatCurrency(summary?.ukupnoNabavno ?? 0, "EUR")} />
+      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Ukupno prodajno" value={formatCurrency(totalProdajno, "EUR")} percent={percentLabels.prodajno} />
+        <StatCard title="Ukupno nabavno" value={formatCurrency(totalNabavno, "EUR")} percent={percentLabels.nabavno} />
+        <StatCard title="Ukupno transport" value={formatCurrency(totalTransport, "EUR")} percent={percentLabels.transport} />
         <StatCard
           title="Profit"
-          value={formatCurrency(summary?.profit ?? 0, "EUR")}
+          value={formatCurrency(totalProfit, "EUR")}
+          percent={percentLabels.profit}
           description={`${summary?.brojNarudzbina ?? 0} narudzbina`}
         />
       </section>

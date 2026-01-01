@@ -136,6 +136,7 @@ export interface Order {
   napomena?: string;
   transportCost?: number;
   transportMode?: TransportMode;
+  myProfitPercent?: number;
   customerName: string;
   address: string;
   phone: string;
@@ -168,6 +169,7 @@ export interface OrdersSummary {
   brojNarudzbina: number;
   ukupnoProdajno: number;
   ukupnoNabavno: number;
+  ukupnoTransport: number;
   profit: number;
 }
 
