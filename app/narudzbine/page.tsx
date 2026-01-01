@@ -213,7 +213,8 @@ const StageBadge = ({ stage }: { stage: OrderStage }) => {
   );
 };
 
-const resolveProfitPercent = (value?: number) => (Number.isFinite(value) ? value : 100);
+const resolveProfitPercent = (value?: number) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 100;
 
 const formatPercent = (value: number) =>
   `${value.toLocaleString("sr-RS", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
