@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
+import { normalizeSearchText } from "./search";
 
 const orderStages = ["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"] as const;
 const transportModes = ["Kol", "Joe", "Posta", "Bex", "Aks"] as const;
@@ -379,21 +380,24 @@ export const list = query({
       .sort((a, b) => b.kreiranoAt - a.kreiranoAt);
 
     if (args.search) {
-      const needle = args.search.toLowerCase();
-      orders = orders.filter((order) => {
-        const hasBaseMatch =
-          order.title.toLowerCase().includes(needle) ||
-          order.variantLabel?.toLowerCase().includes(needle) ||
-          order.customerName.toLowerCase().includes(needle) ||
-          order.address.toLowerCase().includes(needle) ||
-          order.phone.toLowerCase().includes(needle);
-        if (hasBaseMatch) return true;
-        return (order.items ?? []).some(
-          (item) =>
-            item.title.toLowerCase().includes(needle) ||
-            (item.variantLabel ?? "").toLowerCase().includes(needle),
-        );
-      });
+      const needle = normalizeSearchText(args.search.trim());
+      if (needle) {
+        const matchesNeedle = (value?: string) => normalizeSearchText(value ?? "").includes(needle);
+        orders = orders.filter((order) => {
+          const hasBaseMatch =
+            matchesNeedle(order.title) ||
+            matchesNeedle(order.variantLabel) ||
+            matchesNeedle(order.customerName) ||
+            matchesNeedle(order.address) ||
+            matchesNeedle(order.phone);
+          if (hasBaseMatch) return true;
+          return (order.items ?? []).some(
+            (item) =>
+              matchesNeedle(item.title) ||
+              matchesNeedle(item.variantLabel),
+          );
+        });
+      }
     }
 
     const total = orders.length;

@@ -61,6 +61,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { LoadingDots } from "@/components/LoadingDots";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
+import { normalizeSearchText } from "@/lib/search";
 import type { Category, InboxImage, Product, ProductListResponse, ProductStats, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -1010,9 +1011,9 @@ function ProductsContent() {
   const filteredProducts = useMemo(() => items, [items]);
   const filteredCategories = useMemo(() => {
     const list = categories ?? [];
-    const needle = categorySearch.trim().toLowerCase();
+    const needle = normalizeSearchText(categorySearch.trim());
     if (!needle) return list;
-    return list.filter((category) => category.name.toLowerCase().includes(needle));
+    return list.filter((category) => normalizeSearchText(category.name).includes(needle));
   }, [categories, categorySearch]);
   const hasProductSearch = productSearch.trim().length > 0;
   const selectedCategories = useMemo(() => {

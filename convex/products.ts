@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { requireUser } from "./auth";
+import { normalizeSearchText } from "./search";
 
 const productImageArg = v.object({
   storageId: v.id("_storage"),
@@ -69,21 +70,6 @@ type ProductSortOption =
   | "price_asc"
   | "sales_desc"
   | "profit_desc";
-
-const normalizeSearchText = (value: string) => {
-  const map: Record<string, string> = {
-    š: "s",
-    đ: "dj",
-    ž: "z",
-    ć: "c",
-    č: "c",
-  };
-  return value
-    .toLowerCase()
-    .replace(/[šđžćč]/g, (char) => map[char] ?? char)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-};
 
 function normalizeSupplierOffers(
   incoming?: SupplierOffer[],
@@ -907,3 +893,4 @@ export const remove = mutation({
     );
   },
 });
+

@@ -51,6 +51,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { normalizeSearchText } from "@/lib/search";
 import type { Category, Product, ProductAdImage, ProductImage, ProductVariant, Supplier } from "@/types/order";
 
 type ProductWithUrls = Omit<Product, "images" | "variants" | "adImage"> & {
@@ -400,9 +401,9 @@ function ProductDetailsContent() {
   }, [categories]);
   const filteredCategories = useMemo(() => {
     const list = categories ?? [];
-    const needle = categorySearch.trim().toLowerCase();
+    const needle = normalizeSearchText(categorySearch.trim());
     if (!needle) return list;
-    return list.filter((category) => category.name.toLowerCase().includes(needle));
+    return list.filter((category) => normalizeSearchText(category.name).includes(needle));
   }, [categories, categorySearch]);
   const variantMap = useMemo(
     () => new Map((product?.variants ?? []).map((variant) => [variant.id, variant])),

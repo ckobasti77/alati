@@ -19,6 +19,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
+import { normalizeSearchText } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import type { Order, OrderListResponse, OrderStage, Product, ProductVariant, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -289,16 +290,16 @@ function OrdersContent() {
   );
   const filteredProducts = useMemo(() => {
     const list = products ?? [];
-    const needle = productSearch.trim().toLowerCase();
+    const needle = normalizeSearchText(productSearch.trim());
     if (!needle) return list;
     return list.filter((product) => {
-      if (product.name.toLowerCase().includes(needle)) return true;
-      const opisPrimary = product.opisFbInsta?.toLowerCase() ?? product.opis?.toLowerCase() ?? "";
-      const opisKp = product.opisKp?.toLowerCase() ?? "";
+      if (normalizeSearchText(product.name).includes(needle)) return true;
+      const opisPrimary = normalizeSearchText(product.opisFbInsta ?? product.opis ?? "");
+      const opisKp = normalizeSearchText(product.opisKp ?? "");
       if (opisPrimary.includes(needle) || opisKp.includes(needle)) return true;
       return (product.variants ?? []).some((variant) => {
-        if (variant.label.toLowerCase().includes(needle)) return true;
-        const variantOpis = variant.opis?.toLowerCase() ?? "";
+        if (normalizeSearchText(variant.label).includes(needle)) return true;
+        const variantOpis = normalizeSearchText(variant.opis ?? "");
         return variantOpis.includes(needle);
       });
     });
