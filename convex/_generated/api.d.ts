@@ -17,6 +17,7 @@ import type * as maintenance from "../maintenance.js";
 import type * as orders from "../orders.js";
 import type * as products from "../products.js";
 import type * as sales from "../sales.js";
+import type * as search from "../search.js";
 import type * as social from "../social.js";
 import type * as socialTokens from "../socialTokens.js";
 import type * as suppliers from "../suppliers.js";
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   orders: typeof orders;
   products: typeof products;
   sales: typeof sales;
+  search: typeof search;
   social: typeof social;
   socialTokens: typeof socialTokens;
   suppliers: typeof suppliers;

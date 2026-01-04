@@ -25,6 +25,7 @@ import type { Order, OrderListResponse, OrderStage, Product, ProductVariant, Sup
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { Badge } from "@/components/ui/badge";
+import { sendOrderEmail } from "./actions";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -641,7 +642,35 @@ function OrdersContent() {
         toast.success("Narudzbina je azurirana.");
       } else {
         await createOrder(payload);
+        let emailError: string | null = null;
+        try {
+          const emailPayload = {
+            customerName: payload.customerName,
+            phone: payload.phone,
+            address: payload.address,
+            pickup: payload.pickup,
+            note: payload.napomena,
+            items: draftItems.map((item) => ({
+              productName: item.product.name,
+              variantName: item.variant?.label,
+              quantity: item.kolicina,
+              nabavnaCena: item.nabavnaCena,
+              prodajnaCena: item.prodajnaCena,
+              supplierName: item.supplierId ? supplierMap.get(item.supplierId)?.name : undefined,
+            })),
+          };
+          const emailResult = await sendOrderEmail(emailPayload);
+          if (!emailResult.ok) {
+            emailError = emailResult.error;
+          }
+        } catch (error) {
+          emailError = error instanceof Error ? error.message : "Email slanje nije uspelo.";
+        }
         toast.success("Narudzbina je dodata.");
+        if (emailError) {
+          console.warn("Email slanje nije uspelo:", emailError);
+          toast.error("Narudzbina je sacuvana, ali email nije poslat.");
+        }
       }
       resetOrdersFeed();
       resetOrderForm({ closeModal: true });
