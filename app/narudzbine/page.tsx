@@ -171,9 +171,15 @@ const getProductVariants = (product?: Product): ProductVariant[] => {
   return product.variants ?? [];
 };
 
+const getProductDisplayName = (product?: Product | null) => {
+  if (!product) return "";
+  return product.kpName ?? product.name;
+};
+
 const composeVariantLabel = (product: Product, variant?: ProductVariant) => {
-  if (!variant) return product.name;
-  return `${product.name} - ${variant.label}`;
+  const displayName = getProductDisplayName(product);
+  if (!variant) return displayName;
+  return `${displayName} - ${variant.label}`;
 };
 
 const resolveSupplierOptions = (product?: Product, variantId?: string) => {
@@ -300,7 +306,7 @@ function OrdersContent() {
     const needle = normalizeSearchText(productSearch.trim());
     if (!needle) return list;
     return list.filter((product) => {
-      if (normalizeSearchText(product.name).includes(needle)) return true;
+      if (normalizeSearchText(getProductDisplayName(product)).includes(needle)) return true;
       const opisPrimary = normalizeSearchText(product.opisFbInsta ?? product.opis ?? "");
       const opisKp = normalizeSearchText(product.opisKp ?? "");
       if (opisPrimary.includes(needle) || opisKp.includes(needle)) return true;
@@ -559,7 +565,7 @@ function OrdersContent() {
       prodajnaCena = parsed;
     }
     const variantLabel = variant ? composeVariantLabel(selectedProduct, variant) : undefined;
-    const title = variantLabel ?? selectedProduct.name;
+    const title = variantLabel ?? getProductDisplayName(selectedProduct);
     const qty = Math.max(itemQuantity, 1);
     const draft: OrderItemDraft = {
       id: generateId(),
@@ -658,7 +664,7 @@ function OrdersContent() {
             pickup: payload.pickup,
             note: payload.napomena,
             items: draftItems.map((item) => ({
-              productName: item.product.name,
+              productName: getProductDisplayName(item.product),
               variantName: item.variant?.label,
               quantity: item.kolicina,
               nabavnaCena: item.nabavnaCena,
@@ -856,7 +862,7 @@ function OrdersContent() {
                               onMouseDown={(event) => {
                                 event.preventDefault();
                                 setItemProductId(product._id);
-                                setProductInput(product.name);
+                                setProductInput(getProductDisplayName(product));
                                 setItemVariantId(defaultVariant?.id ?? "");
                                 setItemSupplierId("");
                                 setUseManualSalePrice(false);
@@ -868,11 +874,12 @@ function OrdersContent() {
                               {(() => {
                                 const images = product.images ?? [];
                                 const mainImage = images.find((image) => image.isMain) ?? images[0];
+                                const displayName = getProductDisplayName(product);
                                 if (mainImage?.url) {
                                   return (
                                     <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img src={mainImage.url} alt={product.name} className="h-full w-full object-cover" />
+                                      <img src={mainImage.url} alt={displayName} className="h-full w-full object-cover" />
                                     </div>
                                   );
                                 }
@@ -880,7 +887,7 @@ function OrdersContent() {
                               })()}
                               <div className="flex-1 space-y-1">
                                 <div className="flex items-center gap-2">
-                                  <p className="font-medium text-slate-800 dark:text-slate-100">{product.name}</p>
+                                  <p className="font-medium text-slate-800 dark:text-slate-100">{getProductDisplayName(product)}</p>
                                   {hasVariants ? (
                                     <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-200">
                                       Tipski
@@ -919,11 +926,12 @@ function OrdersContent() {
                     {(() => {
                       const images = selectedProduct.images ?? [];
                       const mainImage = images.find((image) => image.isMain) ?? images[0];
+                      const displayName = getProductDisplayName(selectedProduct);
                       if (mainImage?.url) {
                         return (
                           <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={mainImage.url} alt={selectedProduct.name} className="h-full w-full object-cover" />
+                            <img src={mainImage.url} alt={displayName} className="h-full w-full object-cover" />
                           </div>
                         );
                       }
@@ -934,7 +942,7 @@ function OrdersContent() {
                       );
                     })()}
                     <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{selectedProduct.name}</p>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{getProductDisplayName(selectedProduct)}</p>
                       {selectedVariantForPreview ? <p className="text-xs text-slate-600 dark:text-slate-300">{selectedVariantForPreview.label}</p> : null}
                     </div>
                   </div>

@@ -384,10 +384,9 @@ export const listPaginated = query({
         categories.map((category) => [String(category._id), normalizeSearchText(category.name)]),
       );
       items = items.filter((product) => {
+        const displayName = product.kpName ?? product.name ?? "";
         const baseText = normalizeSearchText(
-          `${product.kpName ?? ""} ${product.name ?? ""} ${product.opisKp ?? ""} ${product.opisFbInsta ?? ""} ${
-            product.opis ?? ""
-          }`,
+          `${displayName} ${product.opisKp ?? ""} ${product.opisFbInsta ?? ""} ${product.opis ?? ""}`,
         );
         if (baseText.includes(needle)) return true;
         if ((product.variants ?? []).some((variant) => normalizeSearchText(variant.label).includes(needle))) {
@@ -615,8 +614,7 @@ export const listPublic = query({
     const narrowed = needle
       ? items.filter((item) => {
           const name = normalizeSearchText(item.kpName ?? item.name);
-          const fbName = normalizeSearchText(item.name);
-          return name.includes(needle) || fbName.includes(needle);
+          return name.includes(needle);
         })
       : items;
     const withUrls = await Promise.all(narrowed.map((item) => toPublicProduct(ctx, item)));

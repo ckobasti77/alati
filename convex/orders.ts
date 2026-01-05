@@ -198,12 +198,13 @@ const normalizeOrderItems = async (
 
     if (product) {
       const productVariants = product.variants ?? [];
+      const displayName = product.kpName ?? product.name;
       let resolvedVariant: (typeof productVariants)[number] | undefined;
       if (productVariants.length > 0) {
         const foundVariant = variantId ? productVariants.find((variant) => variant.id === variantId) : undefined;
         resolvedVariant = foundVariant ?? productVariants.find((variant) => variant.isDefault) ?? productVariants[0];
         variantId = resolvedVariant?.id ?? variantId;
-        const formattedLabel = formatVariantLabel(product.name, variantLabel ?? resolvedVariant?.label);
+        const formattedLabel = formatVariantLabel(displayName, variantLabel ?? resolvedVariant?.label);
         variantLabel = formattedLabel ?? variantLabel;
       } else {
         variantId = undefined;
@@ -216,7 +217,7 @@ const normalizeOrderItems = async (
       supplierId = supplierChoice.supplierId ?? supplierId;
       nabavnaCena = supplierChoice.price ?? resolvedVariant?.nabavnaCena ?? product.nabavnaCena;
       if (!title) {
-        title = variantLabel ?? product.name;
+        title = variantLabel ?? displayName;
       }
     }
     if (!product) {

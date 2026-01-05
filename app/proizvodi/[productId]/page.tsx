@@ -1072,7 +1072,7 @@ function ProductDetailsContent() {
 
   const handleStartAddVariant = () => {
     if (!product) return;
-    setNewVariantLabel(product.name);
+    setNewVariantLabel(product.kpName ?? product.name);
     setNewVariantOpis(product.opisFbInsta ?? product.opis ?? "");
     setNewVariantNabavna(String(product.nabavnaCena ?? ""));
     setNewVariantProdajna(String(product.prodajnaCena ?? ""));
