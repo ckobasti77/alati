@@ -209,9 +209,11 @@ const pickBestSupplier = (options: { supplierId: string; price: number; supplier
 };
 
 const resolveVariantPurchasePrice = (product: Product, variant: ProductVariant) => {
-  const options = resolveSupplierOptions(product, variant.id);
-  const best = pickBestSupplier(options);
-  return best?.price ?? variant.nabavnaCena;
+  const offers = product.supplierOffers ?? [];
+  const bestVariantOffer = offers
+    .filter((offer) => (offer.variantId ?? null) === variant.id)
+    .reduce((best, offer) => (best === null || offer.price < best ? offer.price : best), null as number | null);
+  return bestVariantOffer ?? variant.nabavnaCena;
 };
 
 const StageBadge = ({ stage }: { stage: OrderStage }) => {
