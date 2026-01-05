@@ -208,6 +208,12 @@ const pickBestSupplier = (options: { supplierId: string; price: number; supplier
   }, null as { supplierId: string; price: number; supplierName?: string } | null);
 };
 
+const resolveVariantPurchasePrice = (product: Product, variant: ProductVariant) => {
+  const options = resolveSupplierOptions(product, variant.id);
+  const best = pickBestSupplier(options);
+  return best?.price ?? variant.nabavnaCena;
+};
+
 const StageBadge = ({ stage }: { stage: OrderStage }) => {
   const meta = stageLabels[stage] ?? { label: stage, tone: "" };
   return (
@@ -965,6 +971,7 @@ function OrdersContent() {
                     {selectedVariants.map((variant) => {
                       const isActive = itemVariantId === variant.id;
                       const composedLabel = selectedProduct ? composeVariantLabel(selectedProduct, variant) : variant.label;
+                      const purchasePrice = selectedProduct ? resolveVariantPurchasePrice(selectedProduct, variant) : variant.nabavnaCena;
                       return (
                         <label
                           key={variant.id}
@@ -996,7 +1003,7 @@ function OrdersContent() {
                             {composedLabel}
                           </span>
                           <span className={`text-xs ${isActive ? "text-blue-700 dark:text-blue-200" : "text-slate-500 dark:text-slate-400"}`}>
-                            Nabavna {formatCurrency(variant.nabavnaCena, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
+                            Nabavna {formatCurrency(purchasePrice, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
                           </span>
                           <RichTextSnippet
                             text={variant.opis || selectedProduct?.opisFbInsta || selectedProduct?.opisKp || selectedProduct?.opis}
