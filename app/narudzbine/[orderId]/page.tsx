@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -215,6 +215,11 @@ export default function OrderDetailsPage() {
 
 function OrderDetailsContent() {
   const params = useParams();
+  const pathname = usePathname();
+  const isKalaba = pathname?.startsWith("/kalaba");
+  const basePath = isKalaba ? "/kalaba" : "/narudzbine";
+  const backLabel = isKalaba ? "Nazad na Kalaba" : "Nazad na narudzbine";
+  const orderScope = isKalaba ? "kalaba" : "default";
   const router = useRouter();
   const orderId = typeof params?.orderId === "string" ? params.orderId : "";
 
@@ -222,15 +227,25 @@ function OrderDetailsContent() {
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-4 text-center">
         <p className="text-lg font-semibold text-slate-800">Nije prosledjen ID narudzbine.</p>
-        <Button onClick={() => router.push("/narudzbine")}>Nazad na narudzbine</Button>
+        <Button onClick={() => router.push(basePath)}>{backLabel}</Button>
       </div>
     );
   }
 
-  return <OrderDetails orderId={orderId} />;
+  return <OrderDetails orderId={orderId} basePath={basePath} backLabel={backLabel} orderScope={orderScope} />;
 }
 
-function OrderDetails({ orderId }: { orderId: string }) {
+function OrderDetails({
+  orderId,
+  basePath,
+  backLabel,
+  orderScope,
+}: {
+  orderId: string;
+  basePath: string;
+  backLabel: string;
+  orderScope: "default" | "kalaba";
+}) {
   const router = useRouter();
   const { token } = useAuth();
   const sessionToken = token as string;
@@ -239,6 +254,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
   const queryResult = useConvexQuery<OrderWithProduct | null>("orders:get", {
     token: sessionToken,
     id: orderId,
+    scope: orderScope,
   });
 
   const [order, setOrder] = useState<OrderWithProduct | null>(null);
@@ -253,6 +269,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
   const buildOrderUpdatePayload = (current: OrderWithProduct) => ({
     token: sessionToken,
     id: current._id,
+    scope: orderScope,
     stage: current.stage,
     productId: current.productId,
     supplierId: current.supplierId,
@@ -444,7 +461,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
       <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-4 text-center">
         <p className="text-lg font-semibold text-slate-800">Narudzbina nije pronadjena.</p>
         <p className="text-sm text-slate-500">Proveri link ili se vrati na listu narudzbina.</p>
-        <Button onClick={() => router.push("/narudzbine")}>Nazad na narudzbine</Button>
+        <Button onClick={() => router.push(basePath)}>{backLabel}</Button>
       </div>
     );
   }
@@ -462,11 +479,11 @@ function OrderDetails({ orderId }: { orderId: string }) {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => router.push("/narudzbine")}
+            onClick={() => router.push(basePath)}
             className="gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
-            Nazad
+            {backLabel}
           </Button>
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Narudzbina</p>

@@ -124,6 +124,7 @@ export default defineSchema({
     .index("by_user_createdAt", ["userId", "createdAt"]),
   orders: defineTable({
     userId: v.optional(v.id("users")),
+    scope: v.optional(v.union(v.literal("default"), v.literal("kalaba"))),
     stage: v.union(
       v.literal("poruceno"),
       v.literal("na_stanju"),

@@ -12,6 +12,7 @@ import { ThemeToggle } from "./ThemeToggle";
 const navLinks = [
   { href: "/", label: "Kontrolna tabla" },
   { href: "/narudzbine", label: "Narudzbine" },
+  { href: "/kalaba", label: "Kalaba" },
   { href: "/proizvodi", label: "Proizvodi" },
   { href: "/objave", label: "Objave", adminOnly: true },
 ];

@@ -106,6 +106,7 @@ export interface ProductStats {
 }
 
 export type OrderStage = "poruceno" | "poslato" | "stiglo" | "legle_pare" | "na_stanju";
+export type OrderScope = "default" | "kalaba";
 export type TransportMode = "Kol" | "Joe" | "Posta" | "Bex" | "Aks";
 
 export interface OrderItem {
@@ -124,6 +125,7 @@ export interface OrderItem {
 export interface Order {
   _id: string;
   userId: string;
+  scope?: OrderScope;
   stage: OrderStage;
   productId?: string;
   supplierId?: string;

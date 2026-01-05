@@ -22,6 +22,7 @@ export type OrderEmailPayload = {
 };
 
 type EmailSendResult = { ok: true } | { ok: false; error: string };
+type SendOrderEmailOptions = { toEnvKey?: "CONTACT_EMAIL_TO" | "CONTACT_EMAIL_TO_2" };
 
 const escapeHtml = (value: string) =>
   value
@@ -35,19 +36,26 @@ const formatItemName = (item: OrderEmailItem) =>
   item.variantName ? `${item.productName} (${item.variantName})` : item.productName;
 
 export async function sendOrderEmail(payload: OrderEmailPayload): Promise<EmailSendResult> {
+  return sendOrderEmailWithTo(payload, { toEnvKey: "CONTACT_EMAIL_TO" });
+}
+
+export async function sendOrderEmailWithTo(
+  payload: OrderEmailPayload,
+  options?: SendOrderEmailOptions,
+): Promise<EmailSendResult> {
+  const toEnvKey = options?.toEnvKey ?? "CONTACT_EMAIL_TO";
   const host = process.env.CONTACT_SMTP_HOST;
   const port = process.env.CONTACT_SMTP_PORT ? Number(process.env.CONTACT_SMTP_PORT) : undefined;
   const user = process.env.CONTACT_SMTP_USER;
   const pass = process.env.CONTACT_SMTP_PASS;
   const from = process.env.CONTACT_EMAIL_FROM;
-  const to = process.env.CONTACT_EMAIL_TO;
+  const to = process.env[toEnvKey];
   const fromName = process.env.CONTACT_EMAIL_FROM_NAME;
 
   if (!host || !port || !from || !to || !user || !pass) {
     return {
       ok: false,
-      error:
-        "Missing CONTACT_SMTP_HOST, CONTACT_SMTP_PORT, CONTACT_SMTP_USER, CONTACT_SMTP_PASS, CONTACT_EMAIL_FROM, or CONTACT_EMAIL_TO env var.",
+      error: `Missing CONTACT_SMTP_HOST, CONTACT_SMTP_PORT, CONTACT_SMTP_USER, CONTACT_SMTP_PASS, CONTACT_EMAIL_FROM, or ${toEnvKey} env var.`,
     };
   }
 

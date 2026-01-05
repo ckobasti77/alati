@@ -6,6 +6,7 @@ import { normalizeSearchText } from "./search";
 
 const orderStages = ["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"] as const;
 const transportModes = ["Kol", "Joe", "Posta", "Bex", "Aks"] as const;
+const orderScopes = ["default", "kalaba"] as const;
 
 const stageSchema = v.union(
   v.literal(orderStages[0]),
@@ -21,10 +22,16 @@ const transportModeSchema = v.union(
   v.literal(transportModes[3]),
   v.literal(transportModes[4]),
 );
+const orderScopeSchema = v.union(v.literal(orderScopes[0]), v.literal(orderScopes[1]));
 
 const normalizeStage = (stage?: (typeof orderStages)[number]) => {
   if (!stage) return orderStages[0];
   return orderStages.includes(stage) ? stage : orderStages[0];
+};
+
+const normalizeScope = (scope?: (typeof orderScopes)[number]) => {
+  if (!scope) return orderScopes[0];
+  return scope === orderScopes[1] ? orderScopes[1] : orderScopes[0];
 };
 
 const normalizeTransportCost = (value?: number) => {
@@ -294,7 +301,8 @@ export const latest = query({
       .query("orders")
       .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
       .collect();
-    return items
+    const scoped = items.filter((order) => normalizeScope(order.scope) === "default");
+    return scoped
       .sort((a, b) => b.kreiranoAt - a.kreiranoAt)
       .slice(0, 10)
       .map((order) => ({ ...order, items: resolveItemsFromOrder(order) }));
@@ -309,7 +317,8 @@ export const summary = query({
       .query("orders")
       .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
       .collect();
-    const paidOrders = orders.filter((order) => normalizeStage(order.stage as any) === "legle_pare");
+    const scoped = orders.filter((order) => normalizeScope(order.scope) === "default");
+    const paidOrders = scoped.filter((order) => normalizeStage(order.stage as any) === "legle_pare");
 
     return paidOrders.reduce(
       (acc, order) => {
@@ -333,11 +342,15 @@ export const summary = query({
 });
 
 export const get = query({
-  args: { token: v.string(), id: v.id("orders") },
+  args: { token: v.string(), id: v.id("orders"), scope: v.optional(orderScopeSchema) },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
     const order = await ctx.db.get(args.id);
     if (!order || order.userId !== user._id) {
+      return null;
+    }
+    if (normalizeScope(order.scope) !== scope) {
       return null;
     }
 
@@ -365,9 +378,11 @@ export const list = query({
     search: v.optional(v.string()),
     page: v.optional(v.number()),
     pageSize: v.optional(v.number()),
+    scope: v.optional(orderScopeSchema),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
     const page = Math.max(args.page ?? 1, 1);
     const pageSize = Math.max(Math.min(args.pageSize ?? 20, 100), 1);
 
@@ -376,6 +391,7 @@ export const list = query({
       .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
       .collect();
     orders = orders
+      .filter((order) => normalizeScope(order.scope) === scope)
       .map((order) => ({ ...order, items: resolveItemsFromOrder(order) }))
       .sort((a, b) => b.kreiranoAt - a.kreiranoAt);
 
@@ -419,6 +435,7 @@ export const list = query({
 export const create = mutation({
   args: {
     token: v.string(),
+    scope: v.optional(orderScopeSchema),
     stage: stageSchema,
     productId: v.optional(v.id("products")),
     supplierId: v.optional(v.id("suppliers")),
@@ -440,6 +457,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
     const now = Date.now();
     const pickup = Boolean(args.pickup);
     const transportCost = normalizeTransportCost(args.transportCost);
@@ -478,6 +496,7 @@ export const create = mutation({
 
     await ctx.db.insert("orders", {
       userId: user._id,
+      scope,
       stage: normalizeStage(args.stage),
       productId: normalizedItems[0].productId,
       supplierId: normalizedItems[0].supplierId,
@@ -505,6 +524,7 @@ export const update = mutation({
   args: {
     token: v.string(),
     id: v.id("orders"),
+    scope: v.optional(orderScopeSchema),
     stage: stageSchema,
     productId: v.optional(v.id("products")),
     supplierId: v.optional(v.id("suppliers")),
@@ -526,11 +546,15 @@ export const update = mutation({
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
     const existing = await ctx.db.get(args.id);
     if (!existing) {
       throw new Error("Narudzbina nije pronadjena.");
     }
     if (existing.userId !== user._id) {
+      throw new Error("Neautorizovan pristup narudzbini.");
+    }
+    if (normalizeScope(existing.scope) !== scope) {
       throw new Error("Neautorizovan pristup narudzbini.");
     }
 
@@ -558,6 +582,7 @@ export const update = mutation({
     const title = args.title.trim() || normalizedItems[0].title || existing.title;
 
     await ctx.db.patch(args.id, {
+      scope,
       stage: normalizeStage(args.stage),
       productId: normalizedItems[0].productId,
       supplierId: normalizedItems[0].supplierId,
@@ -581,12 +606,16 @@ export const update = mutation({
 });
 
 export const remove = mutation({
-  args: { token: v.string(), id: v.id("orders") },
+  args: { token: v.string(), id: v.id("orders"), scope: v.optional(orderScopeSchema) },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
     const order = await ctx.db.get(args.id);
     if (!order) return;
     if (order.userId !== user._id) {
+      throw new Error("Neautorizovan pristup narudzbini.");
+    }
+    if (normalizeScope(order.scope) !== scope) {
       throw new Error("Neautorizovan pristup narudzbini.");
     }
     await ctx.db.delete(args.id);

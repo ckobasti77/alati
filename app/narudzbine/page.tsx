@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useForm, type DeepPartial, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -25,7 +25,7 @@ import type { Order, OrderListResponse, OrderStage, Product, ProductVariant, Sup
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { Badge } from "@/components/ui/badge";
-import { sendOrderEmail } from "./actions";
+import { sendOrderEmailWithTo } from "./actions";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -230,6 +230,11 @@ export default function OrdersPage() {
 }
 
 function OrdersContent() {
+  const pathname = usePathname();
+  const isKalaba = pathname?.startsWith("/kalaba");
+  const basePath = isKalaba ? "/kalaba" : "/narudzbine";
+  const emailToEnvKey = isKalaba ? "CONTACT_EMAIL_TO_2" : "CONTACT_EMAIL_TO";
+  const orderScope = isKalaba ? "kalaba" : "default";
   const router = useRouter();
   const { token } = useAuth();
   const sessionToken = token as string;
@@ -264,8 +269,9 @@ function OrdersContent() {
     search: search.trim() ? search.trim() : undefined,
     page,
     pageSize: 10,
+    scope: orderScope,
   });
-  const deleteOrder = useConvexMutation<{ id: string; token: string }>("orders:remove");
+  const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const createOrder = useConvexMutation("orders:create");
   const updateOrder = useConvexMutation("orders:update");
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
@@ -326,7 +332,7 @@ function OrdersContent() {
 
   useEffect(() => {
     resetOrdersFeed();
-  }, [resetOrdersFeed, sessionToken]);
+  }, [resetOrdersFeed, sessionToken, orderScope]);
 
   useEffect(() => {
     if (!list) return;
@@ -635,6 +641,7 @@ function OrdersContent() {
         napomena: values.note?.trim() || undefined,
         items: payloadItems,
         token: sessionToken,
+        scope: orderScope,
       };
 
       if (editingOrder) {
@@ -659,7 +666,7 @@ function OrdersContent() {
               supplierName: item.supplierId ? supplierMap.get(item.supplierId)?.name : undefined,
             })),
           };
-          const emailResult = await sendOrderEmail(emailPayload);
+          const emailResult = await sendOrderEmailWithTo(emailPayload, { toEnvKey: emailToEnvKey });
           if (!emailResult.ok) {
             emailError = emailResult.error;
           }
@@ -682,7 +689,7 @@ function OrdersContent() {
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteOrder({ id, token: sessionToken });
+      await deleteOrder({ id, token: sessionToken, scope: orderScope });
       toast.success("Narudzbina je obrisana.");
       resetOrdersFeed();
       if (editingOrder?._id === id) {
@@ -695,13 +702,14 @@ function OrdersContent() {
   };
 
   const handleStartOrderEdit = (order: Order) => {
-    router.push(`/narudzbine/${order._id}`);
+    router.push(`${basePath}/${order._id}`);
   };
 
   const handleStageChange = async (order: Order, nextStage: OrderStage) => {
     try {
       await updateOrder({
         token: sessionToken,
+        scope: orderScope,
         id: order._id,
         stage: nextStage,
         productId: order.productId,
@@ -731,7 +739,7 @@ function OrdersContent() {
   };
 
   const handleRowClick = (id: string) => {
-    router.push(`/narudzbine/${id}`);
+    router.push(`${basePath}/${id}`);
   };
 
   return (
@@ -1305,7 +1313,7 @@ function OrdersContent() {
       </Dialog>
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Narudzbine</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{isKalaba ? "Kalaba" : "Narudzbine"}</h1>
           <p className="text-sm text-slate-500">Tabela narudzbina, klik na red otvara detalje. Forma je u modalu.</p>
         </div>
         <div className="flex items-center gap-2">
