@@ -75,6 +75,7 @@ const orderSchema = z.object({
       .max(100, "Procenat profita mora biti izmedju 0 i 100."),
   ),
   pickup: z.boolean().optional(),
+  sendEmail: z.boolean().optional(),
   note: z.string().trim().min(1, "Napomena je obavezna."),
 });
 
@@ -89,6 +90,7 @@ const defaultFormValues: DeepPartial<OrderFormValues> = {
   transportMode: undefined,
   myProfitPercent: 100,
   pickup: false,
+  sendEmail: true,
   note: "",
 };
 
@@ -630,6 +632,7 @@ function OrdersContent() {
 
     try {
       const pickup = Boolean(values.pickup);
+      const shouldSendEmail = values.sendEmail ?? true;
       const payloadItems = draftItems.map((item) => ({
         id: item.id,
         productId: item.product._id,
@@ -664,28 +667,30 @@ function OrdersContent() {
       } else {
         await createOrder(payload);
         let emailError: string | null = null;
-        try {
-          const emailPayload = {
-            customerName: payload.customerName,
-            phone: payload.phone,
-            address: payload.address,
-            pickup: payload.pickup,
-            note: payload.napomena,
-            items: draftItems.map((item) => ({
-              productName: getProductDisplayName(item.product),
-              variantName: item.variant?.label,
-              quantity: item.kolicina,
-              nabavnaCena: item.nabavnaCena,
-              prodajnaCena: item.prodajnaCena,
-              supplierName: item.supplierId ? supplierMap.get(item.supplierId)?.name : undefined,
-            })),
-          };
-          const emailResult = await sendOrderEmailWithTo(emailPayload, { toEnvKey: emailToEnvKey });
-          if (!emailResult.ok) {
-            emailError = emailResult.error;
+        if (shouldSendEmail) {
+          try {
+            const emailPayload = {
+              customerName: payload.customerName,
+              phone: payload.phone,
+              address: payload.address,
+              pickup: payload.pickup,
+              note: payload.napomena,
+              items: draftItems.map((item) => ({
+                productName: getProductDisplayName(item.product),
+                variantName: item.variant?.label,
+                quantity: item.kolicina,
+                nabavnaCena: item.nabavnaCena,
+                prodajnaCena: item.prodajnaCena,
+                supplierName: item.supplierId ? supplierMap.get(item.supplierId)?.name : undefined,
+              })),
+            };
+            const emailResult = await sendOrderEmailWithTo(emailPayload, { toEnvKey: emailToEnvKey });
+            if (!emailResult.ok) {
+              emailError = emailResult.error;
+            }
+          } catch (error) {
+            emailError = error instanceof Error ? error.message : "Email slanje nije uspelo.";
           }
-        } catch (error) {
-          emailError = error instanceof Error ? error.message : "Email slanje nije uspelo.";
         }
         toast.success("Narudzbina je dodata.");
         if (emailError) {
@@ -1302,6 +1307,29 @@ function OrdersContent() {
                         Licno preuzimanje
                       </FormLabel>
                       <p className=" text-xs text-slate-500">Oznaci ako kupac preuzima bez kurira.</p>
+                    </div>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                name="sendEmail"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-2">
+                    <input
+                      id="sendEmail"
+                      ref={field.ref}
+                      name={field.name}
+                      type="checkbox"
+                      checked={field.value ?? true}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      onBlur={field.onBlur}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="space-y-0.5 flex flex-col items-center">
+                      <FormLabel htmlFor="sendEmail" className="m-0 cursor-pointer">
+                        Posalji narudzbinu na email
+                      </FormLabel>
+                      <p className="text-xs text-slate-500">Odstikliraj ako ne zelis slanje mejla.</p>
                     </div>
                   </FormItem>
                 )}

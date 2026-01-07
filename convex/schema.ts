@@ -189,4 +189,25 @@ export default defineSchema({
     ),
     uploadedAt: v.number(),
   }).index("by_user_uploadedAt", ["userId", "uploadedAt"]),
+  scheduledPosts: defineTable({
+    userId: v.id("users"),
+    productId: v.id("products"),
+    platform: v.union(v.literal("facebook"), v.literal("instagram")),
+    scheduledAt: v.number(),
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("processing"),
+      v.literal("published"),
+      v.literal("failed"),
+    ),
+    createdAt: v.number(),
+    scheduledJobId: v.optional(v.id("_scheduled_functions")),
+    publishedAt: v.optional(v.number()),
+    attempts: v.optional(v.number()),
+    lastAttemptAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+    postId: v.optional(v.string()),
+  })
+    .index("by_user_scheduledAt", ["userId", "scheduledAt"])
+    .index("by_status_scheduledAt", ["status", "scheduledAt"]),
 });

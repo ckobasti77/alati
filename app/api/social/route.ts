@@ -363,7 +363,8 @@ async function publishToInstagram(
     creation_id: creationId,
   });
   if (options.scheduledAt) {
-    publishParams.append("publish_time", `${options.scheduledAt}`);
+    publishParams.append("published", "false");
+    publishParams.append("scheduled_publish_time", `${options.scheduledAt}`);
   }
   const publishUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${instagramBusinessId}/media_publish`;
   return await fetchJson<{ id: string }>(publishUrl, { method: "POST", body: publishParams });

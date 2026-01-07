@@ -19,6 +19,7 @@ import type * as products from "../products.js";
 import type * as sales from "../sales.js";
 import type * as search from "../search.js";
 import type * as social from "../social.js";
+import type * as socialScheduler from "../socialScheduler.js";
 import type * as socialTokens from "../socialTokens.js";
 import type * as suppliers from "../suppliers.js";
 
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   sales: typeof sales;
   search: typeof search;
   social: typeof social;
+  socialScheduler: typeof socialScheduler;
   socialTokens: typeof socialTokens;
   suppliers: typeof suppliers;
 }>;

@@ -9,13 +9,24 @@ import { Input } from "@/components/ui/input";
 import { RequireAuth } from "@/components/RequireAuth";
 import { LoadingDots } from "@/components/LoadingDots";
 import { useAuth } from "@/lib/auth-client";
-import { useConvexQuery } from "@/lib/convex";
+import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { cn } from "@/lib/utils";
 import type { Product, ProductListResponse, ProductVariant } from "@/types/order";
 
 type Platform = "facebook" | "instagram";
+type ScheduledStatus = "scheduled" | "processing" | "failed";
+
+type ScheduledPostItem = {
+  _id: string;
+  productId: string;
+  productName: string;
+  platform: Platform;
+  scheduledAt: number;
+  status: ScheduledStatus;
+  error?: string;
+};
 
 const PRODUCTS_PAGE_SIZE = 20;
 
@@ -58,7 +69,9 @@ function SocialContent() {
   const sessionToken = token as string | null;
   const [search, setSearch] = useState("");
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-  const [scheduledAt, setScheduledAt] = useState<string>("");
+  const [scheduledDate, setScheduledDate] = useState<string>("");
+  const [scheduledHour, setScheduledHour] = useState<string>("");
+  const [scheduledMinute, setScheduledMinute] = useState<string>("");
   const [publishing, setPublishing] = useState<Platform | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const isMobile = useIsMobile();
@@ -74,6 +87,29 @@ function SocialContent() {
   const [isLoadingMorePosts, setIsLoadingMorePosts] = useState(false);
   const postsLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMorePostsTimerRef = useRef<number | null>(null);
+  const schedulePost = useConvexMutation<{
+    token: string;
+    productId: string;
+    platform: Platform;
+    scheduledAt: number;
+  }>("socialScheduler:schedule");
+  const removeScheduledPost = useConvexMutation<{ token: string; id: string }>("socialScheduler:removeScheduled");
+  const scheduledPosts = useConvexQuery<ScheduledPostItem[]>("socialScheduler:listScheduled", {
+    token: sessionToken ?? "",
+  });
+  const scheduleFormatter = useMemo(
+    () => new Intl.DateTimeFormat("sr-RS", { dateStyle: "medium", timeStyle: "short" }),
+    [],
+  );
+  const hourOptions = useMemo(
+    () => Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0")),
+    [],
+  );
+  const minuteOptions = useMemo(
+    () => Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0")),
+    [],
+  );
+  const [removingScheduledId, setRemovingScheduledId] = useState<string | null>(null);
 
   const resetProductsFeed = useCallback(() => {
     if (loadMorePostsTimerRef.current !== null) {
@@ -216,6 +252,26 @@ function SocialContent() {
     }
     try {
       setPublishing(platform);
+      const hasSchedule = Boolean(scheduledDate.trim() || scheduledHour.trim() || scheduledMinute.trim());
+      if (hasSchedule) {
+        if (!scheduledDate.trim() || !scheduledHour.trim() || !scheduledMinute.trim()) {
+          toast.error("Izaberi datum i vreme.");
+          return;
+        }
+        const scheduledTs = new Date(`${scheduledDate}T${scheduledHour}:${scheduledMinute}`).getTime();
+        if (!Number.isFinite(scheduledTs)) {
+          toast.error("Neispravan datum zakazivanja.");
+          return;
+        }
+        await schedulePost({
+          token: sessionToken,
+          productId: selectedProduct._id,
+          platform,
+          scheduledAt: scheduledTs,
+        });
+        toast.success("Objava je zakazana.");
+        return;
+      }
       const response = await fetch("/api/social", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -223,7 +279,7 @@ function SocialContent() {
           platform,
           productId: selectedProduct._id,
           token: sessionToken,
-          scheduledAt: scheduledAt || null,
+          scheduledAt: null,
         }),
       });
       const result = await response.json();
@@ -240,6 +296,22 @@ function SocialContent() {
     }
   };
 
+  const handleRemoveScheduled = async (id: string) => {
+    if (!sessionToken) {
+      toast.error("Nije pronadjen token. Prijavi se ponovo.");
+      return;
+    }
+    try {
+      setRemovingScheduledId(id);
+      await removeScheduledPost({ token: sessionToken, id });
+      toast.success("Zakazana objava je obrisana.");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Brisanje nije uspelo.");
+    } finally {
+      setRemovingScheduledId(null);
+    }
+  };
+
   return (
     <div ref={topRef} className="space-y-6">
       <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -253,6 +325,72 @@ function SocialContent() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Zakazane objave</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {scheduledPosts === undefined ? (
+            <p className="text-sm text-slate-500">Ucitavanje zakazanih objava...</p>
+          ) : scheduledPosts.length === 0 ? (
+            <p className="text-sm text-slate-500">Nema zakazanih objava.</p>
+          ) : (
+            <div className="space-y-2">
+              {scheduledPosts.map((item) => {
+                const scheduledLabel = scheduleFormatter.format(new Date(item.scheduledAt));
+                const isFailed = item.status === "failed";
+                const isProcessing = item.status === "processing";
+                return (
+                  <div
+                    key={item._id}
+                    className={cn(
+                      "flex flex-col gap-1 rounded-lg border px-3 py-2 text-sm",
+                      isFailed ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 text-slate-900">
+                          <span className="font-semibold">{item.productName}</span>
+                          <span className="text-xs text-slate-500">{scheduledLabel}</span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                          {item.platform === "facebook" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-600/10 px-2 py-0.5 text-blue-700">
+                              <Facebook className="h-3.5 w-3.5" />
+                              Facebook
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-pink-500/10 px-2 py-0.5 text-pink-700">
+                              <Instagram className="h-3.5 w-3.5" />
+                              Instagram
+                            </span>
+                          )}
+                          <span className={cn("font-semibold", isFailed && "text-rose-600")}>
+                            {isProcessing ? "U toku" : isFailed ? "Neuspelo" : "Zakazano"}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleRemoveScheduled(item._id)}
+                        disabled={isProcessing || removingScheduledId === item._id}
+                      >
+                        {removingScheduledId === item._id ? "Brisem..." : "Obrisi"}
+                      </Button>
+                    </div>
+                    {isFailed && item.error ? (
+                      <p className="text-xs text-rose-600">{item.error}</p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Izbor proizvoda</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -262,7 +400,6 @@ function SocialContent() {
               <Input
                 value={search}
                 placeholder={list === undefined ? "Ucitavanje..." : "Pretrazi proizvode"}
-                disabled={list === undefined || (pagination.total === 0 && productsFeed.length === 0)}
                 onChange={(event) => {
                   setSearch(event.target.value);
                   resetProductsFeed();
@@ -297,12 +434,62 @@ function SocialContent() {
           <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 shadow-inner sm:flex-row sm:items-center sm:justify-between">
             <div className="w-full sm:max-w-xs">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Zakazivanje</p>
-              <Input
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(event) => setScheduledAt(event.target.value)}
-                className="mt-1 h-9 text-sm"
-              />
+              <div className="mt-1 grid grid-cols-[1fr_auto_auto] gap-2">
+                <Input
+                  type="date"
+                  value={scheduledDate}
+                  onChange={(event) => setScheduledDate(event.target.value)}
+                  className="h-9 text-sm"
+                />
+                <select
+                  value={scheduledHour}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (!value) {
+                      setScheduledHour("");
+                      setScheduledMinute("");
+                      return;
+                    }
+                    setScheduledHour(value);
+                    if (value && !scheduledMinute) {
+                      setScheduledMinute("00");
+                    }
+                  }}
+                  className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
+                  aria-label="Sati"
+                >
+                  <option value="">hh</option>
+                  {hourOptions.map((hour) => (
+                    <option key={hour} value={hour}>
+                      {hour}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={scheduledMinute}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (!value) {
+                      setScheduledMinute("");
+                      setScheduledHour("");
+                      return;
+                    }
+                    setScheduledMinute(value);
+                    if (value && !scheduledHour) {
+                      setScheduledHour("00");
+                    }
+                  }}
+                  className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
+                  aria-label="Minuti"
+                >
+                  <option value="">mm</option>
+                  {minuteOptions.map((minute) => (
+                    <option key={minute} value={minute}>
+                      {minute}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <p className="text-[11px] text-slate-500">Prazno = objava odmah.</p>
             </div>
             {selectedProduct ? (
