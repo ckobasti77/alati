@@ -428,6 +428,15 @@ export async function POST(req: Request) {
         scheduledAt,
         adminToken: body.token,
       });
+      try {
+        await convex.mutation(api.products.markSocialPublished, {
+          token: body.token,
+          id: body.productId as Id<"products">,
+          platform: "facebook",
+        });
+      } catch (error) {
+        console.warn("Neuspesno azuriranje objavljenog statusa", error);
+      }
       return jsonResponse({ ok: true, platform: "facebook", id: result.id });
     }
 
@@ -436,6 +445,15 @@ export async function POST(req: Request) {
         scheduledAt,
         adminToken: body.token,
       });
+      try {
+        await convex.mutation(api.products.markSocialPublished, {
+          token: body.token,
+          id: body.productId as Id<"products">,
+          platform: "instagram",
+        });
+      } catch (error) {
+        console.warn("Neuspesno azuriranje objavljenog statusa", error);
+      }
       return jsonResponse({ ok: true, platform: "instagram", id: result.id });
     }
 

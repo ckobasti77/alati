@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
@@ -889,6 +889,54 @@ export const remove = mutation({
           }
         }),
     );
+  },
+});
+
+export const markSocialPublished = mutation({
+  args: {
+    token: v.string(),
+    id: v.id("products"),
+    platform: v.union(v.literal("facebook"), v.literal("instagram")),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const product = await ctx.db.get(args.id);
+    if (!product || product.userId !== user._id) {
+      throw new Error("Proizvod nije pronadjen.");
+    }
+    const patch =
+      args.platform === "facebook"
+        ? { publishFb: true }
+        : { publishIg: true };
+    await ctx.db.patch(args.id, {
+      ...patch,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const markSocialPublishedInternal = internalMutation({
+  args: {
+    id: v.id("products"),
+    userId: v.id("users"),
+    platform: v.union(v.literal("facebook"), v.literal("instagram")),
+  },
+  handler: async (ctx, args) => {
+    const product = await ctx.db.get(args.id);
+    if (!product) {
+      throw new Error("Proizvod nije pronadjen.");
+    }
+    if (product.userId && product.userId !== args.userId) {
+      throw new Error("Neautorizovan pristup proizvodu.");
+    }
+    const patch =
+      args.platform === "facebook"
+        ? { publishFb: true }
+        : { publishIg: true };
+    await ctx.db.patch(args.id, {
+      ...patch,
+      updatedAt: Date.now(),
+    });
   },
 });
 

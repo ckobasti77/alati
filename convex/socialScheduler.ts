@@ -462,6 +462,15 @@ export const publishScheduled = internalAction({
             });
 
       await ctx.runMutation(internal.socialScheduler.markPublished, { id: post._id, postId: result.id });
+      try {
+        await ctx.runMutation(internal.products.markSocialPublishedInternal, {
+          id: post.productId,
+          userId: post.userId,
+          platform: post.platform,
+        });
+      } catch (error) {
+        console.error("Neuspesno azuriranje objavljenog statusa", error);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Greska pri objavi.";
       await ctx.runMutation(internal.socialScheduler.markFailed, { id: post._id, error: message });

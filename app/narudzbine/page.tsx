@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useForm, type DeepPartial, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -252,6 +252,7 @@ function OrdersContent() {
   const emailToEnvKey = isKalaba ? "CONTACT_EMAIL_TO_2" : "CONTACT_EMAIL_TO";
   const orderScope = isKalaba ? "kalaba" : "default";
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { token } = useAuth();
   const sessionToken = token as string;
   const [search, setSearch] = useState("");
@@ -279,6 +280,8 @@ function OrdersContent() {
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const ordersLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMoreOrdersTimerRef = useRef<number | null>(null);
+  const preselectHandledRef = useRef<string | null>(null);
+  const preselectProductId = searchParams?.get("productId") ?? "";
 
   const list = useConvexQuery<OrderListResponse>("orders:list", {
     token: sessionToken,
@@ -622,6 +625,52 @@ function OrdersContent() {
     resetOrderForm();
     setIsModalOpen(true);
   };
+
+  const openCreateModalWithProduct = useCallback(
+    (product: Product) => {
+      resetOrderForm();
+      setIsModalOpen(true);
+      const variants = product.variants ?? [];
+      const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
+      setItemProductId(product._id);
+      setItemVariantId(defaultVariant?.id ?? "");
+      setItemSupplierId("");
+      setItemQuantity(1);
+      setUseManualSalePrice(false);
+      setManualSalePrice("");
+      setProductSearch("");
+      setProductMenuOpen(false);
+      if (defaultVariant) {
+        setProductInput(composeVariantLabel(product, defaultVariant));
+      } else {
+        setProductInput(getProductDisplayName(product));
+      }
+    },
+    [resetOrderForm],
+  );
+
+  const clearPreselectQuery = useCallback(() => {
+    if (!searchParams) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("productId");
+    params.delete("orderModal");
+    const next = params.toString();
+    router.replace(next ? `${basePath}?${next}` : basePath);
+  }, [searchParams, router, basePath]);
+
+  useEffect(() => {
+    if (!preselectProductId) return;
+    if (!products || products.length === 0) return;
+    if (preselectHandledRef.current === preselectProductId) return;
+    const selected = products.find((product) => product._id === preselectProductId);
+    preselectHandledRef.current = preselectProductId;
+    if (!selected) {
+      clearPreselectQuery();
+      return;
+    }
+    openCreateModalWithProduct(selected);
+    clearPreselectQuery();
+  }, [preselectProductId, products, openCreateModalWithProduct, clearPreselectQuery]);
 
   const handleSubmitOrder = async (values: OrderFormValues) => {
     if (draftItems.length === 0) {

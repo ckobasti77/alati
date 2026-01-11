@@ -28,6 +28,7 @@ import {
   Maximize2,
   PenLine,
   Plus,
+  ShoppingBag,
   Tag,
   Trash2,
   UploadCloud,
@@ -1818,6 +1819,14 @@ function ProductDetailsContent() {
         <Button variant="ghost" className="gap-2" onClick={() => router.push("/proizvodi")}>
           <ArrowLeft className="h-4 w-4" />
           Nazad na listu
+        </Button>
+        <Button
+          variant="outline"
+          className="gap-2"
+          onClick={() => router.push(`/narudzbine?productId=${encodeURIComponent(product._id)}`)}
+        >
+          <ShoppingBag className="h-4 w-4" />
+          Nova narudzbina
         </Button>
         <Badge variant="blue">ID: {product._id}</Badge>
         <Badge variant="green">Azurirano: {formatDate(product.updatedAt)}</Badge>

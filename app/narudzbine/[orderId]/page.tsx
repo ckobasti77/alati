@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,8 @@ import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
-import type { OrderStage, OrderWithProduct } from "@/types/order";
+import { normalizeSearchText } from "@/lib/search";
+import type { OrderStage, OrderWithProduct, Product, ProductVariant, Supplier } from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -47,6 +48,58 @@ const resolveProfitPercent = (value?: number) =>
 
 const formatPercent = (value: number) =>
   `${value.toLocaleString("sr-RS", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
+
+const generateId = () => Math.random().toString(36).slice(2);
+
+const getProductVariants = (product?: Product): ProductVariant[] => {
+  if (!product) return [];
+  return product.variants ?? [];
+};
+
+const getProductDisplayName = (product?: Product | null) => {
+  if (!product) return "";
+  return product.kpName ?? product.name;
+};
+
+const composeVariantLabel = (product: Product, variant?: ProductVariant) => {
+  const displayName = getProductDisplayName(product);
+  if (!variant) return displayName;
+  return `${displayName} - ${variant.label}`;
+};
+
+const resolveSupplierOptions = (product?: Product, variantId?: string) => {
+  if (!product) return [];
+  const offers = product.supplierOffers ?? [];
+  if (!offers.length) return [];
+  const exact = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
+  const fallback = offers.filter((offer) => !offer.variantId);
+  const pool = exact.length ? exact : fallback.length ? fallback : [];
+  const seen = new Set<string>();
+  return pool
+    .filter((offer) => {
+      const key = String(offer.supplierId);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((offer) => ({ supplierId: String(offer.supplierId), price: offer.price }));
+};
+
+const pickBestSupplier = (options: { supplierId: string; price: number; supplierName?: string }[]) => {
+  if (!options.length) return null;
+  return options.reduce((best, option) => {
+    if (!best || option.price < best.price) return option;
+    return best;
+  }, null as { supplierId: string; price: number; supplierName?: string } | null);
+};
+
+const resolveVariantPurchasePrice = (product: Product, variant: ProductVariant) => {
+  const offers = product.supplierOffers ?? [];
+  const bestVariantOffer = offers
+    .filter((offer) => (offer.variantId ?? null) === variant.id)
+    .reduce((best, offer) => (best === null || offer.price < best ? offer.price : best), null as number | null);
+  return bestVariantOffer ?? variant.nabavnaCena;
+};
 
 type InlineFieldProps = {
   label: string;
@@ -250,21 +303,115 @@ function OrderDetails({
   const { token } = useAuth();
   const sessionToken = token as string;
   const [isUpdatingStage, setIsUpdatingStage] = useState(false);
+  const [isAddingItem, setIsAddingItem] = useState(false);
   const updateOrder = useConvexMutation("orders:update");
   const queryResult = useConvexQuery<OrderWithProduct | null>("orders:get", {
     token: sessionToken,
     id: orderId,
     scope: orderScope,
   });
+  const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
+  const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
 
   const [order, setOrder] = useState<OrderWithProduct | null>(null);
   const isLoading = queryResult === undefined;
+  const [productInput, setProductInput] = useState("");
+  const [productSearch, setProductSearch] = useState("");
+  const [productMenuOpen, setProductMenuOpen] = useState(false);
+  const [itemProductId, setItemProductId] = useState("");
+  const [itemVariantId, setItemVariantId] = useState("");
+  const [itemSupplierId, setItemSupplierId] = useState("");
+  const [itemQuantity, setItemQuantity] = useState(1);
+  const [useManualSalePrice, setUseManualSalePrice] = useState(false);
+  const [manualSalePrice, setManualSalePrice] = useState("");
+  const productInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (queryResult !== undefined) {
       setOrder(queryResult);
     }
   }, [queryResult]);
+
+  const supplierMap = useMemo(
+    () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
+    [suppliers],
+  );
+  const filteredProducts = useMemo(() => {
+    const list = products ?? [];
+    const needle = normalizeSearchText(productSearch.trim());
+    if (!needle) return list;
+    return list.filter((product) => {
+      if (normalizeSearchText(getProductDisplayName(product)).includes(needle)) return true;
+      const opisPrimary = normalizeSearchText(product.opisFbInsta ?? product.opis ?? "");
+      const opisKp = normalizeSearchText(product.opisKp ?? "");
+      if (opisPrimary.includes(needle) || opisKp.includes(needle)) return true;
+      return (product.variants ?? []).some((variant) => {
+        if (normalizeSearchText(variant.label).includes(needle)) return true;
+        const variantOpis = normalizeSearchText(variant.opis ?? "");
+        return variantOpis.includes(needle);
+      });
+    });
+  }, [products, productSearch]);
+  const selectedProduct = useMemo(
+    () => (products ?? []).find((item) => item._id === itemProductId),
+    [products, itemProductId],
+  );
+  const selectedVariants = useMemo(() => getProductVariants(selectedProduct), [selectedProduct]);
+  const selectedVariantForPreview = useMemo(() => {
+    if (!selectedProduct) return undefined;
+    const variants = selectedProduct.variants ?? [];
+    if (variants.length === 0) return undefined;
+    if (itemVariantId) {
+      const match = variants.find((variant) => variant.id === itemVariantId);
+      if (match) return match;
+    }
+    return variants.find((variant) => variant.isDefault) ?? variants[0];
+  }, [selectedProduct, itemVariantId]);
+  const supplierOptions = useMemo(
+    () => resolveSupplierOptions(selectedProduct, itemVariantId || undefined),
+    [selectedProduct, itemVariantId],
+  );
+  const supplierOptionsWithNames = useMemo(
+    () =>
+      supplierOptions.map((option) => ({
+        ...option,
+        supplierName: supplierMap.get(option.supplierId)?.name,
+      })),
+    [supplierMap, supplierOptions],
+  );
+  const bestSupplierOption = useMemo(() => pickBestSupplier(supplierOptionsWithNames), [supplierOptionsWithNames]);
+
+  useEffect(() => {
+    if (!selectedProduct || selectedVariants.length === 0) {
+      if (itemVariantId) {
+        setItemVariantId("");
+      }
+      return;
+    }
+    const selectedExists = selectedVariants.some((variant) => variant.id === itemVariantId);
+    if (!selectedExists) {
+      const fallbackVariant = selectedVariants.find((variant) => variant.isDefault) ?? selectedVariants[0];
+      if (fallbackVariant) {
+        setItemVariantId(fallbackVariant.id);
+        setProductInput(composeVariantLabel(selectedProduct, fallbackVariant));
+      }
+    }
+  }, [itemVariantId, selectedProduct, selectedVariants]);
+
+  useEffect(() => {
+    if (supplierOptionsWithNames.length === 0) {
+      setItemSupplierId("");
+      return;
+    }
+    if (supplierOptionsWithNames.length === 1) {
+      setItemSupplierId(supplierOptionsWithNames[0].supplierId);
+      return;
+    }
+    const hasCurrent = supplierOptionsWithNames.some((option) => option.supplierId === itemSupplierId);
+    if (!hasCurrent) {
+      setItemSupplierId("");
+    }
+  }, [itemSupplierId, supplierOptionsWithNames]);
 
   const buildOrderUpdatePayload = (current: OrderWithProduct) => ({
     token: sessionToken,
@@ -424,6 +571,92 @@ function OrderDetails({
     );
   };
 
+  const resetItemDraft = () => {
+    setItemProductId("");
+    setItemVariantId("");
+    setItemSupplierId("");
+    setItemQuantity(1);
+    setUseManualSalePrice(false);
+    setManualSalePrice("");
+    setProductInput("");
+    setProductSearch("");
+    setProductMenuOpen(false);
+  };
+
+  const handleAddItem = async () => {
+    if (!order) return;
+    if (isAddingItem) return;
+    if (!selectedProduct) {
+      toast.error("Izaberi proizvod koji dodajes u narudzbinu.");
+      productInputRef.current?.focus();
+      return;
+    }
+    const variantsList = selectedProduct.variants ?? [];
+    let variant = variantsList.find((item) => item.id === itemVariantId);
+    if (variantsList.length > 0 && !variant) {
+      variant = variantsList.find((item) => item.isDefault) ?? variantsList[0];
+    }
+    const supplierOptionsLocal = resolveSupplierOptions(selectedProduct, variant?.id);
+    const supplierOptionsWithNamesLocal = supplierOptionsLocal.map((option) => ({
+      ...option,
+      supplierName: supplierMap.get(option.supplierId)?.name,
+    }));
+    const bestSupplierLocal = pickBestSupplier(supplierOptionsWithNamesLocal);
+    const supplierId =
+      itemSupplierId || (supplierOptionsWithNamesLocal.length === 1 ? supplierOptionsWithNamesLocal[0].supplierId : undefined);
+    const supplierPrice =
+      supplierId
+        ? supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ?? bestSupplierLocal?.price
+        : bestSupplierLocal?.price;
+    const nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? selectedProduct.nabavnaCena;
+    let prodajnaCena = variant?.prodajnaCena ?? selectedProduct.prodajnaCena;
+    if (useManualSalePrice) {
+      const manualInput = manualSalePrice.trim();
+      if (manualInput.length === 0) {
+        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
+        return;
+      }
+      const parsed = Number(manualInput.replace(",", "."));
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
+        return;
+      }
+      prodajnaCena = parsed;
+    }
+    const variantLabel = variant ? composeVariantLabel(selectedProduct, variant) : undefined;
+    const title = variantLabel ?? getProductDisplayName(selectedProduct);
+    const qty = Math.max(itemQuantity, 1);
+    const newItem = {
+      id: generateId(),
+      productId: selectedProduct._id,
+      supplierId: supplierId || undefined,
+      variantId: variant?.id,
+      variantLabel,
+      title,
+      kolicina: qty,
+      nabavnaCena,
+      prodajnaCena,
+      manualProdajna: useManualSalePrice,
+      product: selectedProduct,
+    };
+
+    setIsAddingItem(true);
+    try {
+      await applyOrderUpdate(
+        (current) => ({
+          ...current,
+          items: [...(current.items ?? []), newItem],
+        }),
+        "Stavka je dodata.",
+      );
+      resetItemDraft();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsAddingItem(false);
+    }
+  };
+
   const totals = order ? orderTotals(order) : null;
   const prodajnoUkupno = totals?.totalProdajno ?? 0;
   const nabavnoUkupno = totals?.totalNabavno ?? 0;
@@ -517,11 +750,11 @@ function OrderDetails({
         </div>
       </div>
 
-            <Card>
+      <Card>
         <CardHeader>
           <CardTitle>Stavke narudzbine</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           <InlineField label="Naziv narudzbine" value={order.title} onSave={(val) => handleOrderFieldSave("title", val)} />
           {order.items && order.items.length > 0 ? (
             <div className="space-y-3">
@@ -567,6 +800,286 @@ function OrderDetails({
           ) : (
             <p className="text-sm text-slate-600">Narudzbina nema stavke.</p>
           )}
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Dodaj jos proizvoda</p>
+              <p className="text-xs text-slate-500">Odaberi proizvod, tip i kolicinu pa ga dodaj u narudzbinu.</p>
+            </div>
+            <div className="relative">
+              <Input
+                ref={productInputRef}
+                name="productSearch"
+                value={productInput}
+                placeholder={products === undefined ? "Ucitavanje..." : "Pretrazi proizvod"}
+                disabled={products === undefined || (products?.length ?? 0) === 0}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setProductInput(value);
+                  setProductSearch(value);
+                  setProductMenuOpen(true);
+                  if (!value) {
+                    setItemProductId("");
+                    setItemVariantId("");
+                    setItemSupplierId("");
+                  }
+                }}
+                onFocus={() => {
+                  setProductMenuOpen(true);
+                  setProductSearch("");
+                }}
+                onClick={() => {
+                  setProductMenuOpen(true);
+                  setProductSearch("");
+                }}
+                onBlur={() => {
+                  setTimeout(() => setProductMenuOpen(false), 150);
+                }}
+              />
+              {productMenuOpen && (
+                <div className="absolute left-0 right-0 z-10 mt-1 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                  {products === undefined ? (
+                    <div className="px-3 py-2 text-sm text-slate-500">Ucitavanje...</div>
+                  ) : filteredProducts.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-slate-500">Nema rezultata</div>
+                  ) : (
+                    filteredProducts.map((product, productIndex) => {
+                      const variants = product.variants ?? [];
+                      const hasVariants = variants.length > 0;
+                      const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
+                      const displayPrice = defaultVariant?.prodajnaCena ?? product.prodajnaCena;
+                      return (
+                        <div
+                          key={product._id}
+                          className={`border-b border-slate-100 last:border-b-0 ${
+                            productIndex % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-blue-50 hover:text-blue-700"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              setItemProductId(product._id);
+                              setProductInput(getProductDisplayName(product));
+                              setItemVariantId(defaultVariant?.id ?? "");
+                              setItemSupplierId("");
+                              setUseManualSalePrice(false);
+                              setManualSalePrice("");
+                              setItemQuantity(1);
+                              setProductMenuOpen(false);
+                            }}
+                          >
+                            {(() => {
+                              const images = product.images ?? [];
+                              const mainImage = images.find((image) => image.isMain) ?? images[0];
+                              const displayName = getProductDisplayName(product);
+                              if (mainImage?.url) {
+                                return (
+                                  <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border border-slate-200">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={mainImage.url} alt={displayName} className="h-full w-full object-cover" />
+                                  </div>
+                                );
+                              }
+                              return <div className="h-12 w-12 flex-shrink-0 rounded-md border border-dashed border-slate-200" />;
+                            })()}
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-slate-800">{getProductDisplayName(product)}</p>
+                                {hasVariants ? (
+                                  <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+                                    Tipski
+                                  </span>
+                                ) : null}
+                              </div>
+                              {hasVariants ? (
+                                <p className="text-[11px] text-slate-500">
+                                  {variants.length} tip{variants.length === 1 ? "" : "a"} dostupno
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[11px] uppercase tracking-wide text-slate-500">Cena</p>
+                              <p className="text-sm font-semibold text-slate-900">
+                                {formatCurrency(displayPrice, "EUR")}
+                              </p>
+                            </div>
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            {selectedProduct ? (
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const images = selectedProduct.images ?? [];
+                    const mainImage = images.find((image) => image.isMain) ?? images[0];
+                    const displayName = getProductDisplayName(selectedProduct);
+                    if (mainImage?.url) {
+                      return (
+                        <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={mainImage.url} alt={displayName} className="h-full w-full object-cover" />
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-300 text-[10px] uppercase text-slate-400">
+                        N/A
+                      </div>
+                    );
+                  })()}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{getProductDisplayName(selectedProduct)}</p>
+                    {selectedVariantForPreview ? (
+                      <p className="text-xs text-slate-600">{selectedVariantForPreview.label}</p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Prodajna cena</p>
+                  <p className="text-base font-semibold text-slate-900">
+                    {formatCurrency(selectedVariantForPreview?.prodajnaCena ?? selectedProduct.prodajnaCena, "EUR")}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {selectedVariants.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Tip / varijanta</p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {selectedVariants.map((variant) => {
+                    const isActive = itemVariantId === variant.id;
+                    const composedLabel = selectedProduct ? composeVariantLabel(selectedProduct, variant) : variant.label;
+                    const purchasePrice = selectedProduct ? resolveVariantPurchasePrice(selectedProduct, variant) : variant.nabavnaCena;
+                    return (
+                      <label
+                        key={variant.id}
+                        className={`cursor-pointer rounded-md border px-3 py-2 text-sm transition ${
+                          isActive ? "border-blue-500 bg-blue-50 shadow-sm" : "border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="variantId"
+                          value={variant.id}
+                          checked={isActive}
+                          onChange={() => {
+                            setItemVariantId(variant.id);
+                            if (selectedProduct) {
+                              setProductInput(composedLabel);
+                            }
+                            setProductMenuOpen(false);
+                          }}
+                          className="sr-only"
+                        />
+                        <span className={`font-medium ${isActive ? "text-blue-800" : "text-slate-800"}`}>
+                          {composedLabel}
+                        </span>
+                        <span className={`text-xs ${isActive ? "text-blue-700" : "text-slate-500"}`}>
+                          Nabavna {formatCurrency(purchasePrice, "EUR")} / Prodajna{" "}
+                          {formatCurrency(variant.prodajnaCena, "EUR")}
+                        </span>
+                        {variant.isDefault ? (
+                          <span className="text-[11px] font-semibold text-emerald-600">Podrazumevano</span>
+                        ) : null}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedProduct && supplierOptionsWithNames.length > 0 ? (
+              <div>
+                <p className="text-sm font-medium text-slate-700">Dobavljac</p>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                  name="supplierId"
+                  value={itemSupplierId}
+                  onChange={(event) => setItemSupplierId(event.target.value)}
+                >
+                  <option value="">
+                    {bestSupplierOption
+                      ? `Najpovoljniji (${formatCurrency(bestSupplierOption.price, "EUR")})`
+                      : "Najpovoljniji"}
+                  </option>
+                  {supplierOptionsWithNames.map((option) => (
+                    <option key={option.supplierId} value={option.supplierId}>
+                      {(option.supplierName ?? "Dobavljac") + " - " + formatCurrency(option.price, "EUR")}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500">Ako ne izaberes, racunamo najpovoljniju ponudu.</p>
+              </div>
+            ) : null}
+
+            {selectedProduct ? (
+              <div className="grid gap-3 md:grid-cols-3 md:items-end">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Kolicina</p>
+                  <Input
+                    name="itemQuantity"
+                    type="number"
+                    min={1}
+                    required
+                    value={itemQuantity}
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      if (Number.isNaN(next)) {
+                        setItemQuantity(1);
+                        return;
+                      }
+                      setItemQuantity(Math.max(Math.round(next), 1));
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={useManualSalePrice}
+                      onChange={(event) => {
+                        setUseManualSalePrice(event.target.checked);
+                        if (!event.target.checked) {
+                          setManualSalePrice("");
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Rucno unosim prodajnu cenu
+                  </label>
+                  <Input
+                    name="manualSalePrice"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    disabled={!useManualSalePrice}
+                    required={useManualSalePrice}
+                    value={manualSalePrice}
+                    onChange={(event) => setManualSalePrice(event.target.value)}
+                    placeholder="npr. 120"
+                    className={!useManualSalePrice ? "bg-slate-100" : undefined}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" onClick={handleAddItem} className="gap-2" disabled={isAddingItem}>
+                    <Plus className="h-4 w-4" />
+                    {isAddingItem ? "Dodavanje..." : "Dodaj u narudzbinu"}
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={resetItemDraft} disabled={isAddingItem}>
+                    Ponisti izbor
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
