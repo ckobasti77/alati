@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -657,6 +657,18 @@ function OrderDetails({
     }
   };
 
+  const handleRemoveItem = async (itemId: string) => {
+    if (!order) return;
+    const currentItems = order.items ?? [];
+    if (currentItems.length <= 1) {
+      toast.error("Ne mozes obrisati jedini proizvod u narudzbini.");
+      return;
+    }
+    const nextItems = currentItems.filter((item) => item.id !== itemId);
+    if (nextItems.length === currentItems.length) return;
+    await applyOrderUpdate((current) => ({ ...current, items: nextItems }), "Stavka je obrisana.");
+  };
+
   const totals = order ? orderTotals(order) : null;
   const prodajnoUkupno = totals?.totalProdajno ?? 0;
   const nabavnoUkupno = totals?.totalNabavno ?? 0;
@@ -761,6 +773,7 @@ function OrderDetails({
               {order.items.map((item) => {
                 const images = (item as any).product?.images ?? [];
                 const mainImage = images.find((image: any) => image.isMain) ?? images[0];
+                const isOnlyItem = (order.items?.length ?? 0) <= 1;
                 return (
                   <div
                     key={item.id}
@@ -787,11 +800,23 @@ function OrderDetails({
                       <p className="text-xs uppercase tracking-wide text-slate-500">Prodajna</p>
                       <p className="font-semibold text-slate-900">{formatCurrency(item.prodajnaCena, "EUR")}</p>
                       <p className="text-xs text-slate-500">Nabavna {formatCurrency(item.nabavnaCena, "EUR")}</p>
-                      {item.manualProdajna ? (
-                        <span className="inline-flex justify-end text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                          Rucno uneta cena
-                        </span>
-                      ) : null}
+                        {item.manualProdajna ? (
+                          <span className="inline-flex justify-end text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                            Rucno uneta cena
+                          </span>
+                        ) : null}
+                    </div>
+                    <div className="flex items-center justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveItem(item.id)}
+                        disabled={isOnlyItem}
+                        aria-label="Obrisi stavku"
+                      >
+                        <Trash2 className="h-4 w-4 text-slate-500" />
+                      </Button>
                     </div>
                   </div>
                 );
