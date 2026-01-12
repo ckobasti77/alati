@@ -74,8 +74,9 @@ const resolveSupplierPrice = (
   if (!Array.isArray(offers) || offers.length === 0) {
     return { supplierId: undefined, price: undefined as number | undefined };
   }
-  const exact = offers.filter((offer) => (offer.variantId ?? null) === (variantId ?? null));
-  const fallback = offers.filter((offer) => !offer.variantId);
+  const normalizedVariantId = variantId?.trim() || undefined;
+  const exact = offers.filter((offer) => (offer.variantId ?? null) === (normalizedVariantId ?? null));
+  const fallback = normalizedVariantId ? [] : offers.filter((offer) => !offer.variantId);
   const pool = exact.length > 0 ? exact : fallback;
   if (!pool.length) {
     return { supplierId: undefined, price: undefined as number | undefined };
