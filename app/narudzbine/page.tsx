@@ -793,6 +793,7 @@ function OrdersContent() {
       if (editingOrder) {
         await updateOrder({ id: editingOrder._id, ...payload });
         toast.success("Narudzbina je azurirana.");
+        resetOrdersFeed();
       } else {
         await createOrder(payload);
         let emailError: string | null = null;
@@ -827,7 +828,6 @@ function OrdersContent() {
           toast.error("Narudzbina je sacuvana, ali email nije poslat.");
         }
       }
-      resetOrdersFeed();
       resetOrderForm({ closeModal: true });
     } catch (error) {
       console.error(error);
@@ -1975,5 +1975,4 @@ function OrdersContent() {
     </div>
   );
 }
-
 
