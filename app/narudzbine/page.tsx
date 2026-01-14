@@ -316,6 +316,7 @@ function OrdersContent() {
     token: string;
     scope: "default" | "kalaba";
     orderIds: string[];
+    base: number;
   }>("orders:reorder");
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
   const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
@@ -962,7 +963,12 @@ function OrdersContent() {
         setDragOverOrderId(null);
         return;
       }
-      setOrders(nextOrders);
+      const base = Date.now();
+      const nextOrdersWithSort = nextOrders.map((item, index) => ({
+        ...item,
+        sortIndex: base - index,
+      }));
+      setOrders(nextOrdersWithSort);
       setDraggingOrderId(null);
       setDragOverOrderId(null);
       try {
@@ -970,6 +976,7 @@ function OrdersContent() {
           token: sessionToken,
           scope: orderScope,
           orderIds: nextOrders.map((item) => item._id),
+          base,
         });
         toast.success("Redosled narudzbina sacuvan.");
       } catch (error) {

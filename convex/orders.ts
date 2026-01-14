@@ -632,6 +632,7 @@ export const reorder = mutation({
     token: v.string(),
     scope: v.optional(orderScopeSchema),
     orderIds: v.array(v.id("orders")),
+    base: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
@@ -644,7 +645,6 @@ export const reorder = mutation({
       return true;
     });
     if (orderedIds.length === 0) return;
-    const base = Date.now();
 
     for (const orderId of orderedIds) {
       const order = await ctx.db.get(orderId);
@@ -656,6 +656,7 @@ export const reorder = mutation({
       }
     }
 
+    const base = typeof args.base === "number" && Number.isFinite(args.base) ? args.base : Date.now();
     for (let index = 0; index < orderedIds.length; index += 1) {
       await ctx.db.patch(orderedIds[index], { sortIndex: base - index });
     }
