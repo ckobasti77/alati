@@ -96,6 +96,7 @@ export interface Product {
   adImage?: ProductAdImage;
   createdAt: number;
   updatedAt: number;
+  archivedAt?: number;
 }
 
 export interface ProductStats {

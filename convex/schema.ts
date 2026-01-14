@@ -119,6 +119,7 @@ export default defineSchema({
     pickupAvailable: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
   })
     .index("by_createdAt", ["createdAt"])
     .index("by_user_createdAt", ["userId", "createdAt"]),

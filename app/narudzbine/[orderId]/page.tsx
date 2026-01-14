@@ -6,6 +6,7 @@ import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, Trash2, X } 
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -24,6 +25,8 @@ const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
 ];
 const transportModes = ["Kol", "Joe", "Posta", "Bex", "Aks"] as const;
+const deleteConfirmPhrase = "potvrdjujem da brisem";
+const requiresDeleteConfirmation = (stage?: OrderStage) => stage === "stiglo" || stage === "legle_pare";
 
 const stageLabels = stageOptions.reduce((acc, item) => {
   acc[item.value] = { label: item.label, tone: item.tone };
@@ -306,6 +309,7 @@ function OrderDetails({
   const [isUpdatingStage, setIsUpdatingStage] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const updateOrder = useConvexMutation("orders:update");
+  const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const queryResult = useConvexQuery<OrderWithProduct | null>("orders:get", {
     token: sessionToken,
     id: orderId,
@@ -325,6 +329,9 @@ function OrderDetails({
   const [itemQuantity, setItemQuantity] = useState(1);
   const [useManualSalePrice, setUseManualSalePrice] = useState(false);
   const [manualSalePrice, setManualSalePrice] = useState("");
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const productInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -678,6 +685,9 @@ function OrderDetails({
   const prof = totals?.profit ?? 0;
   const myProfitPercent = resolveProfitPercent(order?.myProfitPercent);
   const myProfit = prof * (myProfitPercent / 100);
+  const profitShare = myProfit * 0.5;
+  const profitSharePercent = myProfitPercent * 0.5;
+  const povrat = nabavnoUkupno + transport + profitShare;
   const telHref = order ? `tel:${order.phone.replace(/[^+\d]/g, "")}` : "";
 
   const handleStageChange = async (nextStage: OrderStage) => {
@@ -689,6 +699,49 @@ function OrderDetails({
       console.error(error);
     } finally {
       setIsUpdatingStage(false);
+    }
+  };
+
+  const openDeleteModal = () => {
+    setDeleteConfirmText("");
+    setDeleteModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModalOpen(false);
+    setDeleteConfirmText("");
+  };
+
+  const handleDeleteModalOpenChange = (open: boolean) => {
+    if (open) {
+      setDeleteModalOpen(true);
+    } else {
+      closeDeleteModal();
+    }
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!order || isDeletingOrder) return;
+    setIsDeletingOrder(true);
+    try {
+      await deleteOrder({ id: order._id, token: sessionToken, scope: orderScope });
+      toast.success("Narudzbina je obrisana.");
+      closeDeleteModal();
+      router.push(basePath);
+    } catch (error) {
+      console.error(error);
+      toast.error("Brisanje nije uspelo.");
+    } finally {
+      setIsDeletingOrder(false);
+    }
+  };
+
+  const handlePovratToggle = async (nextValue: boolean) => {
+    if (!order) return;
+    try {
+      await applyOrderUpdate((current) => ({ ...current, povratVracen: nextValue }), "Povrat je sacuvan.");
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -713,6 +766,10 @@ function OrderDetails({
     );
   }
 
+  const deleteRequiresConfirmation = requiresDeleteConfirmation(order.stage);
+  const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
+  const isDeleteDisabled = isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
+
   const mainImage = (() => {
     const images = order.product?.images ?? [];
     return images.find((image) => image.isMain) ?? images[0];
@@ -720,6 +777,53 @@ function OrderDetails({
 
   return (
     <div className="mx-auto space-y-6">
+      <Dialog open={deleteModalOpen} onOpenChange={handleDeleteModalOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Obrisi narudzbinu?</DialogTitle>
+            <DialogDescription>Brisanje je trajno i ne moze da se vrati.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-rose-600">
+                <Trash2 className="h-4 w-4" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-semibold">Proveri pre brisanja.</p>
+                <p className="text-xs text-rose-800">Ova akcija nepovratno uklanja narudzbinu.</p>
+              </div>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">{order.title}</p>
+              <p className="text-xs text-slate-500">
+                {order.customerName} · Stage: {stageLabels[order.stage]?.label ?? order.stage}
+              </p>
+            </div>
+            {deleteRequiresConfirmation ? (
+              <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-sm font-semibold text-amber-900">Za nastavak unesi potvrdu.</p>
+                <Input
+                  value={deleteConfirmText}
+                  onChange={(event) => setDeleteConfirmText(event.target.value)}
+                  placeholder={deleteConfirmPhrase}
+                  autoComplete="off"
+                />
+                <p className="text-xs text-amber-900">
+                  Upisi tacno: <span className="font-semibold">{deleteConfirmPhrase}</span>
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={closeDeleteModal} disabled={isDeletingOrder}>
+              Otkazi
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleDeleteOrder} disabled={isDeleteDisabled}>
+              {isDeletingOrder ? "Brisanje..." : "Obrisi"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           <Button
@@ -743,26 +847,29 @@ function OrderDetails({
           </div>
         </div>
         <div className="w-full -mx-2 overflow-x-auto pb-2 sm:mx-0 sm:pb-0">
-          <div className="flex min-w-max gap-2 px-2 sm:px-0">
-            {stageOptions.map((option) => (
-              <Button
-                key={option.value}
-                type="button"
-                size="sm"
-                variant={order.stage === option.value ? "default" : "outline"}
-                className="min-w-[92px] whitespace-nowrap"
-                disabled={isUpdatingStage || order.stage === option.value}
-                onClick={() => handleStageChange(option.value)}
-              >
-                {isUpdatingStage && order.stage !== option.value ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                {option.label}
+            <div className="flex min-w-max gap-2 px-2 sm:px-0">
+              {stageOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  type="button"
+                  size="sm"
+                  variant={order.stage === option.value ? "default" : "outline"}
+                  className="min-w-[92px] whitespace-nowrap"
+                  disabled={isUpdatingStage || order.stage === option.value}
+                  onClick={() => handleStageChange(option.value)}
+                >
+                  {isUpdatingStage && order.stage !== option.value ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  {option.label}
+                </Button>
+              ))}
+              <Button type="button" size="sm" variant="destructive" onClick={openDeleteModal}>
+                Obrisi
               </Button>
-            ))}
+            </div>
           </div>
         </div>
-      </div>
 
       <Card>
         <CardHeader>
@@ -1224,6 +1331,24 @@ function OrderDetails({
                 </p>
                 <p className="text-xs text-slate-500">Ukupno {formatCurrency(prof, "EUR")}</p>
               </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Povrat</p>
+                <p className="text-base font-semibold text-slate-900">{formatCurrency(povrat, "EUR")}</p>
+                <p className="text-xs text-slate-500">
+                  Profit (50%): {formatCurrency(profitShare, "EUR")} ({formatPercent(profitSharePercent)})
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(order.povratVracen)}
+                  onChange={(event) => handlePovratToggle(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Povrat vracen
+              </label>
             </div>
           </CardContent>
         </Card>

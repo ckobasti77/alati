@@ -341,6 +341,7 @@ function ProductsContent() {
   const [isAdDragActive, setIsAdDragActive] = useState(false);
   const [isInboxDragActive, setIsInboxDragActive] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
+  const [archiveView, setArchiveView] = useState<"active" | "archived">("active");
   const [isMobile, setIsMobile] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("created_desc");
   const [productSearch, setProductSearch] = useState("");
@@ -392,11 +393,13 @@ function ProductsContent() {
     page: productPage,
     pageSize: PRODUCTS_PAGE_SIZE,
     sortBy,
+    archived: archiveView,
   });
   const productStats = useConvexQuery<ProductStats[]>("products:stats", { token: sessionToken });
   const createProduct = useConvexMutation("products:create");
   const updateProduct = useConvexMutation("products:update");
   const removeProduct = useConvexMutation<{ id: string; token: string }>("products:remove");
+  const setProductArchived = useConvexMutation<{ id: string; token: string; archived: boolean }>("products:setArchived");
   const categories = useConvexQuery<Category[]>("categories:list", { token: sessionToken });
   const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
   const inboxImages = useConvexQuery<InboxImage[]>("inboxImages:list", { token: sessionToken });
@@ -441,7 +444,7 @@ function ProductsContent() {
 
   useEffect(() => {
     resetProductsFeed();
-  }, [resetProductsFeed, sessionToken]);
+  }, [resetProductsFeed, sessionToken, archiveView]);
 
   useEffect(() => {
     if (!productList) return;
@@ -800,17 +803,30 @@ function ProductsContent() {
     }
   };
 
+  const handleArchive = async (product: Product, archived: boolean) => {
+    try {
+      await setProductArchived({ id: product._id, token: sessionToken, archived });
+      toast.success(archived ? "Proizvod je arhiviran." : "Proizvod je vracen iz arhive.");
+      resetProductsFeed();
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message ?? "Azuriranje arhive nije uspelo.");
+    }
+  };
+
   const handleDelete = async (id: string) => {
+    const confirmed = window.confirm("Da li sigurno zelis da trajno obrises ovaj proizvod?");
+    if (!confirmed) return;
     try {
       await removeProduct({ id, token: sessionToken });
-      toast.success("Proizvod je obrisan.");
+      toast.success("Proizvod je trajno obrisan.");
       if (editingProduct?._id === id) {
         closeModal();
       }
       resetProductsFeed();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Brisanje nije uspelo.");
+      toast.error(error?.message ?? "Brisanje nije uspelo.");
     }
   };
 
@@ -1142,6 +1158,12 @@ function ProductsContent() {
       : inboxView === "withoutPurchasePrice"
         ? "Nema slika bez nabavne cene. Dodaj ih ili prebaci filter."
         : "Nema oznacenih za ignorisanje. Prebaci neku sliku u ovu grupu.";
+  const emptyProductsMessage =
+    items.length === 0
+      ? archiveView === "archived"
+        ? "Nema arhiviranih proizvoda."
+        : "Dodaj prvi proizvod."
+      : "Nema proizvoda koji odgovaraju pretrazi.";
 
   useEffect(() => {
     setInboxContextMenu(null);
@@ -2126,8 +2148,12 @@ function ProductsContent() {
     router.push(`/proizvodi/${id}`);
   };
 
-  const handleCreateOrderFromProduct = (id: string) => {
-    router.push(`/narudzbine?productId=${encodeURIComponent(id)}`);
+  const handleCreateOrderFromProduct = (product: Product) => {
+    if (product.archivedAt) {
+      toast.error("Proizvod je u arhivi.");
+      return;
+    }
+    router.push(`/narudzbine?productId=${encodeURIComponent(product._id)}`);
   };
 
   return (
@@ -3588,6 +3614,26 @@ function ProductsContent() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
+              <Button
+                type="button"
+                variant={archiveView === "active" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-full px-3"
+                onClick={() => setArchiveView("active")}
+              >
+                Aktivni
+              </Button>
+              <Button
+                type="button"
+                variant={archiveView === "archived" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-full px-3"
+                onClick={() => setArchiveView("archived")}
+              >
+                Arhiva
+              </Button>
+            </div>
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1 md:flex">
               <Button
                 type="button"
@@ -3615,7 +3661,7 @@ function ProductsContent() {
         <CardContent className="pb-6">
           {sortedProducts.length === 0 ? (
             <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">
-              {items.length === 0 ? "Dodaj prvi proizvod." : "Nema proizvoda koji odgovaraju pretrazi."}
+              {emptyProductsMessage}
             </div>
           ) : viewMode === "list" && !isMobile ? (
             <div className="space-y-2">
@@ -3628,6 +3674,7 @@ function ProductsContent() {
                 const hasSocialImage = hasSocialMainImage(product);
                 const salesCount = getSalesCount(product);
                 const bestSupplier = getBestSupplier(product);
+                const isArchived = Boolean(product.archivedAt);
                 return (
                   <div
                     key={product._id}
@@ -3707,6 +3754,7 @@ function ProductsContent() {
                             <ShoppingBag className="h-3.5 w-3.5" />
                             Prodato: {salesCount}
                           </span>
+                          {isArchived ? <Badge variant="yellow">Arhiva</Badge> : null}
                           {isVariantProduct ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
                               <Layers className="h-3.5 w-3.5" />
@@ -3745,6 +3793,16 @@ function ProductsContent() {
                           Izmeni
                         </Button>
                         <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleArchive(product, !isArchived);
+                          }}
+                        >
+                          {isArchived ? "Vrati" : "Arhiviraj"}
+                        </Button>
+                        <Button
                           variant="destructive"
                           size="sm"
                           onClick={(event) => {
@@ -3752,7 +3810,7 @@ function ProductsContent() {
                             handleDelete(product._id);
                           }}
                         >
-                          Obrisi
+                          Obrisi trajno
                         </Button>
                       </div>
                     </div>
@@ -3771,6 +3829,7 @@ function ProductsContent() {
                 const hasSocialImage = hasSocialMainImage(product);
                 const salesCount = getSalesCount(product);
                 const bestSupplier = getBestSupplier(product);
+                const isArchived = Boolean(product.archivedAt);
                 return (
                   <div
                     key={product._id}
@@ -3790,7 +3849,7 @@ function ProductsContent() {
                       className="absolute left-1/2 top-1/2 z-30 flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 text-xs font-semibold text-slate-900 shadow-lg opacity-0 transition group-hover:opacity-100 group-hover:shadow-xl group-focus-within:opacity-100 pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto"
                       onClick={(event) => {
                         event.stopPropagation();
-                        handleCreateOrderFromProduct(product._id);
+                        handleCreateOrderFromProduct(product);
                       }}
                     >
                       <ShoppingBag className="h-4 w-4 text-slate-800" />
@@ -3829,11 +3888,20 @@ function ProductsContent() {
                         </span>
                       ) : null}
                     </div>
-                    {isVariantProduct ? (
-                      <span className="absolute left-2 top-2 z-20 inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-3 py-1 text-sm font-bold text-white shadow-lg">
-                        <Layers className="h-5 w-5" />
-                        Tipski
-                      </span>
+                    {isVariantProduct || isArchived ? (
+                      <div className="absolute left-2 top-2 z-20 flex flex-col gap-2">
+                        {isVariantProduct ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/85 px-3 py-1 text-sm font-bold text-white shadow-lg">
+                            <Layers className="h-5 w-5" />
+                            Tipski
+                          </span>
+                        ) : null}
+                        {isArchived ? (
+                          <Badge variant="yellow" className="shadow">
+                            Arhiva
+                          </Badge>
+                        ) : null}
+                      </div>
                     ) : null}
                     {product.pickupAvailable ? (
                       <span className="absolute left-2 bottom-2 z-20 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-slate-900 shadow">

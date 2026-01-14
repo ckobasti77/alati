@@ -823,7 +823,7 @@ button {
 .thumb {
   width: 64px;
   height: 64px;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 12px;
   border: 1px solid var(--border);
 }

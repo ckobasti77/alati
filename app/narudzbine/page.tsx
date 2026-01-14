@@ -6,11 +6,11 @@ import { useForm, type DeepPartial, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, GripVertical, PhoneCall, Plus, Trash2 } from "lucide-react";
+import { ArrowUpRight, GripVertical, PhoneCall, Plus, Trash2, UserRound } from "lucide-react";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,6 +35,8 @@ const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
 ];
 const transportModes = ["Kol", "Joe", "Posta", "Bex", "Aks"] as const;
+const deleteConfirmPhrase = "potvrdjujem da brisem";
+const requiresDeleteConfirmation = (stage?: OrderStage) => stage === "stiglo" || stage === "legle_pare";
 
 const stageLabels = stageOptions.reduce((acc, item) => {
   acc[item.value] = { label: item.label, tone: item.tone };
@@ -287,6 +289,10 @@ function OrdersContent() {
   const [productMenuOpen, setProductMenuOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState<Order | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const [draftItems, setDraftItems] = useState<OrderItemDraft[]>([]);
   const [itemProductId, setItemProductId] = useState("");
   const [itemVariantId, setItemVariantId] = useState("");
@@ -371,6 +377,9 @@ function OrdersContent() {
   const isProductsLoading = products === undefined;
   const isOrdersLoading = list === undefined && orders.length === 0;
   const hasMoreOrders = ordersPagination.totalPages > page;
+  const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
+  const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
+  const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
 
   const resetOrdersFeed = useCallback(() => {
     if (loadMoreOrdersTimerRef.current !== null) {
@@ -826,7 +835,29 @@ function OrdersContent() {
     }
   };
 
+  const openDeleteModal = (order: Order) => {
+    setDeleteCandidate(order);
+    setDeleteConfirmText("");
+    setDeleteModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModalOpen(false);
+    setDeleteCandidate(null);
+    setDeleteConfirmText("");
+  };
+
+  const handleDeleteModalOpenChange = (open: boolean) => {
+    if (open) {
+      setDeleteModalOpen(true);
+    } else {
+      closeDeleteModal();
+    }
+  };
+
   const handleDelete = async (id: string) => {
+    if (isDeletingOrder) return;
+    setIsDeletingOrder(true);
     try {
       await deleteOrder({ id, token: sessionToken, scope: orderScope });
       toast.success("Narudzbina je obrisana.");
@@ -834,14 +865,13 @@ function OrdersContent() {
       if (editingOrder?._id === id) {
         resetOrderForm({ closeModal: true });
       }
+      closeDeleteModal();
     } catch (error) {
       console.error(error);
       toast.error("Brisanje nije uspelo.");
+    } finally {
+      setIsDeletingOrder(false);
     }
-  };
-
-  const handleStartOrderEdit = (order: Order) => {
-    router.push(`${basePath}/${order._id}`);
   };
 
   const buildOrderUpdatePayload = useCallback(
@@ -1587,6 +1617,63 @@ function OrdersContent() {
           </Form>
         </DialogContent>
       </Dialog>
+      <Dialog open={deleteModalOpen} onOpenChange={handleDeleteModalOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Obrisi narudzbinu?</DialogTitle>
+            <DialogDescription>Brisanje je trajno i ne moze da se vrati.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-rose-600">
+                <Trash2 className="h-4 w-4" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-semibold">Proveri pre brisanja.</p>
+                <p className="text-xs text-rose-800">Ova akcija nepovratno uklanja narudzbinu.</p>
+              </div>
+            </div>
+            {deleteCandidate ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <p className="font-semibold text-slate-900">{deleteCandidate.title}</p>
+                <p className="text-xs text-slate-500">
+                  {deleteCandidate.customerName} · Stage:{" "}
+                  {stageLabels[deleteCandidate.stage]?.label ?? deleteCandidate.stage}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">Narudzbina nije izabrana.</p>
+            )}
+            {deleteRequiresConfirmation ? (
+              <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-sm font-semibold text-amber-900">Za nastavak unesi potvrdu.</p>
+                <Input
+                  value={deleteConfirmText}
+                  onChange={(event) => setDeleteConfirmText(event.target.value)}
+                  placeholder={deleteConfirmPhrase}
+                  autoComplete="off"
+                />
+                <p className="text-xs text-amber-900">
+                  Upisi tacno: <span className="font-semibold">{deleteConfirmPhrase}</span>
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={closeDeleteModal} disabled={isDeletingOrder}>
+              Otkazi
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => deleteCandidate && handleDelete(deleteCandidate._id)}
+              disabled={isDeleteDisabled}
+            >
+              {isDeletingOrder ? "Brisanje..." : "Obrisi"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{isKalaba ? "Kalaba" : "Narudzbine"}</h1>
@@ -1802,17 +1889,25 @@ function OrdersContent() {
                           </div>
                         </TableCell>
                         <TableCell className="max-w-[220px]">
-                          <a
-                            href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
-                            className="flex flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <span className="font-medium text-slate-800">{order.customerName}</span>
-                            <span className="flex items-center gap-1 text-xs text-slate-500">
-                              <PhoneCall className="h-4 w-4 text-blue-500" />
-                              {order.phone}
-                            </span>
-                          </a>
+                          <div className="flex flex-col gap-1">
+                            <a
+                              href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
+                              className="flex flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <span className="font-medium text-slate-800">{order.customerName}</span>
+                              <span className="flex items-center gap-1 text-xs text-slate-500">
+                                <PhoneCall className="h-4 w-4 text-blue-500" />
+                                {order.phone}
+                              </span>
+                            </a>
+                            {order.pickup ? (
+                              <span className="inline-flex items-center gap-1 self-start rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
+                                <UserRound className="h-3.5 w-3.5" />
+                                Licno
+                              </span>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>
                         <TableCell className="text-right">{formatCurrency(transport, "EUR")}</TableCell>
@@ -1859,21 +1954,11 @@ function OrdersContent() {
                               ))}
                             </select>
                             <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleStartOrderEdit(order);
-                              }}
-                            >
-                              Izmeni
-                            </Button>
-                            <Button
                               variant="destructive"
                               size="sm"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                handleDelete(order._id);
+                                openDeleteModal(order);
                               }}
                             >
                               Obrisi

@@ -318,8 +318,9 @@ export const list = query({
       .query("products")
       .withIndex("by_user_createdAt", (q) => q.eq("userId", user._id))
       .collect();
+    const activeItems = items.filter((item) => !item.archivedAt);
     const withUrls = await Promise.all(
-      items.map(async (item) => {
+      activeItems.map(async (item) => {
         const images = await Promise.all(
           (item.images ?? []).map(async (image) => ({
             ...image,
@@ -353,6 +354,7 @@ export const listPaginated = query({
     search: v.optional(v.string()),
     page: v.optional(v.number()),
     pageSize: v.optional(v.number()),
+    archived: v.optional(v.union(v.literal("active"), v.literal("archived"))),
     sortBy: v.optional(
       v.union(
         v.literal("created_desc"),
@@ -368,6 +370,7 @@ export const listPaginated = query({
     const page = Math.max(args.page ?? 1, 1);
     const pageSize = Math.max(Math.min(args.pageSize ?? 20, 100), 1);
     const sortBy: ProductSortOption = args.sortBy ?? "created_desc";
+    const archivedFilter = args.archived ?? "active";
     const needsStats = sortBy === "sales_desc" || sortBy === "profit_desc";
     const statsMap = needsStats ? await buildProductStatsMap(ctx, user._id) : null;
 
@@ -375,6 +378,7 @@ export const listPaginated = query({
       .query("products")
       .withIndex("by_user_createdAt", (q) => q.eq("userId", user._id))
       .collect();
+    items = items.filter((product) => (archivedFilter === "archived" ? Boolean(product.archivedAt) : !product.archivedAt));
 
     const rawSearch = args.search?.trim();
     const needle = rawSearch ? normalizeSearchText(rawSearch) : "";
@@ -609,14 +613,15 @@ export const listPublic = query({
   args: { search: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const items = await ctx.db.query("products").withIndex("by_createdAt").collect();
+    const activeItems = items.filter((item) => !item.archivedAt);
     const rawSearch = args.search?.trim();
     const needle = rawSearch ? normalizeSearchText(rawSearch) : "";
     const narrowed = needle
-      ? items.filter((item) => {
+      ? activeItems.filter((item) => {
           const name = normalizeSearchText(item.kpName ?? item.name);
           return name.includes(needle);
         })
-      : items;
+      : activeItems;
     const withUrls = await Promise.all(narrowed.map((item) => toPublicProduct(ctx, item)));
     return withUrls.sort((a, b) => b.createdAt - a.createdAt);
   },
@@ -626,7 +631,7 @@ export const getPublic = query({
   args: { id: v.id("products") },
   handler: async (ctx, args) => {
     const product = await ctx.db.get(args.id);
-    if (!product) {
+    if (!product || product.archivedAt) {
       return null;
     }
     return await toPublicProduct(ctx, product);
@@ -852,6 +857,25 @@ export const update = mutation({
   },
 });
 
+export const setArchived = mutation({
+  args: { token: v.string(), id: v.id("products"), archived: v.boolean() },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const product = await ctx.db.get(args.id);
+    if (!product) {
+      throw new Error("Proizvod nije pronadjen.");
+    }
+    if (product.userId !== user._id) {
+      throw new Error("Neautorizovan pristup proizvodu.");
+    }
+    const nextArchivedAt = args.archived ? product.archivedAt ?? Date.now() : undefined;
+    await ctx.db.patch(args.id, {
+      archivedAt: nextArchivedAt,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const remove = mutation({
   args: { token: v.string(), id: v.id("products") },
   handler: async (ctx, args) => {
@@ -860,6 +884,18 @@ export const remove = mutation({
     if (!product) return;
     if (product.userId !== user._id) {
       throw new Error("Neautorizovan pristup proizvodu.");
+    }
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
+      .collect();
+    const hasOrders = orders.some(
+      (order) =>
+        String(order.productId) === String(args.id) ||
+        (order.items ?? []).some((item) => String(item.productId) === String(args.id)),
+    );
+    if (hasOrders) {
+      throw new Error("Proizvod ima vezane narudzbine. Arhiviraj proizvod umesto brisanja.");
     }
     await ctx.db.delete(args.id);
     await Promise.all(
