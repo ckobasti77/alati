@@ -1179,7 +1179,7 @@ function OrdersContent() {
                                   />
                                 )}
                               </div>
-                              <div className="text-right">
+                              <div className="text-center">
                                 <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Cena</p>
                                 <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
                                   {formatCurrency(displayPrice, "EUR")}
@@ -1220,7 +1220,7 @@ function OrdersContent() {
                       {selectedVariantForPreview ? <p className="text-xs text-slate-600 dark:text-slate-300">{selectedVariantForPreview.label}</p> : null}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-center">
                     <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Prodajna cena</p>
                     <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
                       {formatCurrency(selectedVariantForPreview?.prodajnaCena ?? selectedProduct.prodajnaCena, "EUR")}
@@ -1393,7 +1393,7 @@ function OrdersContent() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-slate-800">Dodate stavke</p>
-                    <div className="text-right text-xs text-slate-500">
+                    <div className="text-center text-xs text-slate-500">
                       <p>Prodajno: {formatCurrency(draftTotals.totalProdajno, "EUR")}</p>
                       <p>Nabavno: {formatCurrency(draftTotals.totalNabavno, "EUR")}</p>
                     </div>
@@ -1766,17 +1766,17 @@ function OrdersContent() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Datum</TableHead>
-                <TableHead>Stage</TableHead>
-                <TableHead>Naslov</TableHead>
-                <TableHead>Kontakt</TableHead>
-                <TableHead className="text-right">Nabavno</TableHead>
-                <TableHead className="text-right">Transport</TableHead>
-                <TableHead className="text-right">Prodajno</TableHead>
-                <TableHead className="text-right">Profit (50%)</TableHead>
-                <TableHead className="text-right">Povrat</TableHead>
-                <TableHead>Napomena</TableHead>
-                <TableHead>Akcije</TableHead>
+                <TableHead className="text-center">Datum</TableHead>
+                <TableHead className="text-center">Stage</TableHead>
+                <TableHead className="text-center">Naslov</TableHead>
+                <TableHead className="text-center">Kontakt</TableHead>
+                <TableHead className="text-center">Nabavno</TableHead>
+                <TableHead className="text-center">Transport</TableHead>
+                <TableHead className="text-center">Prodajno</TableHead>
+                <TableHead className="text-center text-nowrap">Profit (50%)</TableHead>
+                <TableHead className="text-center">Povrat</TableHead>
+                <TableHead className="text-center">Napomena</TableHead>
+                <TableHead className="text-center">Akcije</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1909,20 +1909,15 @@ function OrdersContent() {
                             ) : null}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(transport, "EUR")}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
-                        <TableCell className="text-right font-semibold">
-                          <div className="flex flex-col items-end">
+                        <TableCell className="text-center">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>
+                        <TableCell className="text-center">{formatCurrency(transport, "EUR")}</TableCell>
+                        <TableCell className="text-center">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
+                        <TableCell className="text-center font-semibold">
                             <span className={profitShare < 0 ? "text-red-600" : ""}>
                               {formatCurrency(profitShare, "EUR")}
                             </span>
-                            <span className="text-[11px] font-medium text-slate-500">
-                              {formatPercent(profitSharePercent)}
-                            </span>
-                          </div>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-center">
                           <div className="flex items-center justify-end gap-2">
                             <span>{formatCurrency(povrat, "EUR")}</span>
                             <input
@@ -1941,7 +1936,7 @@ function OrdersContent() {
                           {order.napomena || "-"}
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                          <div className="flex flex-nowrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
                             <select
                               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
                               value={order.stage}
