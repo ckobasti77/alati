@@ -434,6 +434,7 @@ function OrderDetails({
     customerName: current.customerName,
     address: current.address,
     phone: current.phone,
+    povratVracen: current.povratVracen,
     pickup: current.pickup ?? false,
     items: current.items?.map((item) => {
       const { product, ...rest } = item as any;

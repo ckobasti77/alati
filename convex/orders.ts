@@ -51,6 +51,8 @@ const normalizeProfitPercent = (value?: number) => {
   return value;
 };
 
+const resolveSortIndex = (order: Doc<"orders">) => order.sortIndex ?? order.kreiranoAt;
+
 const generateItemId = () => Math.random().toString(36).slice(2);
 
 const normalizeQuantity = (value?: number) => {
@@ -380,6 +382,8 @@ export const list = query({
     search: v.optional(v.string()),
     page: v.optional(v.number()),
     pageSize: v.optional(v.number()),
+    stages: v.optional(v.array(stageSchema)),
+    unreturnedOnly: v.optional(v.boolean()),
     scope: v.optional(orderScopeSchema),
   },
   handler: async (ctx, args) => {
@@ -395,7 +399,7 @@ export const list = query({
     orders = orders
       .filter((order) => normalizeScope(order.scope) === scope)
       .map((order) => ({ ...order, items: resolveItemsFromOrder(order) }))
-      .sort((a, b) => b.kreiranoAt - a.kreiranoAt);
+      .sort((a, b) => resolveSortIndex(b) - resolveSortIndex(a) || b.kreiranoAt - a.kreiranoAt);
 
     if (args.search) {
       const needle = normalizeSearchText(args.search.trim());
@@ -416,6 +420,15 @@ export const list = query({
           );
         });
       }
+    }
+
+    if (args.stages && args.stages.length > 0) {
+      const allowedStages = new Set(args.stages.map((stage) => normalizeStage(stage)));
+      orders = orders.filter((order) => allowedStages.has(normalizeStage(order.stage as any)));
+    }
+
+    if (args.unreturnedOnly) {
+      orders = orders.filter((order) => !order.povratVracen);
     }
 
     const total = orders.length;
@@ -448,6 +461,7 @@ export const create = mutation({
     nabavnaCena: v.optional(v.number()),
     prodajnaCena: v.optional(v.number()),
     napomena: v.optional(v.string()),
+    povratVracen: v.optional(v.boolean()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
     myProfitPercent: v.optional(v.number()),
@@ -462,6 +476,7 @@ export const create = mutation({
     const scope = normalizeScope(args.scope);
     const now = Date.now();
     const pickup = Boolean(args.pickup);
+    const povratVracen = args.povratVracen ?? false;
     const transportCost = normalizeTransportCost(args.transportCost);
     const transportMode = normalizeTransportMode(args.transportMode);
     const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
@@ -509,6 +524,7 @@ export const create = mutation({
       nabavnaCena: totals.avgNabavna,
       prodajnaCena: totals.avgProdajna,
       napomena: args.napomena?.trim() || undefined,
+      povratVracen,
       transportCost,
       transportMode,
       myProfitPercent: resolvedProfitPercent,
@@ -517,6 +533,7 @@ export const create = mutation({
       phone: args.phone.trim(),
       pickup,
       items: normalizedItems,
+      sortIndex: now,
       kreiranoAt: now,
     });
   },
@@ -537,6 +554,7 @@ export const update = mutation({
     nabavnaCena: v.optional(v.number()),
     prodajnaCena: v.optional(v.number()),
     napomena: v.optional(v.string()),
+    povratVracen: v.optional(v.boolean()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
     myProfitPercent: v.optional(v.number()),
@@ -561,6 +579,7 @@ export const update = mutation({
     }
 
     const pickup = args.pickup ?? existing.pickup ?? false;
+    const povratVracen = args.povratVracen ?? existing.povratVracen ?? false;
     const transportCost = normalizeTransportCost(args.transportCost);
     const transportMode = normalizeTransportMode(args.transportMode);
     const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
@@ -595,6 +614,7 @@ export const update = mutation({
       nabavnaCena: totals.avgNabavna,
       prodajnaCena: totals.avgProdajna,
       napomena: args.napomena?.trim() || undefined,
+      povratVracen,
       transportCost,
       transportMode,
       myProfitPercent: resolvedProfitPercent,
@@ -604,6 +624,41 @@ export const update = mutation({
       pickup,
       items: normalizedItems,
     });
+  },
+});
+
+export const reorder = mutation({
+  args: {
+    token: v.string(),
+    scope: v.optional(orderScopeSchema),
+    orderIds: v.array(v.id("orders")),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const seen = new Set<string>();
+    const orderedIds = args.orderIds.filter((id) => {
+      const key = String(id);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (orderedIds.length === 0) return;
+    const base = Date.now();
+
+    for (const orderId of orderedIds) {
+      const order = await ctx.db.get(orderId);
+      if (!order || order.userId !== user._id) {
+        throw new Error("Neautorizovan pristup narudzbini.");
+      }
+      if (normalizeScope(order.scope) !== scope) {
+        throw new Error("Neautorizovan pristup narudzbini.");
+      }
+    }
+
+    for (let index = 0; index < orderedIds.length; index += 1) {
+      await ctx.db.patch(orderedIds[index], { sortIndex: base - index });
+    }
   },
 });
 

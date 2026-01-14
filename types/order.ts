@@ -139,11 +139,13 @@ export interface Order {
   transportCost?: number;
   transportMode?: TransportMode;
   myProfitPercent?: number;
+  povratVracen?: boolean;
   customerName: string;
   address: string;
   phone: string;
   pickup?: boolean;
   items?: OrderItem[];
+  sortIndex?: number;
   kreiranoAt: number;
 }
 

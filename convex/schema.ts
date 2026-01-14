@@ -141,6 +141,7 @@ export default defineSchema({
     nabavnaCena: v.number(),
     prodajnaCena: v.number(),
     napomena: v.optional(v.string()),
+    povratVracen: v.optional(v.boolean()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(
       v.union(v.literal("Kol"), v.literal("Joe"), v.literal("Posta"), v.literal("Bex"), v.literal("Aks")),
@@ -166,6 +167,7 @@ export default defineSchema({
         }),
       ),
     ),
+    sortIndex: v.optional(v.number()),
     kreiranoAt: v.number(),
   })
     .index("by_kreiranoAt", ["kreiranoAt"])

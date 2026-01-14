@@ -1,12 +1,12 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useForm, type DeepPartial, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, PhoneCall, Plus, Trash2 } from "lucide-react";
+import { ArrowUpRight, GripVertical, PhoneCall, Plus, Trash2 } from "lucide-react";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -219,6 +219,16 @@ const resolveVariantPurchasePrice = (product: Product, variant: ProductVariant) 
   return bestVariantOffer ?? variant.nabavnaCena;
 };
 
+const resolveProductImageUrl = (product?: Product, variantId?: string) => {
+  if (!product) return null;
+  const variantImages = variantId
+    ? product.variants?.find((variant) => variant.id === variantId)?.images
+    : undefined;
+  const images = (variantImages && variantImages.length > 0 ? variantImages : product.images) ?? [];
+  const mainImage = images.find((image) => image.isMain) ?? images[0];
+  return mainImage?.url ?? null;
+};
+
 const StageBadge = ({ stage }: { stage: OrderStage }) => {
   const meta = stageLabels[stage] ?? { label: stage, tone: "" };
   return (
@@ -237,6 +247,8 @@ const resolveProfitPercent = (value?: number) =>
 
 const formatPercent = (value: number) =>
   `${value.toLocaleString("sr-RS", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
+
+const resolveOrderSortValue = (order: Order) => order.sortIndex ?? order.kreiranoAt;
 
 export default function OrdersPage() {
   return (
@@ -257,8 +269,12 @@ function OrdersContent() {
   const { token } = useAuth();
   const sessionToken = token as string;
   const [search, setSearch] = useState("");
+  const [stageFilters, setStageFilters] = useState<OrderStage[]>([]);
+  const [showUnreturnedOnly, setShowUnreturnedOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
+  const [dragOverOrderId, setDragOverOrderId] = useState<string | null>(null);
   const [ordersPagination, setOrdersPagination] = useState<OrderListResponse["pagination"]>({
     page: 1,
     pageSize: 10,
@@ -289,11 +305,18 @@ function OrdersContent() {
     search: search.trim() ? search.trim() : undefined,
     page,
     pageSize: 10,
+    stages: stageFilters,
+    unreturnedOnly: showUnreturnedOnly,
     scope: orderScope,
   });
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const createOrder = useConvexMutation("orders:create");
   const updateOrder = useConvexMutation("orders:update");
+  const reorderOrders = useConvexMutation<{
+    token: string;
+    scope: "default" | "kalaba";
+    orderIds: string[];
+  }>("orders:reorder");
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
   const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
 
@@ -303,14 +326,19 @@ function OrdersContent() {
         const totals = orderTotals(order);
         const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
         const myProfit = totals.profit * (myProfitPercent / 100);
+        const profitShare = myProfit * 0.5;
+        const profitSharePercent = myProfitPercent * 0.5;
+        const povrat = totals.totalNabavno + totals.transport + profitShare;
         return {
           order,
-          totalQty: totals.totalQty,
           prodajnoUkupno: totals.totalProdajno,
           nabavnoUkupno: totals.totalNabavno,
           transport: totals.transport,
           myProfit,
           myProfitPercent,
+          profitShare,
+          profitSharePercent,
+          povrat,
         };
       }),
     [orders],
@@ -331,6 +359,10 @@ function OrdersContent() {
       });
     });
   }, [products, productSearch]);
+  const productMap = useMemo(
+    () => new Map((products ?? []).map((product) => [product._id, product])),
+    [products],
+  );
   const supplierMap = useMemo(
     () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
     [suppliers],
@@ -345,10 +377,28 @@ function OrdersContent() {
       loadMoreOrdersTimerRef.current = null;
     }
     setOrders([]);
+    setDraggingOrderId(null);
+    setDragOverOrderId(null);
     setPage(1);
     setOrdersPagination((prev) => ({ ...prev, page: 1, total: 0, totalPages: 1 }));
     setIsLoadingMoreOrders(false);
   }, []);
+
+  const handleStageFilterToggle = useCallback(
+    (stage: OrderStage) => {
+      setStageFilters((prev) => (prev.includes(stage) ? prev.filter((item) => item !== stage) : [...prev, stage]));
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  const handleUnreturnedToggle = useCallback(
+    (checked: boolean) => {
+      setShowUnreturnedOnly(checked);
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
 
   useEffect(() => {
     resetOrdersFeed();
@@ -369,7 +419,9 @@ function OrdersContent() {
         list.items.forEach((entry) => {
           map.set(String(entry._id), entry);
         });
-        return Array.from(map.values()).sort((a, b) => b.kreiranoAt - a.kreiranoAt);
+        return Array.from(map.values()).sort(
+          (a, b) => resolveOrderSortValue(b) - resolveOrderSortValue(a) || b.kreiranoAt - a.kreiranoAt,
+        );
       });
     }
     setIsLoadingMoreOrders(false);
@@ -444,6 +496,23 @@ function OrdersContent() {
     [supplierMap, supplierOptions],
   );
   const bestSupplierOption = useMemo(() => pickBestSupplier(supplierOptionsWithNames), [supplierOptionsWithNames]);
+  const getOrderPreviewImages = useCallback(
+    (order: Order) => {
+      const items = order.items ?? [];
+      const previews: { id: string; url?: string | null; alt: string }[] = [];
+      items.forEach((item) => {
+        const product = item.productId ? productMap.get(item.productId) : undefined;
+        const url = resolveProductImageUrl(product, item.variantId);
+        const alt = product ? getProductDisplayName(product) : item.title || "Proizvod";
+        const qty = Math.max(Number(item.kolicina) || 1, 1);
+        for (let index = 0; index < qty; index += 1) {
+          previews.push({ id: `${item.id}-${index}`, url, alt });
+        }
+      });
+      return previews;
+    },
+    [productMap],
+  );
 
   const focusOrderField = useCallback(
     (fieldName: keyof OrderFormValues | string) => {
@@ -774,38 +843,143 @@ function OrdersContent() {
     router.push(`${basePath}/${order._id}`);
   };
 
+  const buildOrderUpdatePayload = useCallback(
+    (order: Order) => ({
+      token: sessionToken,
+      scope: orderScope,
+      id: order._id,
+      stage: order.stage,
+      productId: order.productId,
+      supplierId: order.supplierId,
+      variantId: order.variantId,
+      variantLabel: order.variantLabel,
+      title: order.title,
+      kolicina: order.kolicina,
+      nabavnaCena: order.nabavnaCena,
+      prodajnaCena: order.prodajnaCena,
+      customerName: order.customerName,
+      address: order.address,
+      phone: order.phone,
+      transportCost: order.transportCost,
+      transportMode: order.transportMode,
+      myProfitPercent: order.myProfitPercent,
+      pickup: order.pickup,
+      napomena: order.napomena,
+      povratVracen: order.povratVracen,
+      items: order.items,
+    }),
+    [orderScope, sessionToken],
+  );
+
   const handleStageChange = async (order: Order, nextStage: OrderStage) => {
     try {
-      await updateOrder({
-        token: sessionToken,
-        scope: orderScope,
-        id: order._id,
-        stage: nextStage,
-        productId: order.productId,
-        supplierId: order.supplierId,
-        variantId: order.variantId,
-        variantLabel: order.variantLabel,
-        title: order.title,
-        kolicina: order.kolicina,
-        nabavnaCena: order.nabavnaCena,
-        prodajnaCena: order.prodajnaCena,
-        customerName: order.customerName,
-        address: order.address,
-        phone: order.phone,
-        transportCost: order.transportCost,
-        transportMode: order.transportMode,
-        myProfitPercent: order.myProfitPercent,
-        pickup: order.pickup,
-        napomena: order.napomena,
-        items: order.items,
-      });
-      setOrders((prev) => prev.map((item) => (item._id === order._id ? { ...item, stage: nextStage } : item)));
+      await updateOrder({ ...buildOrderUpdatePayload(order), stage: nextStage });
+      setOrders((prev) =>
+        prev.flatMap((item) => {
+          if (item._id !== order._id) return [item];
+          if (stageFilters.length > 0 && !stageFilters.includes(nextStage)) return [];
+          return [{ ...item, stage: nextStage }];
+        }),
+      );
       toast.success("Status narudzbine promenjen.");
     } catch (error) {
       console.error(error);
       toast.error("Nije moguce promeniti status.");
     }
   };
+
+  const handlePovratToggle = async (order: Order, nextValue: boolean) => {
+    try {
+      await updateOrder({ ...buildOrderUpdatePayload(order), povratVracen: nextValue });
+      setOrders((prev) =>
+        prev.flatMap((item) => {
+          if (item._id !== order._id) return [item];
+          if (showUnreturnedOnly && nextValue) return [];
+          return [{ ...item, povratVracen: nextValue }];
+        }),
+      );
+    } catch (error) {
+      console.error(error);
+      toast.error("Nije moguce sacuvati povrat.");
+    }
+  };
+
+  const reorderOrdersList = useCallback((list: Order[], sourceId: string, targetId: string) => {
+    const sourceIndex = list.findIndex((entry) => entry._id === sourceId);
+    const targetIndex = list.findIndex((entry) => entry._id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return list;
+    const next = [...list];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    return next;
+  }, []);
+
+  const handleOrderDragStart = useCallback(
+    (orderId: string) => (event: DragEvent<HTMLDivElement>) => {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", orderId);
+      setDraggingOrderId(orderId);
+      setDragOverOrderId(null);
+    },
+    [],
+  );
+
+  const handleOrderDragEnd = useCallback(() => {
+    setDraggingOrderId(null);
+    setDragOverOrderId(null);
+  }, []);
+
+  const handleOrderDragOver = useCallback(
+    (orderId: string) => (event: DragEvent<HTMLTableRowElement>) => {
+      if (!draggingOrderId || draggingOrderId === orderId) return;
+      event.preventDefault();
+      setDragOverOrderId(orderId);
+    },
+    [draggingOrderId],
+  );
+
+  const handleOrderDragLeave = useCallback(
+    (orderId: string) => () => {
+      if (dragOverOrderId === orderId) {
+        setDragOverOrderId(null);
+      }
+    },
+    [dragOverOrderId],
+  );
+
+  const handleOrderDrop = useCallback(
+    (orderId: string) => async (event: DragEvent<HTMLTableRowElement>) => {
+      event.preventDefault();
+      const sourceId = draggingOrderId ?? event.dataTransfer.getData("text/plain");
+      if (!sourceId || sourceId === orderId) {
+        setDraggingOrderId(null);
+        setDragOverOrderId(null);
+        return;
+      }
+      const nextOrders = reorderOrdersList(orders, sourceId, orderId);
+      if (nextOrders === orders) {
+        setDraggingOrderId(null);
+        setDragOverOrderId(null);
+        return;
+      }
+      setOrders(nextOrders);
+      setDraggingOrderId(null);
+      setDragOverOrderId(null);
+      try {
+        await reorderOrders({
+          token: sessionToken,
+          scope: orderScope,
+          orderIds: nextOrders.map((item) => item._id),
+        });
+        toast.success("Redosled narudzbina sacuvan.");
+      } catch (error) {
+        console.error(error);
+        toast.error("Nije moguce sacuvati novi redosled.");
+        setOrders(orders);
+      }
+    },
+    [draggingOrderId, orderScope, orders, reorderOrders, reorderOrdersList, sessionToken],
+  );
 
   const handleRowClick = (id: string) => {
     router.push(`${basePath}/${id}`);
@@ -1428,16 +1602,58 @@ function OrdersContent() {
             <CardTitle>Lista narudzbina</CardTitle>
             <p className="text-sm text-slate-500">Klikni na red za pregled. Stage se moze menjati direktno iz tabele.</p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Input
-              placeholder="Pretraga (naslov, kupac, telefon...)"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                resetOrdersFeed();
-              }}
-              className="sm:w-72"
-            />
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                placeholder="Pretraga (naslov, kupac, telefon...)"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  resetOrdersFeed();
+                }}
+                className="sm:w-72"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                {stageOptions.map((option) => {
+                  const isActive = stageFilters.includes(option.value);
+                  return (
+                    <label
+                      key={option.value}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-2 rounded-full border px-2 py-1 text-xs font-semibold transition",
+                        isActive
+                          ? option.tone
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isActive}
+                        onChange={() => handleStageFilterToggle(option.value)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      {option.label}
+                    </label>
+                  );
+                })}
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 rounded-full border px-2 py-1 text-xs font-semibold transition",
+                    showUnreturnedOnly
+                      ? "border-rose-200 bg-rose-50 text-rose-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={showUnreturnedOnly}
+                    onChange={(event) => handleUnreturnedToggle(event.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Nepovraceni
+                </label>
+              </div>
+            </div>
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <span>
                 {ordersPagination.total === 0
@@ -1460,11 +1676,11 @@ function OrdersContent() {
                 <TableHead>Stage</TableHead>
                 <TableHead>Naslov</TableHead>
                 <TableHead>Kontakt</TableHead>
-                <TableHead>Kolicina</TableHead>
-                <TableHead className="text-right">Nabavno (EUR)</TableHead>
-                <TableHead className="text-right">Transport (EUR)</TableHead>
-                <TableHead className="text-right">Prodajno (EUR)</TableHead>
-                <TableHead className="text-right">Moj profit (EUR)</TableHead>
+                <TableHead className="text-right">Nabavno</TableHead>
+                <TableHead className="text-right">Transport</TableHead>
+                <TableHead className="text-right">Prodajno</TableHead>
+                <TableHead className="text-right">Profit (50%)</TableHead>
+                <TableHead className="text-right">Povrat</TableHead>
                 <TableHead>Napomena</TableHead>
                 <TableHead>Akcije</TableHead>
               </TableRow>
@@ -1483,103 +1699,184 @@ function OrdersContent() {
                   </TableCell>
                 </TableRow>
               ) : (
-                orderEntries.map(({ order, totalQty, prodajnoUkupno, nabavnoUkupno, transport, myProfit, myProfitPercent }) => (
-                  <TableRow
-                    key={order._id}
-                    className="cursor-pointer transition hover:bg-slate-50"
-                    onClick={() => handleRowClick(order._id)}
-                  >
-                    <TableCell>{formatDate(order.kreiranoAt)}</TableCell>
-                    <TableCell>
-                      <StageBadge stage={order.stage} />
-                    </TableCell>
-                    <TableCell className="font-medium text-slate-700">
-                      <div className="space-y-1">
-                        <span className="inline-flex items-center gap-1">
-                          {order.title}
-                          <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                        </span>
-                        {order.items && order.items.length > 0 ? (
-                          <p className="text-xs text-slate-500">
-                            {order.items
-                              .slice(0, 2)
-                              .map((item) => `${item.title}${item.kolicina > 1 ? ` x${item.kolicina}` : ""}`)
-                              .join(" · ")}
-                            {order.items.length > 2 ? ` +${order.items.length - 2}` : ""}
-                          </p>
-                        ) : null}
-                        {order.items && order.items.length > 1 ? (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                            {order.items.length} proizvoda
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-[220px]">
-                      <a
-                        href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
-                        className="flex flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
-                        onClick={(event) => event.stopPropagation()}
+                orderEntries.map(
+                  ({
+                    order,
+                    prodajnoUkupno,
+                    nabavnoUkupno,
+                    transport,
+                    profitShare,
+                    profitSharePercent,
+                    povrat,
+                  }) => {
+                    const previewImages = getOrderPreviewImages(order);
+                    const itemNames = (order.items ?? [])
+                      .map((item) => {
+                        const product = item.productId ? productMap.get(item.productId) : undefined;
+                        return product ? getProductDisplayName(product) : item.title;
+                      })
+                      .filter((name) => Boolean(name && name.trim().length > 0));
+                    const primaryTitle = itemNames[0] ?? order.title;
+                    const secondaryNames = itemNames.slice(1, 3);
+                    const remainingCount = itemNames.length > 3 ? itemNames.length - 3 : 0;
+
+                    return (
+                      <TableRow
+                        key={order._id}
+                        className={cn(
+                          "cursor-pointer transition",
+                          draggingOrderId === order._id ? "opacity-60" : "hover:bg-slate-50",
+                          dragOverOrderId === order._id && draggingOrderId !== order._id ? "bg-blue-50" : "",
+                        )}
+                        onClick={() => handleRowClick(order._id)}
+                        onDragOver={handleOrderDragOver(order._id)}
+                        onDragLeave={handleOrderDragLeave(order._id)}
+                        onDrop={handleOrderDrop(order._id)}
                       >
-                        <span className="font-medium text-slate-800">{order.customerName}</span>
-                        <span className="flex items-center gap-1 text-xs text-slate-500">
-                          <PhoneCall className="h-4 w-4 text-blue-500" />
-                          {order.phone}
-                        </span>
-                      </a>
-                    </TableCell>
-                    <TableCell>{totalQty}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(transport, "EUR")}
-                    </TableCell>
-                    <TableCell className="text-right">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
-                    <TableCell className="text-right font-semibold">
-                      <div className="flex flex-col items-end">
-                        <span className={myProfit < 0 ? "text-red-600" : ""}>{formatCurrency(myProfit, "EUR")}</span>
-                        <span className="text-[11px] font-medium text-slate-500">{formatPercent(myProfitPercent)}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-[180px] truncate text-sm text-slate-500">
-                      {order.napomena || "-"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
-                        <select
-                          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
-                          value={order.stage}
-                          onChange={(event) => handleStageChange(order, event.target.value as OrderStage)}
-                        >
-                          {stageOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleStartOrderEdit(order);
-                          }}
-                        >
-                          Izmeni
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleDelete(order._id);
-                          }}
-                        >
-                          Obrisi
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                        <TableCell>
+                          <div
+                            className="flex items-center gap-2 text-sm text-slate-600 cursor-grab active:cursor-grabbing"
+                            draggable
+                            onClick={(event) => event.stopPropagation()}
+                            onDragStart={handleOrderDragStart(order._id)}
+                            onDragEnd={handleOrderDragEnd}
+                          >
+                            <GripVertical className="h-4 w-4 text-slate-400" />
+                            <span>{formatDate(order.kreiranoAt)}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <StageBadge stage={order.stage} />
+                        </TableCell>
+                        <TableCell className="font-medium text-slate-700">
+                          <div className="flex flex-col gap-2">
+                            <div className="flex flex-wrap gap-1">
+                              {previewImages.length === 0 ? (
+                                <div className="flex h-10 w-10 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase text-slate-400">
+                                  N/A
+                                </div>
+                              ) : (
+                                previewImages.map((image) =>
+                                  image.url ? (
+                                    <div
+                                      key={image.id}
+                                      className="h-10 w-10 overflow-hidden rounded-md border-2 border-white shadow-sm"
+                                    >
+                                      <img src={image.url} alt={image.alt} className="h-full w-full object-cover" />
+                                    </div>
+                                  ) : (
+                                    <div
+                                      key={image.id}
+                                      className="flex h-10 w-10 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase text-slate-400"
+                                    >
+                                      N/A
+                                    </div>
+                                  ),
+                                )
+                              )}
+                            </div>
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1">
+                                {primaryTitle}
+                                <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                              </span>
+                              {secondaryNames.length > 0 ? (
+                                <p className="text-xs text-slate-500">
+                                  {secondaryNames.join(" / ")}
+                                  {remainingCount > 0 ? ` +${remainingCount}` : ""}
+                                </p>
+                              ) : null}
+                              {order.items && order.items.length > 1 ? (
+                                <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                  {order.items.length} proizvoda
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[220px]">
+                          <a
+                            href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
+                            className="flex flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <span className="font-medium text-slate-800">{order.customerName}</span>
+                            <span className="flex items-center gap-1 text-xs text-slate-500">
+                              <PhoneCall className="h-4 w-4 text-blue-500" />
+                              {order.phone}
+                            </span>
+                          </a>
+                        </TableCell>
+                        <TableCell className="text-right">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(transport, "EUR")}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
+                        <TableCell className="text-right font-semibold">
+                          <div className="flex flex-col items-end">
+                            <span className={profitShare < 0 ? "text-red-600" : ""}>
+                              {formatCurrency(profitShare, "EUR")}
+                            </span>
+                            <span className="text-[11px] font-medium text-slate-500">
+                              {formatPercent(profitSharePercent)}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <span>{formatCurrency(povrat, "EUR")}</span>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(order.povratVracen)}
+                              onChange={(event) => {
+                                event.stopPropagation();
+                                void handlePovratToggle(order, event.target.checked);
+                              }}
+                              onClick={(event) => event.stopPropagation()}
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[180px] truncate text-sm text-slate-500">
+                          {order.napomena || "-"}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                            <select
+                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
+                              value={order.stage}
+                              onChange={(event) => handleStageChange(order, event.target.value as OrderStage)}
+                            >
+                              {stageOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleStartOrderEdit(order);
+                              }}
+                            >
+                              Izmeni
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDelete(order._id);
+                              }}
+                            >
+                              Obrisi
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  },
+                )
               )}
             </TableBody>
           </Table>
@@ -1591,3 +1888,5 @@ function OrdersContent() {
     </div>
   );
 }
+
+
