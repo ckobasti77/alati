@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Check, Facebook, Instagram, Layers, LayoutGrid, List, Search, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { cn } from "@/lib/utils";
+import { clearListState, readListState, writeListState } from "@/lib/listState";
 import type { Product, ProductListResponse, ProductVariant } from "@/types/order";
 
 type Platform = "facebook" | "instagram";
@@ -65,9 +67,14 @@ export default function SocialPostsPage() {
 }
 
 function SocialContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchParamsString = useMemo(() => searchParams?.toString() ?? "", [searchParams]);
+  const searchQuery = useMemo(() => searchParams?.get("q") ?? "", [searchParamsString, searchParams]);
   const { user, token } = useAuth();
   const sessionToken = token as string | null;
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(searchQuery);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [scheduledDate, setScheduledDate] = useState<string>("");
   const [scheduledHour, setScheduledHour] = useState<string>("");
@@ -87,6 +94,27 @@ function SocialContent() {
   const [isLoadingMorePosts, setIsLoadingMorePosts] = useState(false);
   const postsLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMorePostsTimerRef = useRef<number | null>(null);
+  const skipUrlSyncRef = useRef(false);
+  const skipInitialResetRef = useRef(false);
+  const didRestoreRef = useRef(false);
+  const listStateRef = useRef<{
+    feed: Product[];
+    page: number;
+    pagination: ProductListResponse["pagination"];
+    search: string;
+    viewMode: "grid" | "list";
+  }>({
+    feed: [],
+    page: 1,
+    pagination: { page: 1, pageSize: PRODUCTS_PAGE_SIZE, total: 0, totalPages: 1 },
+    search: "",
+    viewMode: "grid",
+  });
+  const [pendingScrollY, setPendingScrollY] = useState<number | null>(null);
+  const listStateKey = useMemo(() => {
+    const suffix = searchParamsString ? `?${searchParamsString}` : "";
+    return `listState:${pathname}${suffix}`;
+  }, [pathname, searchParamsString]);
   const schedulePost = useConvexMutation<{
     token: string;
     productId: string;
@@ -110,6 +138,68 @@ function SocialContent() {
     [],
   );
   const [removingScheduledId, setRemovingScheduledId] = useState<string | null>(null);
+
+  useEffect(() => {
+    listStateRef.current = {
+      feed: productsFeed,
+      page,
+      pagination,
+      search,
+      viewMode,
+    };
+  }, [page, pagination, productsFeed, search, viewMode]);
+
+  useEffect(() => {
+    if (didRestoreRef.current) return;
+    didRestoreRef.current = true;
+    const stored = readListState<Product, ProductListResponse["pagination"]>(listStateKey);
+    if (!stored) return;
+    const storedSearch = typeof stored.extra?.search === "string" ? stored.extra.search : "";
+    if (storedSearch !== searchQuery) return;
+    const storedView = stored.extra?.viewMode;
+    skipInitialResetRef.current = true;
+    skipUrlSyncRef.current = true;
+    if (typeof storedView === "string" && (storedView === "grid" || storedView === "list")) {
+      setViewMode(storedView);
+    }
+    setProductsFeed(stored.items ?? []);
+    setPage(stored.page ?? 1);
+    if (stored.pagination) {
+      setPagination(stored.pagination);
+    }
+    setSearch(searchQuery);
+    setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
+    clearListState(listStateKey);
+  }, [listStateKey, searchQuery]);
+
+  useEffect(() => {
+    if (pendingScrollY === null) return;
+    const target = pendingScrollY;
+    setPendingScrollY(null);
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: target, behavior: "auto" });
+      });
+    }
+  }, [pendingScrollY]);
+
+  useEffect(() => {
+    return () => {
+      const snapshot = listStateRef.current;
+      if (!snapshot) return;
+      writeListState<Product, ProductListResponse["pagination"]>(listStateKey, {
+        items: snapshot.feed,
+        page: snapshot.page,
+        pagination: snapshot.pagination,
+        scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+        savedAt: Date.now(),
+        extra: {
+          search: snapshot.search,
+          viewMode: snapshot.viewMode,
+        },
+      });
+    };
+  }, [listStateKey]);
 
   const resetProductsFeed = useCallback(() => {
     if (loadMorePostsTimerRef.current !== null) {
@@ -136,8 +226,40 @@ function SocialContent() {
   });
 
   useEffect(() => {
+    if (skipInitialResetRef.current) {
+      skipInitialResetRef.current = false;
+      return;
+    }
     resetProductsFeed();
   }, [resetProductsFeed, sessionToken]);
+
+  useEffect(() => {
+    const current = listStateRef.current;
+    const searchChanged = current.search !== searchQuery;
+    if (!searchChanged) {
+      skipUrlSyncRef.current = false;
+      return;
+    }
+    setSearch(searchQuery);
+    if (!skipUrlSyncRef.current) {
+      resetProductsFeed();
+    }
+    skipUrlSyncRef.current = false;
+  }, [resetProductsFeed, searchQuery]);
+
+  useEffect(() => {
+    if (!searchParams) return;
+    const nextSearch = search.trim();
+    if (nextSearch === searchQuery) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextSearch) {
+      params.set("q", nextSearch);
+    } else {
+      params.delete("q");
+    }
+    const next = params.toString();
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [pathname, router, search, searchParams, searchQuery]);
 
   useEffect(() => {
     if (!list) return;

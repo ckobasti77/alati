@@ -275,6 +275,13 @@ function ProductDetailsContent() {
   const params = useParams();
   const router = useRouter();
   const productId = params?.productId as string;
+  const handleBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/proizvodi");
+  }, [router]);
   const uploadInputId = useMemo(() => `product-upload-${productId}`, [productId]);
   const adUploadInputId = useMemo(() => `ad-upload-${productId}`, [productId]);
   const queryResult = useConvexQuery<ProductWithUrls | null>("products:get", { token: sessionToken, id: productId });
@@ -1802,7 +1809,7 @@ function ProductDetailsContent() {
   if (!product) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" className="gap-2" onClick={() => router.push("/proizvodi")}>
+        <Button variant="ghost" className="gap-2" onClick={handleBack}>
           <ArrowLeft className="h-4 w-4" />
           Nazad na proizvode
         </Button>
@@ -1816,7 +1823,7 @@ function ProductDetailsContent() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="ghost" className="gap-2" onClick={() => router.push("/proizvodi")}>
+        <Button variant="ghost" className="gap-2" onClick={handleBack}>
           <ArrowLeft className="h-4 w-4" />
           Nazad na listu
         </Button>

@@ -20,6 +20,7 @@ import { orderTotals } from "@/lib/calc";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { normalizeSearchText } from "@/lib/search";
+import { clearListState, readListState, writeListState } from "@/lib/listState";
 import { cn } from "@/lib/utils";
 import type { Order, OrderListResponse, OrderStage, Product, ProductVariant, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -42,6 +43,21 @@ const stageLabels = stageOptions.reduce((acc, item) => {
   acc[item.value] = { label: item.label, tone: item.tone };
   return acc;
 }, {} as Record<OrderStage, { label: string; tone: string }>);
+
+const normalizeStageFilters = (values: string[]) => {
+  if (!values.length) return [] as OrderStage[];
+  const allowed = new Set(stageOptions.map((option) => option.value));
+  const unique = new Set<string>();
+  values.forEach((value) => {
+    if (allowed.has(value as OrderStage)) {
+      unique.add(value);
+    }
+  });
+  return stageOptions.map((option) => option.value).filter((value) => unique.has(value));
+};
+
+const areArraysEqual = <T,>(left: T[], right: T[]) =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
 
 const orderSchema = z.object({
   stage: z.enum(["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"]),
@@ -268,11 +284,18 @@ function OrdersContent() {
   const orderScope = isKalaba ? "kalaba" : "default";
   const router = useRouter();
   const searchParams = useSearchParams();
+  const searchParamsString = useMemo(() => searchParams?.toString() ?? "", [searchParams]);
+  const searchQuery = useMemo(() => searchParams?.get("q") ?? "", [searchParamsString, searchParams]);
+  const stageQuery = useMemo(
+    () => normalizeStageFilters(searchParams ? searchParams.getAll("stage") : []),
+    [searchParamsString, searchParams],
+  );
+  const unreturnedQuery = useMemo(() => searchParams?.get("unreturned") === "1", [searchParamsString, searchParams]);
   const { token } = useAuth();
   const sessionToken = token as string;
-  const [search, setSearch] = useState("");
-  const [stageFilters, setStageFilters] = useState<OrderStage[]>([]);
-  const [showUnreturnedOnly, setShowUnreturnedOnly] = useState(false);
+  const [search, setSearch] = useState(searchQuery);
+  const [stageFilters, setStageFilters] = useState<OrderStage[]>(stageQuery);
+  const [showUnreturnedOnly, setShowUnreturnedOnly] = useState(unreturnedQuery);
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState<Order[]>([]);
   const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
@@ -288,7 +311,9 @@ function OrdersContent() {
   const [productSearch, setProductSearch] = useState("");
   const [productMenuOpen, setProductMenuOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const editingOrderId = editingOrder?._id ?? null;
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<Order | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -303,8 +328,36 @@ function OrdersContent() {
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const ordersLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMoreOrdersTimerRef = useRef<number | null>(null);
+  const modalSnapshotRef = useRef<string>("");
+  const wasModalOpenRef = useRef(false);
   const preselectHandledRef = useRef<string | null>(null);
+  const skipUrlSyncRef = useRef(false);
+  const skipInitialResetRef = useRef(false);
+  const didRestoreRef = useRef(false);
+  const listStateRef = useRef<{
+    orders: Order[];
+    page: number;
+    pagination: OrderListResponse["pagination"];
+    search: string;
+    stageFilters: OrderStage[];
+    showUnreturnedOnly: boolean;
+  }>({
+    orders: [],
+    page: 1,
+    pagination: { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+    search: "",
+    stageFilters: [],
+    showUnreturnedOnly: false,
+  });
+  const [pendingScrollY, setPendingScrollY] = useState<number | null>(null);
   const preselectProductId = searchParams?.get("productId") ?? "";
+  const listStateKey = useMemo(() => {
+    const params = new URLSearchParams(searchParamsString);
+    params.delete("productId");
+    params.delete("orderModal");
+    const suffix = params.toString();
+    return `listState:${basePath}${suffix ? `?${suffix}` : ""}`;
+  }, [basePath, searchParamsString]);
 
   const list = useConvexQuery<OrderListResponse>("orders:list", {
     token: sessionToken,
@@ -381,6 +434,77 @@ function OrdersContent() {
   const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
   const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
 
+  useEffect(() => {
+    listStateRef.current = {
+      orders,
+      page,
+      pagination: ordersPagination,
+      search,
+      stageFilters,
+      showUnreturnedOnly,
+    };
+  }, [orders, ordersPagination, page, search, showUnreturnedOnly, stageFilters]);
+
+  useEffect(() => {
+    if (didRestoreRef.current) return;
+    didRestoreRef.current = true;
+    const stored = readListState<Order, OrderListResponse["pagination"]>(listStateKey);
+    if (!stored) return;
+    const storedSearch = typeof stored.extra?.search === "string" ? stored.extra.search : "";
+    const storedStagesRaw = Array.isArray(stored.extra?.stageFilters) ? (stored.extra.stageFilters as string[]) : [];
+    const storedStages = normalizeStageFilters(storedStagesRaw);
+    const storedUnreturned = stored.extra?.showUnreturnedOnly === true;
+    if (
+      storedSearch !== searchQuery ||
+      !areArraysEqual(storedStages, stageQuery) ||
+      storedUnreturned !== unreturnedQuery
+    ) {
+      return;
+    }
+    skipInitialResetRef.current = true;
+    skipUrlSyncRef.current = true;
+    setOrders(stored.items ?? []);
+    setPage(stored.page ?? 1);
+    if (stored.pagination) {
+      setOrdersPagination(stored.pagination);
+    }
+    setSearch(searchQuery);
+    setStageFilters(stageQuery);
+    setShowUnreturnedOnly(unreturnedQuery);
+    setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
+    clearListState(listStateKey);
+  }, [listStateKey, searchQuery, stageQuery, unreturnedQuery]);
+
+  useEffect(() => {
+    if (pendingScrollY === null) return;
+    const target = pendingScrollY;
+    setPendingScrollY(null);
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: target, behavior: "auto" });
+      });
+    }
+  }, [pendingScrollY]);
+
+  useEffect(() => {
+    return () => {
+      const snapshot = listStateRef.current;
+      if (!snapshot) return;
+      writeListState<Order, OrderListResponse["pagination"]>(listStateKey, {
+        items: snapshot.orders,
+        page: snapshot.page,
+        pagination: snapshot.pagination,
+        scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+        savedAt: Date.now(),
+        extra: {
+          search: snapshot.search,
+          stageFilters: snapshot.stageFilters,
+          showUnreturnedOnly: snapshot.showUnreturnedOnly,
+        },
+      });
+    };
+  }, [listStateKey]);
+
   const resetOrdersFeed = useCallback(() => {
     if (loadMoreOrdersTimerRef.current !== null) {
       window.clearTimeout(loadMoreOrdersTimerRef.current);
@@ -393,6 +517,67 @@ function OrdersContent() {
     setOrdersPagination((prev) => ({ ...prev, page: 1, total: 0, totalPages: 1 }));
     setIsLoadingMoreOrders(false);
   }, []);
+
+  useEffect(() => {
+    const current = listStateRef.current;
+    const normalizedStageFilters = normalizeStageFilters(current.stageFilters);
+    const searchChanged = current.search !== searchQuery;
+    const stagesChanged = !areArraysEqual(normalizedStageFilters, stageQuery);
+    const unreturnedChanged = current.showUnreturnedOnly !== unreturnedQuery;
+    if (!searchChanged && !stagesChanged && !unreturnedChanged) {
+      skipUrlSyncRef.current = false;
+      return;
+    }
+    if (searchChanged) {
+      setSearch(searchQuery);
+    }
+    if (stagesChanged) {
+      setStageFilters(stageQuery);
+    }
+    if (unreturnedChanged) {
+      setShowUnreturnedOnly(unreturnedQuery);
+    }
+    if (!skipUrlSyncRef.current) {
+      resetOrdersFeed();
+    }
+    skipUrlSyncRef.current = false;
+  }, [resetOrdersFeed, searchQuery, stageQuery, unreturnedQuery]);
+
+  useEffect(() => {
+    if (!searchParams) return;
+    const normalizedStages = normalizeStageFilters(stageFilters);
+    const nextSearch = search.trim();
+    const needsUpdate =
+      nextSearch !== searchQuery ||
+      !areArraysEqual(normalizedStages, stageQuery) ||
+      showUnreturnedOnly !== unreturnedQuery;
+    if (!needsUpdate) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextSearch) {
+      params.set("q", nextSearch);
+    } else {
+      params.delete("q");
+    }
+    params.delete("stage");
+    normalizedStages.forEach((stage) => params.append("stage", stage));
+    if (showUnreturnedOnly) {
+      params.set("unreturned", "1");
+    } else {
+      params.delete("unreturned");
+    }
+    const next = params.toString();
+    router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
+  }, [
+    basePath,
+    router,
+    search,
+    searchParams,
+    searchQuery,
+    showUnreturnedOnly,
+    stageFilters,
+    stageQuery,
+    unreturnedQuery,
+  ]);
 
   const handleStageFilterToggle = useCallback(
     (stage: OrderStage) => {
@@ -411,6 +596,10 @@ function OrdersContent() {
   );
 
   useEffect(() => {
+    if (skipInitialResetRef.current) {
+      skipInitialResetRef.current = false;
+      return;
+    }
     resetOrdersFeed();
   }, [resetOrdersFeed, sessionToken, orderScope]);
 
@@ -554,6 +743,66 @@ function OrdersContent() {
     return findFirstErrorPath(form.formState.errors, orderFocusOrder);
   }, [form.formState.errors]);
 
+  const buildModalSnapshot = useCallback(() => {
+    const values = form.getValues();
+    return JSON.stringify({
+      editingOrderId,
+      form: {
+        stage: values.stage ?? "poruceno",
+        customerName: values.customerName?.trim() ?? "",
+        address: values.address?.trim() ?? "",
+        phone: values.phone?.trim() ?? "",
+        transportCost: values.transportCost ?? null,
+        transportMode: values.transportMode ?? null,
+        myProfitPercent: typeof values.myProfitPercent === "number" ? values.myProfitPercent : 100,
+        pickup: Boolean(values.pickup),
+        sendEmail: values.sendEmail ?? true,
+        note: values.note?.trim() ?? "",
+      },
+      draftItems: draftItems.map((item) => ({
+        id: item.id,
+        productId: item.product?._id ?? "",
+        variantId: item.variant?.id ?? "",
+        supplierId: item.supplierId ?? "",
+        kolicina: Number(item.kolicina ?? 0),
+        nabavnaCena: Number(item.nabavnaCena ?? 0),
+        prodajnaCena: Number(item.prodajnaCena ?? 0),
+        manualProdajna: Boolean(item.manualProdajna),
+        variantLabel: item.variantLabel ?? "",
+        title: item.title ?? "",
+      })),
+      productInput: productInput ?? "",
+      itemProductId: itemProductId ?? "",
+      itemVariantId: itemVariantId ?? "",
+      itemSupplierId: itemSupplierId ?? "",
+      itemQuantity: Number(itemQuantity ?? 0),
+      useManualSalePrice: Boolean(useManualSalePrice),
+      manualSalePrice: manualSalePrice ?? "",
+    });
+  }, [
+    draftItems,
+    editingOrderId,
+    form,
+    itemProductId,
+    itemQuantity,
+    itemSupplierId,
+    itemVariantId,
+    manualSalePrice,
+    productInput,
+    useManualSalePrice,
+  ]);
+
+  useEffect(() => {
+    if (isModalOpen && !wasModalOpenRef.current) {
+      modalSnapshotRef.current = buildModalSnapshot();
+      setExitConfirmOpen(false);
+    }
+    if (!isModalOpen && wasModalOpenRef.current) {
+      modalSnapshotRef.current = "";
+    }
+    wasModalOpenRef.current = isModalOpen;
+  }, [buildModalSnapshot, isModalOpen]);
+
   useEffect(() => {
     if (!selectedProduct || selectedVariants.length === 0) {
       if (itemVariantId) {
@@ -614,9 +863,22 @@ function OrdersContent() {
     setItemQuantity(1);
     setUseManualSalePrice(false);
     setManualSalePrice("");
+    setExitConfirmOpen(false);
     if (options?.closeModal) {
+      modalSnapshotRef.current = "";
       setIsModalOpen(false);
     }
+  };
+
+  const requestCloseOrderModal = () => {
+    if (!isModalOpen || exitConfirmOpen) return;
+    const snapshot = modalSnapshotRef.current;
+    const hasChanges = Boolean(snapshot) && snapshot !== buildModalSnapshot();
+    if (hasChanges) {
+      setExitConfirmOpen(true);
+      return;
+    }
+    resetOrderForm({ closeModal: true });
   };
 
   const handleAddItem = () => {
@@ -1027,10 +1289,11 @@ function OrdersContent() {
       <Dialog
         open={isModalOpen}
         onOpenChange={(open) => {
-          setIsModalOpen(open);
-          if (!open) {
-            resetOrderForm();
+          if (open) {
+            setIsModalOpen(true);
+            return;
           }
+          requestCloseOrderModal();
         }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
@@ -1607,7 +1870,7 @@ function OrdersContent() {
               />
             </div>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="ghost" onClick={() => resetOrderForm({ closeModal: true })}>
+              <Button type="button" variant="ghost" onClick={requestCloseOrderModal}>
                 {editingOrder ? "Otkazi izmene" : "Ponisti"}
               </Button>
               <Button type="submit" disabled={form.formState.isSubmitting}>
@@ -1615,6 +1878,29 @@ function OrdersContent() {
               </Button>
             </div>
           </Form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={exitConfirmOpen} onOpenChange={setExitConfirmOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Napusti formu?</DialogTitle>
+            <DialogDescription>Imas nesacuvane izmene. Ako izadjes, izgubices uneto.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setExitConfirmOpen(false)}>
+              Ostani
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setExitConfirmOpen(false);
+                resetOrderForm({ closeModal: true });
+              }}
+            >
+              Napusti
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={deleteModalOpen} onOpenChange={handleDeleteModalOpenChange}>
@@ -1762,9 +2048,188 @@ function OrdersContent() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3 md:hidden">
+            {isOrdersLoading ? (
+              <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
+                Ucitavanje...
+              </div>
+            ) : orderEntries.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
+                Jos nema narudzbina.
+              </div>
+            ) : (
+              orderEntries.map(({ order, prodajnoUkupno, nabavnoUkupno, transport, profitShare, povrat }) => {
+                  const previewImages = getOrderPreviewImages(order);
+                  const itemNames = (order.items ?? [])
+                    .map((item) => {
+                      const product = item.productId ? productMap.get(item.productId) : undefined;
+                      return product ? getProductDisplayName(product) : item.title;
+                    })
+                    .filter((name) => Boolean(name && name.trim().length > 0));
+                  const primaryTitle = itemNames[0] ?? order.title;
+                  const secondaryNames = itemNames.slice(1, 3);
+                  const remainingCount = itemNames.length > 3 ? itemNames.length - 3 : 0;
+
+                  return (
+                    <div
+                      key={order._id}
+                      className={cn(
+                        "rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition",
+                        draggingOrderId === order._id ? "opacity-60" : "hover:border-blue-200",
+                      )}
+                      onClick={() => handleRowClick(order._id)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-xs text-slate-500">{formatDate(order.kreiranoAt)}</span>
+                        <StageBadge stage={order.stage} />
+                      </div>
+                      <div className="mt-3 flex items-start gap-3">
+                        <div className="flex flex-wrap gap-1">
+                          {previewImages.length === 0 ? (
+                            <div className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase text-slate-400">
+                              N/A
+                            </div>
+                          ) : (
+                            previewImages.slice(0, 3).map((image) =>
+                              image.url ? (
+                                <div
+                                  key={image.id}
+                                  className="h-12 w-12 overflow-hidden rounded-md border-2 border-white shadow-sm"
+                                >
+                                  <img src={image.url} alt={image.alt} className="h-full w-full object-cover" />
+                                </div>
+                              ) : (
+                                <div
+                                  key={image.id}
+                                  className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase text-slate-400"
+                                >
+                                  N/A
+                                </div>
+                              ),
+                            )
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center gap-1 text-sm font-semibold text-slate-900">
+                            <span className="truncate">{primaryTitle}</span>
+                            <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                          </div>
+                          {secondaryNames.length > 0 ? (
+                            <p className="text-xs text-slate-500">
+                              {secondaryNames.join(" / ")}
+                              {remainingCount > 0 ? ` +${remainingCount}` : ""}
+                            </p>
+                          ) : null}
+                          {order.items && order.items.length > 1 ? (
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                              {order.items.length} proizvoda
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-col gap-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                        <a
+                          href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
+                          className="flex flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <span className="font-medium text-slate-800">{order.customerName}</span>
+                          <span className="flex items-center gap-1 text-xs text-slate-500">
+                            <PhoneCall className="h-4 w-4 text-blue-500" />
+                            {order.phone}
+                          </span>
+                        </a>
+                        {order.pickup ? (
+                          <span className="inline-flex items-center gap-1 self-start rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
+                            <UserRound className="h-3.5 w-3.5" />
+                            Licno
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1">
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500">Nabavno</p>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {formatCurrency(nabavnoUkupno, "EUR")}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1">
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500">Transport</p>
+                          <p className="text-sm font-semibold text-slate-900">{formatCurrency(transport, "EUR")}</p>
+                        </div>
+                        <div className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1">
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500">Prodajno</p>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {formatCurrency(prodajnoUkupno, "EUR")}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1">
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500">Profit (50%)</p>
+                          <p className={`text-sm font-semibold ${profitShare < 0 ? "text-red-600" : "text-slate-900"}`}>
+                            {formatCurrency(profitShare, "EUR")}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500">Povrat</p>
+                          <p className="text-sm font-semibold text-slate-900">{formatCurrency(povrat, "EUR")}</p>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(order.povratVracen)}
+                            onChange={(event) => {
+                              event.stopPropagation();
+                              void handlePovratToggle(order, event.target.checked);
+                            }}
+                            onClick={(event) => event.stopPropagation()}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          Vracen
+                        </label>
+                      </div>
+                      <div className="mt-3 rounded-lg border border-slate-100 bg-white px-3 py-2 text-xs text-slate-500">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Napomena</p>
+                        <p className="mt-1 line-clamp-2">{order.napomena || "-"}</p>
+                      </div>
+                      <div
+                        className="mt-3 flex flex-wrap items-center gap-2"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <select
+                          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
+                          value={order.stage}
+                          onChange={(event) => handleStageChange(order, event.target.value as OrderStage)}
+                        >
+                          {stageOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openDeleteModal(order);
+                          }}
+                        >
+                          Obrisi
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                },
+              )
+            )}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
               <TableRow>
                 <TableHead className="text-center">Datum</TableHead>
                 <TableHead className="text-center">Stage</TableHead>
@@ -1778,8 +2243,8 @@ function OrdersContent() {
                 <TableHead className="text-center">Napomena</TableHead>
                 <TableHead className="text-center">Akcije</TableHead>
               </TableRow>
-            </TableHeader>
-            <TableBody>
+              </TableHeader>
+              <TableBody>
               {isOrdersLoading ? (
                 <TableRow>
                   <TableCell colSpan={11} className="text-center text-sm text-slate-500">
@@ -1965,8 +2430,9 @@ function OrdersContent() {
                   },
                 )
               )}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+          </div>
           <div ref={ordersLoaderRef} className="flex justify-center">
             <LoadingDots show={isLoadingMoreOrders && hasMoreOrders} />
           </div>
@@ -1975,4 +2441,3 @@ function OrdersContent() {
     </div>
   );
 }
-

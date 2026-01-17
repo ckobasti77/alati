@@ -2,7 +2,7 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useForm, useWatch, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -62,6 +62,7 @@ import { LoadingDots } from "@/components/LoadingDots";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
 import { normalizeSearchText } from "@/lib/search";
+import { clearListState, readListState, writeListState } from "@/lib/listState";
 import type { Category, InboxImage, Product, ProductListResponse, ProductStats, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -182,6 +183,10 @@ type SortOption = "created_desc" | "price_desc" | "price_asc" | "sales_desc" | "
 type InboxImageStatus = "withPurchasePrice" | "withoutPurchasePrice" | "skip";
 
 type InboxViewFilter = InboxImageStatus;
+
+const sortOptions: SortOption[] = ["created_desc", "price_desc", "price_asc", "sales_desc", "profit_desc"];
+const archiveViewOptions = ["active", "archived"] as const;
+const viewModeOptions = ["list", "grid"] as const;
 
 type LightboxItem = {
   id?: string;
@@ -326,6 +331,10 @@ export default function ProductsPage() {
 
 function ProductsContent() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchParamsString = useMemo(() => searchParams?.toString() ?? "", [searchParams]);
+  const searchQuery = useMemo(() => searchParams?.get("q") ?? "", [searchParamsString, searchParams]);
   const { token, user } = useAuth();
   const sessionToken = token as string;
   const isKodMajstor = user?.username === "kodmajstora";
@@ -344,7 +353,7 @@ function ProductsContent() {
   const [archiveView, setArchiveView] = useState<"active" | "archived">("active");
   const [isMobile, setIsMobile] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("created_desc");
-  const [productSearch, setProductSearch] = useState("");
+  const [productSearch, setProductSearch] = useState(searchQuery);
   const [productPage, setProductPage] = useState(1);
   const [productFeed, setProductFeed] = useState<Product[]>([]);
   const [productPagination, setProductPagination] = useState<ProductListResponse["pagination"]>({
@@ -381,6 +390,31 @@ function ProductsContent() {
   const dialogScrollRef = useRef<HTMLDivElement | null>(null);
   const productsLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMoreProductsTimerRef = useRef<number | null>(null);
+  const skipUrlSyncRef = useRef(false);
+  const skipInitialResetRef = useRef(false);
+  const didRestoreRef = useRef(false);
+  const listStateRef = useRef<{
+    feed: Product[];
+    page: number;
+    pagination: ProductListResponse["pagination"];
+    search: string;
+    sortBy: SortOption;
+    archiveView: "active" | "archived";
+    viewMode: "list" | "grid";
+  }>({
+    feed: [],
+    page: 1,
+    pagination: { page: 1, pageSize: PRODUCTS_PAGE_SIZE, total: 0, totalPages: 1 },
+    search: "",
+    sortBy: "created_desc",
+    archiveView: "active",
+    viewMode: "grid",
+  });
+  const [pendingScrollY, setPendingScrollY] = useState<number | null>(null);
+  const listStateKey = useMemo(() => {
+    const suffix = searchParamsString ? `?${searchParamsString}` : "";
+    return `listState:${pathname}${suffix}`;
+  }, [pathname, searchParamsString]);
   const fileInputId = useMemo(() => `product-images-${generateId()}`, []);
   const adUploadInputId = useMemo(() => `ad-image-${generateId()}`, []);
   const hiddenFileInputStyle = useMemo<CSSProperties>(
@@ -431,6 +465,80 @@ function ProductsContent() {
   const deleteInboxImage = useConvexMutation<{ token: string; id: string }>("inboxImages:remove");
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
 
+  useEffect(() => {
+    listStateRef.current = {
+      feed: productFeed,
+      page: productPage,
+      pagination: productPagination,
+      search: productSearch,
+      sortBy,
+      archiveView,
+      viewMode,
+    };
+  }, [archiveView, productFeed, productPage, productPagination, productSearch, sortBy, viewMode]);
+
+  useEffect(() => {
+    if (didRestoreRef.current) return;
+    didRestoreRef.current = true;
+    const stored = readListState<Product, ProductListResponse["pagination"]>(listStateKey);
+    if (!stored) return;
+    const storedSearch = typeof stored.extra?.search === "string" ? stored.extra.search : "";
+    if (storedSearch !== searchQuery) return;
+    const storedSort = stored.extra?.sortBy;
+    const storedArchive = stored.extra?.archiveView;
+    const storedView = stored.extra?.viewMode;
+    skipInitialResetRef.current = true;
+    skipUrlSyncRef.current = true;
+    if (typeof storedSort === "string" && sortOptions.includes(storedSort as SortOption)) {
+      setSortBy(storedSort as SortOption);
+    }
+    if (typeof storedArchive === "string" && archiveViewOptions.includes(storedArchive as (typeof archiveViewOptions)[number])) {
+      setArchiveView(storedArchive as (typeof archiveViewOptions)[number]);
+    }
+    if (typeof storedView === "string" && viewModeOptions.includes(storedView as (typeof viewModeOptions)[number])) {
+      setViewMode(storedView as (typeof viewModeOptions)[number]);
+    }
+    setProductFeed(stored.items ?? []);
+    setProductPage(stored.page ?? 1);
+    if (stored.pagination) {
+      setProductPagination(stored.pagination);
+    }
+    setProductSearch(searchQuery);
+    setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
+    clearListState(listStateKey);
+  }, [listStateKey, searchQuery]);
+
+  useEffect(() => {
+    if (pendingScrollY === null) return;
+    const target = pendingScrollY;
+    setPendingScrollY(null);
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: target, behavior: "auto" });
+      });
+    }
+  }, [pendingScrollY]);
+
+  useEffect(() => {
+    return () => {
+      const snapshot = listStateRef.current;
+      if (!snapshot) return;
+      writeListState<Product, ProductListResponse["pagination"]>(listStateKey, {
+        items: snapshot.feed,
+        page: snapshot.page,
+        pagination: snapshot.pagination,
+        scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+        savedAt: Date.now(),
+        extra: {
+          search: snapshot.search,
+          sortBy: snapshot.sortBy,
+          archiveView: snapshot.archiveView,
+          viewMode: snapshot.viewMode,
+        },
+      });
+    };
+  }, [listStateKey]);
+
   const resetProductsFeed = useCallback(() => {
     if (loadMoreProductsTimerRef.current !== null) {
       window.clearTimeout(loadMoreProductsTimerRef.current);
@@ -443,8 +551,40 @@ function ProductsContent() {
   }, []);
 
   useEffect(() => {
+    if (skipInitialResetRef.current) {
+      skipInitialResetRef.current = false;
+      return;
+    }
     resetProductsFeed();
   }, [resetProductsFeed, sessionToken, archiveView]);
+
+  useEffect(() => {
+    const current = listStateRef.current;
+    const searchChanged = current.search !== searchQuery;
+    if (!searchChanged) {
+      skipUrlSyncRef.current = false;
+      return;
+    }
+    setProductSearch(searchQuery);
+    if (!skipUrlSyncRef.current) {
+      resetProductsFeed();
+    }
+    skipUrlSyncRef.current = false;
+  }, [resetProductsFeed, searchQuery]);
+
+  useEffect(() => {
+    if (!searchParams) return;
+    const nextSearch = productSearch.trim();
+    if (nextSearch === searchQuery) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextSearch) {
+      params.set("q", nextSearch);
+    } else {
+      params.delete("q");
+    }
+    const next = params.toString();
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [pathname, productSearch, router, searchParams, searchQuery]);
 
   useEffect(() => {
     if (!productList) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -279,12 +279,19 @@ function OrderDetailsContent() {
   const orderScope = isKalaba ? "kalaba" : "default";
   const router = useRouter();
   const orderId = typeof params?.orderId === "string" ? params.orderId : "";
+  const handleBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push(basePath);
+  }, [basePath, router]);
 
   if (!orderId) {
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-4 text-center">
         <p className="text-lg font-semibold text-slate-800">Nije prosledjen ID narudzbine.</p>
-        <Button onClick={() => router.push(basePath)}>{backLabel}</Button>
+        <Button onClick={handleBack}>{backLabel}</Button>
       </div>
     );
   }
@@ -304,6 +311,13 @@ function OrderDetails({
   orderScope: "default" | "kalaba";
 }) {
   const router = useRouter();
+  const handleBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push(basePath);
+  }, [basePath, router]);
   const { token } = useAuth();
   const sessionToken = token as string;
   const [isUpdatingStage, setIsUpdatingStage] = useState(false);
@@ -727,7 +741,7 @@ function OrderDetails({
       await deleteOrder({ id: order._id, token: sessionToken, scope: orderScope });
       toast.success("Narudzbina je obrisana.");
       closeDeleteModal();
-      router.push(basePath);
+      handleBack();
     } catch (error) {
       console.error(error);
       toast.error("Brisanje nije uspelo.");
@@ -761,7 +775,7 @@ function OrderDetails({
       <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-4 text-center">
         <p className="text-lg font-semibold text-slate-800">Narudzbina nije pronadjena.</p>
         <p className="text-sm text-slate-500">Proveri link ili se vrati na listu narudzbina.</p>
-        <Button onClick={() => router.push(basePath)}>{backLabel}</Button>
+        <Button onClick={handleBack}>{backLabel}</Button>
       </div>
     );
   }
@@ -830,7 +844,7 @@ function OrderDetails({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => router.push(basePath)}
+            onClick={handleBack}
             className="gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
