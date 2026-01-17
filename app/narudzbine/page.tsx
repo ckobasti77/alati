@@ -331,6 +331,7 @@ function OrdersContent() {
   const modalSnapshotRef = useRef<string>("");
   const wasModalOpenRef = useRef(false);
   const preselectHandledRef = useRef<string | null>(null);
+  const scrollYRef = useRef(0);
   const skipUrlSyncRef = useRef(false);
   const skipInitialResetRef = useRef(false);
   const didRestoreRef = useRef(false);
@@ -358,6 +359,16 @@ function OrdersContent() {
     const suffix = params.toString();
     return `listState:${basePath}${suffix ? `?${suffix}` : ""}`;
   }, [basePath, searchParamsString]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleScroll = () => {
+      scrollYRef.current = window.scrollY;
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const list = useConvexQuery<OrderListResponse>("orders:list", {
     token: sessionToken,
@@ -494,7 +505,7 @@ function OrdersContent() {
         items: snapshot.orders,
         page: snapshot.page,
         pagination: snapshot.pagination,
-        scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+        scrollY: scrollYRef.current,
         savedAt: Date.now(),
         extra: {
           search: snapshot.search,

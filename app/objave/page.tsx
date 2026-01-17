@@ -94,6 +94,7 @@ function SocialContent() {
   const [isLoadingMorePosts, setIsLoadingMorePosts] = useState(false);
   const postsLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMorePostsTimerRef = useRef<number | null>(null);
+  const scrollYRef = useRef(0);
   const skipUrlSyncRef = useRef(false);
   const skipInitialResetRef = useRef(false);
   const didRestoreRef = useRef(false);
@@ -138,6 +139,16 @@ function SocialContent() {
     [],
   );
   const [removingScheduledId, setRemovingScheduledId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleScroll = () => {
+      scrollYRef.current = window.scrollY;
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     listStateRef.current = {
@@ -191,7 +202,7 @@ function SocialContent() {
         items: snapshot.feed,
         page: snapshot.page,
         pagination: snapshot.pagination,
-        scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+        scrollY: scrollYRef.current,
         savedAt: Date.now(),
         extra: {
           search: snapshot.search,

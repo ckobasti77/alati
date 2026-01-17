@@ -339,7 +339,9 @@ function ProductsContent() {
   const sessionToken = token as string;
   const isKodMajstor = user?.username === "kodmajstora";
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const editingProductId = editingProduct?._id ?? null;
   const [images, setImages] = useState<DraftImage[]>([]);
   const [variantImages, setVariantImages] = useState<Record<string, DraftImage[]>>({});
   const [adImage, setAdImage] = useState<DraftAdImage | null>(null);
@@ -388,8 +390,11 @@ function ProductsContent() {
   const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
   const dialogScrollRef = useRef<HTMLDivElement | null>(null);
+  const modalSnapshotRef = useRef<string>("");
+  const wasModalOpenRef = useRef(false);
   const productsLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMoreProductsTimerRef = useRef<number | null>(null);
+  const scrollYRef = useRef(0);
   const skipUrlSyncRef = useRef(false);
   const skipInitialResetRef = useRef(false);
   const didRestoreRef = useRef(false);
@@ -466,6 +471,16 @@ function ProductsContent() {
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleScroll = () => {
+      scrollYRef.current = window.scrollY;
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
     listStateRef.current = {
       feed: productFeed,
       page: productPage,
@@ -527,7 +542,7 @@ function ProductsContent() {
         items: snapshot.feed,
         page: snapshot.page,
         pagination: snapshot.pagination,
-        scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+        scrollY: scrollYRef.current,
         savedAt: Date.now(),
         extra: {
           search: snapshot.search,
@@ -726,6 +741,7 @@ function ProductsContent() {
 
   const resetForm = () => {
     form.reset(emptyProductForm());
+    setExitConfirmOpen(false);
     setImages((previous) => {
       previous.forEach((image) => {
         if (image.previewUrl) {
@@ -766,12 +782,24 @@ function ProductsContent() {
 
   const closeModal = () => {
     resetForm();
+    modalSnapshotRef.current = "";
     setIsModalOpen(false);
   };
 
   const openCreateModal = () => {
     resetForm();
     setIsModalOpen(true);
+  };
+
+  const requestCloseModal = () => {
+    if (!isModalOpen || exitConfirmOpen) return;
+    const snapshot = modalSnapshotRef.current;
+    const hasChanges = Boolean(snapshot) && snapshot !== buildModalSnapshot();
+    if (hasChanges) {
+      setExitConfirmOpen(true);
+      return;
+    }
+    closeModal();
   };
 
   const buildImagePayload = (list: DraftImage[] = []) => {
@@ -1377,6 +1405,92 @@ function ProductsContent() {
       form.setValue("nabavnaCenaIsReal", true, { shouldDirty: true, shouldValidate: true });
     }
   }, [bestFormOffer, form, hasSupplierOffers]);
+
+  const buildModalSnapshot = useCallback(() => {
+    const values = form.getValues();
+    const normalizeImage = (image: DraftImage) => ({
+      storageId: image.storageId,
+      url: image.url ?? "",
+      fileName: image.fileName ?? "",
+      fileType: image.fileType ?? "",
+      uploadedAt: image.uploadedAt ?? 0,
+      publishFb: image.publishFb ?? true,
+      publishIg: image.publishIg ?? true,
+      isMain: Boolean(image.isMain),
+    });
+    const normalizedVariantImages = Object.keys(variantImages)
+      .sort()
+      .map((variantId) => ({
+        variantId,
+        images: (variantImages[variantId] ?? []).map(normalizeImage),
+      }));
+    return JSON.stringify({
+      editingProductId,
+      form: {
+        productType: values.productType ?? "single",
+        kpName: values.kpName?.trim() ?? "",
+        name: values.name?.trim() ?? "",
+        nabavnaCena: values.nabavnaCena ?? "",
+        nabavnaCenaIsReal: Boolean(values.nabavnaCenaIsReal),
+        prodajnaCena: values.prodajnaCena ?? "",
+        categoryIds: (values.categoryIds ?? []).filter(Boolean),
+        supplierOffers: (values.supplierOffers ?? []).map((offer) => ({
+          id: offer.id ?? "",
+          supplierId: offer.supplierId ?? "",
+          price: offer.price ?? "",
+          variantId: offer.variantId ?? "",
+        })),
+        opisKp: values.opisKp?.trim() ?? "",
+        opisFbInsta: values.opisFbInsta?.trim() ?? "",
+        publishKp: Boolean(values.publishKp),
+        publishFb: Boolean(values.publishFb),
+        publishIg: Boolean(values.publishIg),
+        publishFbProfile: Boolean(values.publishFbProfile),
+        publishMarketplace: Boolean(values.publishMarketplace),
+        pickupAvailable: Boolean(values.pickupAvailable),
+        variants: (values.variants ?? []).map((variant) => ({
+          id: variant.id ?? "",
+          label: variant.label?.trim() ?? "",
+          nabavnaCena: variant.nabavnaCena ?? "",
+          nabavnaCenaIsReal: Boolean(variant.nabavnaCenaIsReal),
+          prodajnaCena: variant.prodajnaCena ?? "",
+          opis: variant.opis?.trim() ?? "",
+          isDefault: Boolean(variant.isDefault),
+        })),
+      },
+      images: images.map(normalizeImage),
+      variantImages: normalizedVariantImages,
+      adImage: adImage
+        ? {
+            storageId: adImage.storageId,
+            url: adImage.url ?? "",
+            fileName: adImage.fileName ?? "",
+            fileType: adImage.fileType ?? "",
+            uploadedAt: adImage.uploadedAt ?? 0,
+          }
+        : null,
+      categorySearch: categorySearch?.trim() ?? "",
+      newCategoryName: newCategoryName?.trim() ?? "",
+      newCategoryIcon: newCategoryIcon
+        ? {
+            storageId: newCategoryIcon.storageId,
+            fileName: newCategoryIcon.fileName ?? "",
+            contentType: newCategoryIcon.contentType ?? "",
+          }
+        : null,
+    });
+  }, [adImage, categorySearch, editingProductId, form, images, newCategoryIcon, newCategoryName, variantImages]);
+
+  useEffect(() => {
+    if (isModalOpen && !wasModalOpenRef.current) {
+      modalSnapshotRef.current = buildModalSnapshot();
+      setExitConfirmOpen(false);
+    }
+    if (!isModalOpen && wasModalOpenRef.current) {
+      modalSnapshotRef.current = "";
+    }
+    wasModalOpenRef.current = isModalOpen;
+  }, [buildModalSnapshot, isModalOpen]);
 
   const seedInitialVariant = () => {
     const entry = createVariantFormEntry({
@@ -2340,7 +2454,16 @@ function ProductsContent() {
         </div>
       </header>
 
-      <Dialog open={isModalOpen} onOpenChange={(open) => (open ? setIsModalOpen(true) : closeModal())}>
+      <Dialog
+        open={isModalOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setIsModalOpen(true);
+            return;
+          }
+          requestCloseModal();
+        }}
+      >
         <DialogContent className="max-w-5xl overflow-hidden p-0">
           <div
             ref={dialogScrollRef}
@@ -3444,7 +3567,7 @@ function ProductsContent() {
               )}
             </div>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={resetForm}>
+              <Button type="button" variant="ghost" onClick={requestCloseModal}>
                 {editingProduct ? "Otkazi izmene" : "Ponisti"}
               </Button>
               <Button type="submit" disabled={form.formState.isSubmitting}>
@@ -3456,6 +3579,29 @@ function ProductsContent() {
         </Card>
       </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={exitConfirmOpen} onOpenChange={setExitConfirmOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Napusti formu?</DialogTitle>
+            <DialogDescription>Imas nesacuvane izmene. Ako izadjes, izgubices uneto.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setExitConfirmOpen(false)}>
+              Ostani
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setExitConfirmOpen(false);
+                closeModal();
+              }}
+            >
+              Napusti
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
