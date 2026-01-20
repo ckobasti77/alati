@@ -291,11 +291,15 @@ function OrdersContent() {
     [searchParamsString, searchParams],
   );
   const unreturnedQuery = useMemo(() => searchParams?.get("unreturned") === "1", [searchParamsString, searchParams]);
+  const returnedQuery = useMemo(() => searchParams?.get("returned") === "1", [searchParamsString, searchParams]);
+  const effectiveUnreturnedQuery = unreturnedQuery && !returnedQuery;
+  const effectiveReturnedQuery = returnedQuery;
   const { token } = useAuth();
   const sessionToken = token as string;
   const [search, setSearch] = useState(searchQuery);
   const [stageFilters, setStageFilters] = useState<OrderStage[]>(stageQuery);
-  const [showUnreturnedOnly, setShowUnreturnedOnly] = useState(unreturnedQuery);
+  const [showUnreturnedOnly, setShowUnreturnedOnly] = useState(effectiveUnreturnedQuery);
+  const [showReturnedOnly, setShowReturnedOnly] = useState(effectiveReturnedQuery);
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState<Order[]>([]);
   const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
@@ -342,6 +346,7 @@ function OrdersContent() {
     search: string;
     stageFilters: OrderStage[];
     showUnreturnedOnly: boolean;
+    showReturnedOnly: boolean;
   }>({
     orders: [],
     page: 1,
@@ -349,6 +354,7 @@ function OrdersContent() {
     search: "",
     stageFilters: [],
     showUnreturnedOnly: false,
+    showReturnedOnly: false,
   });
   const [pendingScrollY, setPendingScrollY] = useState<number | null>(null);
   const preselectProductId = searchParams?.get("productId") ?? "";
@@ -377,6 +383,7 @@ function OrdersContent() {
     pageSize: 10,
     stages: stageFilters,
     unreturnedOnly: showUnreturnedOnly,
+    returnedOnly: showReturnedOnly,
     scope: orderScope,
   });
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
@@ -453,8 +460,9 @@ function OrdersContent() {
       search,
       stageFilters,
       showUnreturnedOnly,
+      showReturnedOnly,
     };
-  }, [orders, ordersPagination, page, search, showUnreturnedOnly, stageFilters]);
+  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, stageFilters]);
 
   useEffect(() => {
     if (didRestoreRef.current) return;
@@ -465,10 +473,12 @@ function OrdersContent() {
     const storedStagesRaw = Array.isArray(stored.extra?.stageFilters) ? (stored.extra.stageFilters as string[]) : [];
     const storedStages = normalizeStageFilters(storedStagesRaw);
     const storedUnreturned = stored.extra?.showUnreturnedOnly === true;
+    const storedReturned = stored.extra?.showReturnedOnly === true;
     if (
       storedSearch !== searchQuery ||
       !areArraysEqual(storedStages, stageQuery) ||
-      storedUnreturned !== unreturnedQuery
+      storedUnreturned !== effectiveUnreturnedQuery ||
+      storedReturned !== effectiveReturnedQuery
     ) {
       return;
     }
@@ -481,10 +491,11 @@ function OrdersContent() {
     }
     setSearch(searchQuery);
     setStageFilters(stageQuery);
-    setShowUnreturnedOnly(unreturnedQuery);
+    setShowUnreturnedOnly(effectiveUnreturnedQuery);
+    setShowReturnedOnly(effectiveReturnedQuery);
     setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
     clearListState(listStateKey);
-  }, [listStateKey, searchQuery, stageQuery, unreturnedQuery]);
+  }, [listStateKey, searchQuery, stageQuery, effectiveUnreturnedQuery, effectiveReturnedQuery]);
 
   useEffect(() => {
     if (pendingScrollY === null) return;
@@ -511,6 +522,7 @@ function OrdersContent() {
           search: snapshot.search,
           stageFilters: snapshot.stageFilters,
           showUnreturnedOnly: snapshot.showUnreturnedOnly,
+          showReturnedOnly: snapshot.showReturnedOnly,
         },
       });
     };
@@ -534,8 +546,9 @@ function OrdersContent() {
     const normalizedStageFilters = normalizeStageFilters(current.stageFilters);
     const searchChanged = current.search !== searchQuery;
     const stagesChanged = !areArraysEqual(normalizedStageFilters, stageQuery);
-    const unreturnedChanged = current.showUnreturnedOnly !== unreturnedQuery;
-    if (!searchChanged && !stagesChanged && !unreturnedChanged) {
+    const unreturnedChanged = current.showUnreturnedOnly !== effectiveUnreturnedQuery;
+    const returnedChanged = current.showReturnedOnly !== effectiveReturnedQuery;
+    if (!searchChanged && !stagesChanged && !unreturnedChanged && !returnedChanged) {
       skipUrlSyncRef.current = false;
       return;
     }
@@ -546,13 +559,16 @@ function OrdersContent() {
       setStageFilters(stageQuery);
     }
     if (unreturnedChanged) {
-      setShowUnreturnedOnly(unreturnedQuery);
+      setShowUnreturnedOnly(effectiveUnreturnedQuery);
+    }
+    if (returnedChanged) {
+      setShowReturnedOnly(effectiveReturnedQuery);
     }
     if (!skipUrlSyncRef.current) {
       resetOrdersFeed();
     }
     skipUrlSyncRef.current = false;
-  }, [resetOrdersFeed, searchQuery, stageQuery, unreturnedQuery]);
+  }, [resetOrdersFeed, searchQuery, stageQuery, effectiveUnreturnedQuery, effectiveReturnedQuery]);
 
   useEffect(() => {
     if (!searchParams) return;
@@ -561,7 +577,8 @@ function OrdersContent() {
     const needsUpdate =
       nextSearch !== searchQuery ||
       !areArraysEqual(normalizedStages, stageQuery) ||
-      showUnreturnedOnly !== unreturnedQuery;
+      showUnreturnedOnly !== effectiveUnreturnedQuery ||
+      showReturnedOnly !== effectiveReturnedQuery;
     if (!needsUpdate) return;
     const params = new URLSearchParams(searchParams.toString());
     if (nextSearch) {
@@ -576,6 +593,11 @@ function OrdersContent() {
     } else {
       params.delete("unreturned");
     }
+    if (showReturnedOnly) {
+      params.set("returned", "1");
+    } else {
+      params.delete("returned");
+    }
     const next = params.toString();
     router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
   }, [
@@ -585,9 +607,11 @@ function OrdersContent() {
     searchParams,
     searchQuery,
     showUnreturnedOnly,
+    showReturnedOnly,
     stageFilters,
     stageQuery,
-    unreturnedQuery,
+    effectiveUnreturnedQuery,
+    effectiveReturnedQuery,
   ]);
 
   const handleStageFilterToggle = useCallback(
@@ -601,6 +625,20 @@ function OrdersContent() {
   const handleUnreturnedToggle = useCallback(
     (checked: boolean) => {
       setShowUnreturnedOnly(checked);
+      if (checked) {
+        setShowReturnedOnly(false);
+      }
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  const handleReturnedToggle = useCallback(
+    (checked: boolean) => {
+      setShowReturnedOnly(checked);
+      if (checked) {
+        setShowUnreturnedOnly(false);
+      }
       resetOrdersFeed();
     },
     [resetOrdersFeed],
@@ -1199,6 +1237,7 @@ function OrdersContent() {
         prev.flatMap((item) => {
           if (item._id !== order._id) return [item];
           if (showUnreturnedOnly && nextValue) return [];
+          if (showReturnedOnly && !nextValue) return [];
           return [{ ...item, povratVracen: nextValue }];
         }),
       );
@@ -2043,6 +2082,22 @@ function OrdersContent() {
                   />
                   Nepovraceni
                 </label>
+                <label
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 rounded-full border px-2 py-1 text-xs font-semibold transition",
+                    showReturnedOnly
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={showReturnedOnly}
+                    onChange={(event) => handleReturnedToggle(event.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Povraceno
+                </label>
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -2202,8 +2257,8 @@ function OrdersContent() {
                         </label>
                       </div>
                       <div className="mt-3 rounded-lg border border-slate-100 bg-white px-3 py-2 text-xs text-slate-500">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Napomena</p>
-                        <p className="mt-1 line-clamp-2">{order.napomena || "-"}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Adresa</p>
+                        <p className="mt-1 line-clamp-2">{order.address || "-"}</p>
                       </div>
                       <div
                         className="mt-3 flex flex-wrap items-center gap-2"

@@ -675,7 +675,6 @@ function ProductsContent() {
   const categoryIds = (useWatch({ control: form.control, name: "categoryIds" }) ?? []) as string[];
   const supplierOffersField =
     (useWatch({ control: form.control, name: "supplierOffers" }) ?? []) as SupplierOfferFormEntry[];
-  const publishFbSelected = Boolean(useWatch({ control: form.control, name: "publishFb" }));
   const publishIgSelected = Boolean(useWatch({ control: form.control, name: "publishIg" }));
   const resolvedProductType = productType ?? "single";
   const normalizedVariants = resolvedProductType === "variant" && Array.isArray(variants) ? variants : [];
@@ -2776,27 +2775,6 @@ function ProductsContent() {
                   )}
                 />
                 <FormField
-                  name="publishFb"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
-                      <input
-                        id="publish-fb"
-                        type="checkbox"
-                        checked={!!field.value}
-                        onChange={(event) => field.onChange(event.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <FormLabel
-                        htmlFor="publish-fb"
-                        className="m-0 flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
-                      >
-                        <Facebook className="h-5 w-5 text-blue-600" />
-                        <span>Alati Mašine</span>
-                      </FormLabel>
-                    </FormItem>
-                  )}
-                />
-                <FormField
                   name="publishFbProfile"
                   render={({ field }) => (
                     <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
@@ -2862,13 +2840,10 @@ function ProductsContent() {
                   )}
                 />
               </div>
-              {!editingProduct && (publishFbSelected || publishIgSelected) ? (
+              {!editingProduct && publishIgSelected ? (
                 <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-sm">
                   <AlertCircle className="mt-0.5 h-4 w-4" />
-                  <p className="leading-snug">
-                    Kada cekiras Facebook ili Instagram ovde, posle cuvanja novog proizvoda objava ide automatski na stranice Alati Mašine i
-                    kod.majstora.
-                  </p>
+                  <p className="leading-snug">Kada cekiras Instagram ovde, posle cuvanja novog proizvoda objava ide automatski na nalog kod.majstora.</p>
                 </div>
               ) : null}
               </div>
@@ -3958,6 +3933,8 @@ function ProductsContent() {
                   .filter(Boolean) as Category[];
                 const isVariantProduct = (product.variants ?? []).length > 0;
                 const hasSocialImage = hasSocialMainImage(product);
+                const hasFacebookTarget = Boolean(product.publishMarketplace || product.publishFbProfile);
+                const hasSocialTargets = Boolean(product.publishIg || hasFacebookTarget);
                 const salesCount = getSalesCount(product);
                 const bestSupplier = getBestSupplier(product);
                 const isArchived = Boolean(product.archivedAt);
@@ -3989,7 +3966,7 @@ function ProductsContent() {
                             Social
                           </span>
                         ) : null}
-                        {product.publishIg || product.publishFb ? (
+                        {hasSocialTargets ? (
                           <div className="absolute bottom-1 right-1 flex gap-1">
                             {product.publishIg ? (
                               <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
@@ -3997,7 +3974,7 @@ function ProductsContent() {
                                 IG
                               </span>
                             ) : null}
-                            {product.publishFb ? (
+                            {hasFacebookTarget ? (
                               <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow">
                                 <Facebook className="h-3 w-3" />
                                 FB
@@ -4059,7 +4036,7 @@ function ProductsContent() {
                               IG
                             </span>
                           ) : null}
-                          {product.publishFb ? (
+                          {hasFacebookTarget ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow">
                               <Facebook className="h-3.5 w-3.5" />
                               FB
@@ -4113,6 +4090,7 @@ function ProductsContent() {
                   .filter(Boolean) as Category[];
                 const isVariantProduct = (product.variants ?? []).length > 0;
                 const hasSocialImage = hasSocialMainImage(product);
+                const hasFacebookTarget = Boolean(product.publishMarketplace || product.publishFbProfile);
                 const salesCount = getSalesCount(product);
                 const bestSupplier = getBestSupplier(product);
                 const isArchived = Boolean(product.archivedAt);
@@ -4201,7 +4179,7 @@ function ProductsContent() {
                           <Instagram className="h-5 w-5 drop-shadow-[0_0_8px_rgba(244,114,182,0.55)]" />
                         </span>
                       ) : null}
-                      {product.publishFb ? (
+                      {hasFacebookTarget ? (
                         <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-[0_0_16px_rgba(37,99,235,0.5)] ring-1 ring-white/25 backdrop-blur-[1.5px]">
                           <Facebook className="h-5 w-5 drop-shadow-[0_0_8px_rgba(59,130,246,0.55)]" />
                         </span>
@@ -4373,3 +4351,4 @@ function ProductsContent() {
     </div>
   );
 }
+

@@ -384,6 +384,7 @@ export const list = query({
     pageSize: v.optional(v.number()),
     stages: v.optional(v.array(stageSchema)),
     unreturnedOnly: v.optional(v.boolean()),
+    returnedOnly: v.optional(v.boolean()),
     scope: v.optional(orderScopeSchema),
   },
   handler: async (ctx, args) => {
@@ -427,7 +428,9 @@ export const list = query({
       orders = orders.filter((order) => allowedStages.has(normalizeStage(order.stage as any)));
     }
 
-    if (args.unreturnedOnly) {
+    if (args.returnedOnly) {
+      orders = orders.filter((order) => order.povratVracen);
+    } else if (args.unreturnedOnly) {
       orders = orders.filter((order) => !order.povratVracen);
     }
 

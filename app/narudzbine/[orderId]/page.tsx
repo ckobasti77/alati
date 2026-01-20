@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, Share2, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -346,6 +346,7 @@ function OrderDetails({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const productInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -353,6 +354,60 @@ function OrderDetails({
       setOrder(queryResult);
     }
   }, [queryResult]);
+
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const resolveShareUrl = () => (typeof window !== "undefined" ? window.location.href : "");
+
+  const handleCopyShareLink = async () => {
+    const shareUrl = resolveShareUrl();
+    if (!shareUrl) {
+      toast.error("Link nije dostupan.");
+      return;
+    }
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = shareUrl;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      toast.success("Link kopiran.");
+      setShareOpen(false);
+    } catch (error) {
+      console.error(error);
+      toast.error("Kopiranje nije uspelo.");
+    }
+  };
+
+  const handleShareLink = async () => {
+    const shareUrl = resolveShareUrl();
+    if (!shareUrl) {
+      toast.error("Link nije dostupan.");
+      return;
+    }
+    if (!canShare || typeof navigator === "undefined") {
+      toast.error("Share nije podrzan.");
+      return;
+    }
+    setShareOpen(false);
+    try {
+      await navigator.share({
+        title: order?.title ?? "Narudzbina",
+        url: shareUrl,
+      });
+    } catch (error) {
+      if ((error as Error)?.name === "AbortError") return;
+      console.error(error);
+      toast.error("Sharovanje nije uspelo.");
+    }
+  };
 
   const supplierMap = useMemo(
     () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
@@ -791,6 +846,31 @@ function OrderDetails({
 
   return (
     <div className="mx-auto space-y-6">
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Podeli narudzbinu</DialogTitle>
+            <DialogDescription>Prvo kopiraj link, pa podeli preko aplikacije.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Button type="button" className="w-full justify-start gap-2" onClick={handleCopyShareLink}>
+              <Copy className="h-4 w-4" />
+              Kopiraj link
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start gap-2"
+              onClick={handleShareLink}
+              disabled={!canShare}
+            >
+              <Share2 className="h-4 w-4" />
+              Podeli link
+            </Button>
+            {!canShare ? <p className="text-xs text-slate-500">Share nije podrzan na ovom uredjaju.</p> : null}
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={deleteModalOpen} onOpenChange={handleDeleteModalOpenChange}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -880,6 +960,10 @@ function OrderDetails({
               ))}
               <Button type="button" size="sm" variant="destructive" onClick={openDeleteModal}>
                 Obrisi
+              </Button>
+              <Button type="button" size="sm" variant="outline" className="gap-2" onClick={() => setShareOpen(true)}>
+                <Share2 className="h-4 w-4" />
+                Podeli
               </Button>
             </div>
           </div>
@@ -1232,7 +1316,82 @@ function OrderDetails({
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
+        <Card className="md:hidden">
+          <CardHeader>
+            <CardTitle>Kupac i dostava</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3">
+              <InlineField
+                label="Ime"
+                value={order.customerName}
+                onSave={(val) => handleOrderFieldSave("customerName", val)}
+              />
+              <InlineField
+                label="Telefon"
+                value={order.phone}
+                renderDisplay={(val) => (
+                  <a
+                    href={`tel:${val.replace(/[^+\d]/g, "")}`}
+                    className="inline-flex items-center gap-2 text-blue-700 hover:underline"
+                  >
+                    <PhoneCall className="h-4 w-4" />
+                    <span className="text-slate-900">{val || "-"}</span>
+                  </a>
+                )}
+                onSave={(val) => handleOrderFieldSave("phone", val)}
+              />
+              <InlineField
+                label="Adresa"
+                value={order.address}
+                multiline
+                onSave={(val) => handleOrderFieldSave("address", val)}
+              />
+              <InlineField
+                label="Transport (EUR)"
+                value={transport}
+                formatter={(val) => formatCurrency(Number(val ?? 0), "EUR")}
+                onSave={(val) => handleOrderFieldSave("transportCost", val)}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {transportModes.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`rounded-full border px-3 py-1 text-sm font-semibold transition ${
+                    order.transportMode === mode
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                  }`}
+                  onClick={() => handleOrderFieldSave("transportMode", mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:border-slate-300"
+                onClick={() => handleOrderFieldSave("transportMode", "")}
+              >
+                Bez kurira
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(order.pickup)}
+                  onChange={(event) => handlePickupToggle(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Licno preuzimanje
+              </label>
+              <StageBadge stage={order.stage} />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="hidden md:block">
           <CardHeader>
             <CardTitle>Kupac i dostava</CardTitle>
           </CardHeader>

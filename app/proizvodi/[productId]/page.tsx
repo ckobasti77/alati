@@ -28,6 +28,7 @@ import {
   Maximize2,
   PenLine,
   Plus,
+  Share2,
   ShoppingBag,
   Tag,
   Trash2,
@@ -318,6 +319,7 @@ function ProductDetailsContent() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [categorySearch, setCategorySearch] = useState("");
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryIcon, setNewCategoryIcon] = useState<DraftCategoryIcon | null>(null);
@@ -356,6 +358,60 @@ function ProductDetailsContent() {
     productRef.current = normalized;
     setProduct(normalized);
   }, [queryResult]);
+
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const resolveShareUrl = () => (typeof window !== "undefined" ? window.location.href : "");
+
+  const handleCopyShareLink = async () => {
+    const shareUrl = resolveShareUrl();
+    if (!shareUrl) {
+      toast.error("Link nije dostupan.");
+      return;
+    }
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = shareUrl;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      toast.success("Link kopiran.");
+      setShareOpen(false);
+    } catch (error) {
+      console.error(error);
+      toast.error("Kopiranje nije uspelo.");
+    }
+  };
+
+  const handleShareLink = async () => {
+    const shareUrl = resolveShareUrl();
+    if (!shareUrl) {
+      toast.error("Link nije dostupan.");
+      return;
+    }
+    if (!canShare || typeof navigator === "undefined") {
+      toast.error("Share nije podrzan.");
+      return;
+    }
+    setShareOpen(false);
+    try {
+      await navigator.share({
+        title: product?.kpName ?? product?.name ?? "Proizvod",
+        url: shareUrl,
+      });
+    } catch (error) {
+      if ((error as Error)?.name === "AbortError") return;
+      console.error(error);
+      toast.error("Sharovanje nije uspelo.");
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1822,6 +1878,31 @@ function ProductDetailsContent() {
 
   return (
     <div className="space-y-6">
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Podeli proizvod</DialogTitle>
+            <DialogDescription>Prvo kopiraj link, pa podeli preko aplikacije.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Button type="button" className="w-full justify-start gap-2" onClick={handleCopyShareLink}>
+              <Copy className="h-4 w-4" />
+              Kopiraj link
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start gap-2"
+              onClick={handleShareLink}
+              disabled={!canShare}
+            >
+              <Share2 className="h-4 w-4" />
+              Podeli link
+            </Button>
+            {!canShare ? <p className="text-xs text-slate-500">Share nije podrzan na ovom uredjaju.</p> : null}
+          </div>
+        </DialogContent>
+      </Dialog>
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" className="gap-2" onClick={handleBack}>
           <ArrowLeft className="h-4 w-4" />
@@ -1834,6 +1915,10 @@ function ProductDetailsContent() {
         >
           <ShoppingBag className="h-4 w-4" />
           Nova narudzbina
+        </Button>
+        <Button variant="outline" className="gap-2" onClick={() => setShareOpen(true)}>
+          <Share2 className="h-4 w-4" />
+          Podeli
         </Button>
         <Badge variant="blue">ID: {product._id}</Badge>
         <Badge variant="green">Azurirano: {formatDate(product.updatedAt)}</Badge>
@@ -2004,7 +2089,7 @@ function ProductDetailsContent() {
                       <img
                         src={item.url}
                         alt={item.alt}
-                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02] group-hover:brightness-95"
+                        className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.02] group-hover:brightness-95"
                       />
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                         <div className="flex items-center gap-2 rounded-full bg-slate-900/60 px-3 py-2 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">
@@ -2710,18 +2795,6 @@ function ProductDetailsContent() {
                           <img src="/kp.png" alt="KP" className="h-28 w-28 object-cover" />
                         </span> 
                   <span className="text-sm font-semibold text-slate-800">KupujemProdajem</span>
-                </span>
-              </label>
-              <label className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">
-                <input
-                  type="checkbox"
-                  checked={Boolean(product.publishFb)}
-                  onChange={(event) => handlePublishToggle("publishFb", event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="flex items-center gap-2 font-semibold text-slate-800">
-                  <Facebook className="h-5 w-5 text-blue-600" />
-                  <span>Alati Mašine</span>
                 </span>
               </label>
               <label className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-slate-300">

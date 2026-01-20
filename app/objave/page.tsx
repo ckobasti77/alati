@@ -682,6 +682,7 @@ function SocialContent() {
                     const primaryVariant = resolvePrimaryVariant(product);
                     const price = formatCurrency(primaryVariant?.prodajnaCena ?? product.prodajnaCena, "EUR");
                     const isVariantProduct = (product.variants ?? []).length > 0;
+                    const hasFacebookTarget = Boolean(product.publishMarketplace || product.publishFbProfile);
                     return (
                       <button
                         key={product._id}
@@ -733,7 +734,7 @@ function SocialContent() {
                                 IG
                               </span>
                             ) : null}
-                            {product.publishFb ? (
+                            {hasFacebookTarget ? (
                               <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow">
                                 <Facebook className="h-3.5 w-3.5" />
                                 FB
@@ -753,6 +754,7 @@ function SocialContent() {
                     const price = formatCurrency(primaryVariant?.prodajnaCena ?? product.prodajnaCena, "EUR");
                     const isVariantProduct = (product.variants ?? []).length > 0;
                     const isActive = selectedProductId === product._id;
+                    const hasFacebookTarget = Boolean(product.publishMarketplace || product.publishFbProfile);
                     return (
                       <button
                         key={product._id}
@@ -804,7 +806,7 @@ function SocialContent() {
                               <Instagram className="h-5 w-5 drop-shadow-[0_0_8px_rgba(244,114,182,0.55)]" />
                             </span>
                           ) : null}
-                          {product.publishFb ? (
+                          {hasFacebookTarget ? (
                             <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-[0_0_16px_rgba(37,99,235,0.5)] ring-1 ring-white/25 backdrop-blur-[1.5px]">
                               <Facebook className="h-5 w-5 drop-shadow-[0_0_8px_rgba(59,130,246,0.55)]" />
                             </span>
