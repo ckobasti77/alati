@@ -51,6 +51,53 @@ const normalizeProfitPercent = (value?: number) => {
   return value;
 };
 
+const normalizePhone = (value: string) => value.replace(/[^\d]/g, "");
+
+const upsertCustomer = async (
+  ctx: any,
+  userId: Id<"users">,
+  scope: (typeof orderScopes)[number],
+  input: { name: string; phone: string; address: string; pickup?: boolean },
+  usedAt: number,
+) => {
+  const name = input.name.trim();
+  const phone = input.phone.trim();
+  const address = input.address.trim();
+  if (!name || !phone || !address) return;
+  const phoneNormalized = normalizePhone(phone);
+  if (!phoneNormalized) return;
+
+  const existing = await ctx.db
+    .query("customers")
+    .withIndex("by_user_scope_phone", (q) =>
+      q.eq("userId", userId).eq("scope", scope).eq("phoneNormalized", phoneNormalized),
+    )
+    .first();
+
+  const payload = {
+    name,
+    nameNormalized: normalizeSearchText(name),
+    phone,
+    phoneNormalized,
+    address,
+    pickup: input.pickup ?? false,
+    updatedAt: usedAt,
+    lastUsedAt: usedAt,
+  };
+
+  if (existing) {
+    await ctx.db.patch(existing._id, payload);
+    return;
+  }
+
+  await ctx.db.insert("customers", {
+    userId,
+    scope,
+    createdAt: usedAt,
+    ...payload,
+  });
+};
+
 const resolveSortIndex = (order: Doc<"orders">) => order.sortIndex ?? order.kreiranoAt;
 
 const generateItemId = () => Math.random().toString(36).slice(2);
@@ -513,6 +560,9 @@ export const create = mutation({
 
     const totals = summarizeItems(normalizedItems);
     const title = args.title.trim() || normalizedItems[0].title || "Narudzbina";
+    const customerName = args.customerName.trim();
+    const address = args.address.trim();
+    const phone = args.phone.trim();
 
     await ctx.db.insert("orders", {
       userId: user._id,
@@ -531,14 +581,22 @@ export const create = mutation({
       transportCost,
       transportMode,
       myProfitPercent: resolvedProfitPercent,
-      customerName: args.customerName.trim(),
-      address: args.address.trim(),
-      phone: args.phone.trim(),
+      customerName,
+      address,
+      phone,
       pickup,
       items: normalizedItems,
       sortIndex: now,
       kreiranoAt: now,
     });
+
+    await upsertCustomer(
+      ctx,
+      user._id,
+      scope,
+      { name: customerName, phone, address, pickup },
+      now,
+    );
   },
 });
 
@@ -604,6 +662,10 @@ export const update = mutation({
 
     const totals = summarizeItems(normalizedItems);
     const title = args.title.trim() || normalizedItems[0].title || existing.title;
+    const customerName = args.customerName.trim();
+    const address = args.address.trim();
+    const phone = args.phone.trim();
+    const usedAt = Date.now();
 
     await ctx.db.patch(args.id, {
       scope,
@@ -621,12 +683,20 @@ export const update = mutation({
       transportCost,
       transportMode,
       myProfitPercent: resolvedProfitPercent,
-      customerName: args.customerName.trim(),
-      address: args.address.trim(),
-      phone: args.phone.trim(),
+      customerName,
+      address,
+      phone,
       pickup,
       items: normalizedItems,
     });
+
+    await upsertCustomer(
+      ctx,
+      user._id,
+      scope,
+      { name: customerName, phone, address, pickup },
+      usedAt,
+    );
   },
 });
 

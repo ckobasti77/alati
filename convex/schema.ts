@@ -173,6 +173,21 @@ export default defineSchema({
   })
     .index("by_kreiranoAt", ["kreiranoAt"])
     .index("by_user_kreiranoAt", ["userId", "kreiranoAt"]),
+  customers: defineTable({
+    userId: v.optional(v.id("users")),
+    scope: v.union(v.literal("default"), v.literal("kalaba")),
+    name: v.string(),
+    nameNormalized: v.string(),
+    phone: v.string(),
+    phoneNormalized: v.string(),
+    address: v.string(),
+    pickup: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastUsedAt: v.number(),
+  })
+    .index("by_user_scope_lastUsedAt", ["userId", "scope", "lastUsedAt"])
+    .index("by_user_scope_phone", ["userId", "scope", "phoneNormalized"]),
   suppliers: defineTable({
     userId: v.optional(v.id("users")),
     name: v.string(),

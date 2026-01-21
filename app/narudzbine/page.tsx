@@ -22,6 +22,7 @@ import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { normalizeSearchText } from "@/lib/search";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
 import { cn } from "@/lib/utils";
+import type { Customer } from "@/types/customer";
 import type { Order, OrderListResponse, OrderStage, Product, ProductVariant, Supplier } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -355,6 +356,8 @@ function OrdersContent() {
   const [itemQuantity, setItemQuantity] = useState(1);
   const [useManualSalePrice, setUseManualSalePrice] = useState(false);
   const [manualSalePrice, setManualSalePrice] = useState("");
+  const [customerQuery, setCustomerQuery] = useState("");
+  const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
   const [quickEdit, setQuickEdit] = useState<QuickEditState | null>(null);
   const [isQuickEditSaving, setIsQuickEditSaving] = useState(false);
   const productInputRef = useRef<HTMLInputElement | null>(null);
@@ -369,6 +372,7 @@ function OrdersContent() {
   const skipUrlSyncRef = useRef(false);
   const skipInitialResetRef = useRef(false);
   const didRestoreRef = useRef(false);
+  const didSyncCustomersRef = useRef(false);
   const listStateRef = useRef<{
     orders: Order[];
     page: number;
@@ -425,8 +429,15 @@ function OrdersContent() {
     orderIds: string[];
     base: number;
   }>("orders:reorder");
+  const syncCustomers = useConvexMutation("customers:syncFromOrders");
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
   const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
+  const customers = useConvexQuery<Customer[]>("customers:list", {
+    token: sessionToken,
+    scope: orderScope,
+    search: customerQuery.trim() ? customerQuery.trim() : undefined,
+    limit: customerQuery.trim() ? 8 : 5,
+  });
 
   const orderEntries = useMemo(
     () =>
@@ -970,6 +981,26 @@ function OrdersContent() {
   }, [buildModalSnapshot, isModalOpen]);
 
   useEffect(() => {
+    if (!isModalOpen) {
+      setCustomerMenuOpen(false);
+    }
+  }, [isModalOpen]);
+
+  useEffect(() => {
+    didSyncCustomersRef.current = false;
+  }, [orderScope]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    if (didSyncCustomersRef.current) return;
+    if (customerQuery.trim()) return;
+    if (customers === undefined) return;
+    if (customers.length > 0) return;
+    didSyncCustomersRef.current = true;
+    void syncCustomers({ token: sessionToken, scope: orderScope });
+  }, [customerQuery, customers, isModalOpen, orderScope, sessionToken, syncCustomers]);
+
+  useEffect(() => {
     if (!selectedProduct || selectedVariants.length === 0) {
       if (itemVariantId) {
         setItemVariantId("");
@@ -1029,6 +1060,8 @@ function OrdersContent() {
     setItemQuantity(1);
     setUseManualSalePrice(false);
     setManualSalePrice("");
+    setCustomerQuery("");
+    setCustomerMenuOpen(false);
     setExitConfirmOpen(false);
     if (options?.closeModal) {
       modalSnapshotRef.current = "";
@@ -1155,6 +1188,20 @@ function OrdersContent() {
       }
     },
     [resetOrderForm],
+  );
+
+  const handleCustomerSelect = useCallback(
+    (customer: Customer) => {
+      form.setValue("customerName", customer.name, { shouldDirty: true, shouldTouch: true });
+      form.setValue("phone", customer.phone, { shouldDirty: true, shouldTouch: true });
+      form.setValue("address", customer.address, { shouldDirty: true, shouldTouch: true });
+      if (typeof customer.pickup === "boolean") {
+        form.setValue("pickup", customer.pickup, { shouldDirty: true, shouldTouch: true });
+      }
+      setCustomerQuery(customer.name);
+      setCustomerMenuOpen(false);
+    },
+    [form],
   );
 
   const clearPreselectQuery = useCallback(() => {
@@ -1956,7 +2003,44 @@ function OrdersContent() {
                 render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel>Ime i prezime porucioca</FormLabel>
-                    <Input placeholder="npr. Marko Markovic" required {...field} />
+                    <div className="relative">
+                      <Input
+                        placeholder="npr. Marko Markovic"
+                        required
+                        {...field}
+                        onChange={(event) => {
+                          field.onChange(event);
+                          setCustomerQuery(event.target.value);
+                          setCustomerMenuOpen(true);
+                        }}
+                        onFocus={() => setCustomerMenuOpen(true)}
+                        onBlur={(event) => {
+                          field.onBlur();
+                          setCustomerMenuOpen(false);
+                        }}
+                      />
+                      {customerMenuOpen && (customers?.length ?? 0) > 0 ? (
+                        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                          {customers?.map((customer) => (
+                            <button
+                              key={customer._id}
+                              type="button"
+                              className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm transition hover:bg-slate-50"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                handleCustomerSelect(customer);
+                              }}
+                            >
+                              <span className="font-medium text-slate-900">{customer.name}</span>
+                              <span className="text-xs text-slate-500">
+                                {customer.phone}
+                                {customer.address ? ` - ${customer.address}` : ""}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                     <FormMessage>{fieldState.error?.message}</FormMessage>
                   </FormItem>
                 )}
