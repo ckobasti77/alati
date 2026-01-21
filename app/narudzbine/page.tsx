@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type TouchEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useForm, type DeepPartial, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
@@ -170,6 +170,32 @@ type OrderItemDraft = {
   title: string;
 };
 
+type QuickEditField = "address" | "contact" | "profit" | "transport";
+
+type QuickEditState =
+  | {
+      field: "address";
+      order: Order;
+      address: string;
+    }
+  | {
+      field: "contact";
+      order: Order;
+      customerName: string;
+      phone: string;
+    }
+  | {
+      field: "profit";
+      order: Order;
+      myProfitPercent: string;
+    }
+  | {
+      field: "transport";
+      order: Order;
+      transportCost: string;
+      transportMode: string;
+    };
+
 function RichTextSnippet({ text, className }: { text?: string | null; className?: string }) {
   if (!text || text.trim().length === 0) return null;
   const html = formatRichTextToHtml(text);
@@ -329,9 +355,13 @@ function OrdersContent() {
   const [itemQuantity, setItemQuantity] = useState(1);
   const [useManualSalePrice, setUseManualSalePrice] = useState(false);
   const [manualSalePrice, setManualSalePrice] = useState("");
+  const [quickEdit, setQuickEdit] = useState<QuickEditState | null>(null);
+  const [isQuickEditSaving, setIsQuickEditSaving] = useState(false);
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const ordersLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMoreOrdersTimerRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
   const modalSnapshotRef = useRef<string>("");
   const wasModalOpenRef = useRef(false);
   const preselectHandledRef = useRef<string | null>(null);
@@ -761,6 +791,93 @@ function OrdersContent() {
     },
     [productMap],
   );
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearLongPressTimer();
+    };
+  }, [clearLongPressTimer]);
+
+  const consumeLongPressClick = useCallback((event: MouseEvent<HTMLElement>) => {
+    if (!longPressTriggeredRef.current) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    longPressTriggeredRef.current = false;
+    return true;
+  }, []);
+
+  const createLongPressHandlers = useCallback(
+    (onLongPress: () => void) => ({
+      onTouchStart: (event: TouchEvent<HTMLElement>) => {
+        if (event.touches.length !== 1) return;
+        clearLongPressTimer();
+        longPressTriggeredRef.current = false;
+        longPressTimerRef.current = window.setTimeout(() => {
+          longPressTriggeredRef.current = true;
+          onLongPress();
+        }, 650);
+      },
+      onTouchEnd: () => {
+        clearLongPressTimer();
+      },
+      onTouchMove: () => {
+        clearLongPressTimer();
+      },
+      onTouchCancel: () => {
+        clearLongPressTimer();
+      },
+      onClick: (event: MouseEvent<HTMLElement>) => {
+        consumeLongPressClick(event);
+      },
+      onContextMenu: (event: MouseEvent<HTMLElement>) => {
+        if (longPressTriggeredRef.current) {
+          event.preventDefault();
+        }
+      },
+    }),
+    [clearLongPressTimer, consumeLongPressClick],
+  );
+
+  const openQuickEdit = useCallback((order: Order, field: QuickEditField) => {
+    if (field === "contact") {
+      setQuickEdit({
+        field,
+        order,
+        customerName: order.customerName ?? "",
+        phone: order.phone ?? "",
+      });
+      return;
+    }
+    if (field === "address") {
+      setQuickEdit({
+        field,
+        order,
+        address: order.address ?? "",
+      });
+      return;
+    }
+    if (field === "transport") {
+      setQuickEdit({
+        field,
+        order,
+        transportCost: order.transportCost !== undefined && order.transportCost !== null ? String(order.transportCost) : "",
+        transportMode: order.transportMode ?? "",
+      });
+      return;
+    }
+    setQuickEdit({
+      field,
+      order,
+      myProfitPercent: String(resolveProfitPercent(order.myProfitPercent)),
+    });
+  }, [resolveProfitPercent]);
 
   const focusOrderField = useCallback(
     (fieldName: keyof OrderFormValues | string) => {
@@ -1212,6 +1329,96 @@ function OrdersContent() {
     }),
     [orderScope, sessionToken],
   );
+
+  const applyQuickUpdate = useCallback(
+    async (order: Order, patch: Partial<Order>, successMessage?: string) => {
+      const next = { ...order, ...patch };
+      try {
+        await updateOrder(buildOrderUpdatePayload(next));
+        setOrders((prev) => prev.map((item) => (item._id === order._id ? { ...item, ...patch } : item)));
+        toast.success(successMessage ?? "Sacuvano.");
+        setQuickEdit(null);
+      } catch (error) {
+        console.error(error);
+        toast.error("Cuvanje nije uspelo.");
+      }
+    },
+    [buildOrderUpdatePayload, updateOrder],
+  );
+
+  const closeQuickEdit = useCallback(() => {
+    if (isQuickEditSaving) return;
+    setQuickEdit(null);
+  }, [isQuickEditSaving]);
+
+  const handleQuickEditSave = async () => {
+    if (!quickEdit || isQuickEditSaving) return;
+    const parseNumber = (value: string) => Number(value.replace(",", "."));
+    setIsQuickEditSaving(true);
+    try {
+      if (quickEdit.field === "transport") {
+        const trimmed = quickEdit.transportCost.trim();
+        let nextCost: number | undefined;
+        if (trimmed.length > 0) {
+          const parsed = parseNumber(trimmed);
+          if (!Number.isFinite(parsed) || parsed < 0) {
+            toast.error("Transport mora biti 0 ili vise.");
+            return;
+          }
+          nextCost = parsed;
+        }
+        const modeInput = quickEdit.transportMode.trim();
+        const normalizedMode = modeInput
+          ? transportModes.find((mode) => mode.toLowerCase() === modeInput.toLowerCase())
+          : undefined;
+        await applyQuickUpdate(
+          quickEdit.order,
+          { transportCost: nextCost, transportMode: normalizedMode },
+          "Sacuvano.",
+        );
+        return;
+      }
+
+      if (quickEdit.field === "contact") {
+        const name = quickEdit.customerName.trim();
+        const phone = quickEdit.phone.trim();
+        if (name.length < 2) {
+          toast.error("Popuni ime i prezime.");
+          return;
+        }
+        if (phone.length < 2) {
+          toast.error("Popuni broj telefona.");
+          return;
+        }
+        await applyQuickUpdate(quickEdit.order, { customerName: name, phone }, "Sacuvano.");
+        return;
+      }
+
+      if (quickEdit.field === "address") {
+        const address = quickEdit.address.trim();
+        if (address.length < 2) {
+          toast.error("Popuni adresu.");
+          return;
+        }
+        await applyQuickUpdate(quickEdit.order, { address }, "Sacuvano.");
+        return;
+      }
+
+      const trimmed = quickEdit.myProfitPercent.trim();
+      if (!trimmed) {
+        toast.error("Unesi procenat profita.");
+        return;
+      }
+      const percent = parseNumber(trimmed);
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+        toast.error("Procenat mora biti izmedju 0 i 100.");
+        return;
+      }
+      await applyQuickUpdate(quickEdit.order, { myProfitPercent: percent }, "Sacuvano.");
+    } finally {
+      setIsQuickEditSaving(false);
+    }
+  };
 
   const handleStageChange = async (order: Order, nextStage: OrderStage) => {
     try {
@@ -2010,6 +2217,137 @@ function OrdersContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={Boolean(quickEdit)}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeQuickEdit();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {quickEdit?.field === "contact"
+                ? "Izmeni kontakt"
+                : quickEdit?.field === "address"
+                  ? "Izmeni adresu"
+                  : quickEdit?.field === "transport"
+                    ? "Izmeni transport"
+                    : "Izmeni procenat profita"}
+            </DialogTitle>
+            {quickEdit ? (
+              <DialogDescription>
+                Narudzbina: <span className="font-medium text-slate-700">{quickEdit.order.title}</span>
+              </DialogDescription>
+            ) : null}
+          </DialogHeader>
+          {quickEdit?.field === "contact" ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <FormLabel>Ime i prezime</FormLabel>
+                <Input
+                  autoFocus
+                  value={quickEdit.customerName}
+                  onChange={(event) =>
+                    setQuickEdit((current) =>
+                      current?.field === "contact" ? { ...current, customerName: event.target.value } : current,
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <FormLabel>Telefon</FormLabel>
+                <Input
+                  value={quickEdit.phone}
+                  onChange={(event) =>
+                    setQuickEdit((current) =>
+                      current?.field === "contact" ? { ...current, phone: event.target.value } : current,
+                    )
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
+          {quickEdit?.field === "address" ? (
+            <div className="space-y-2">
+              <FormLabel>Adresa</FormLabel>
+              <Textarea
+                autoFocus
+                rows={3}
+                value={quickEdit.address}
+                onChange={(event) =>
+                  setQuickEdit((current) =>
+                    current?.field === "address" ? { ...current, address: event.target.value } : current,
+                  )
+                }
+              />
+            </div>
+          ) : null}
+          {quickEdit?.field === "transport" ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <FormLabel>Trosak transporta</FormLabel>
+                <Input
+                  autoFocus
+                  inputMode="decimal"
+                  placeholder="npr. 15 ili 15.5"
+                  value={quickEdit.transportCost}
+                  onChange={(event) =>
+                    setQuickEdit((current) =>
+                      current?.field === "transport" ? { ...current, transportCost: event.target.value } : current,
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <FormLabel>Nacin transporta</FormLabel>
+                <select
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                  value={quickEdit.transportMode}
+                  onChange={(event) =>
+                    setQuickEdit((current) =>
+                      current?.field === "transport" ? { ...current, transportMode: event.target.value } : current,
+                    )
+                  }
+                >
+                  <option value="">Izaberi</option>
+                  {transportModes.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {mode}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : null}
+          {quickEdit?.field === "profit" ? (
+            <div className="space-y-2">
+              <FormLabel>Procenat profita</FormLabel>
+              <Input
+                autoFocus
+                inputMode="decimal"
+                placeholder="npr. 50"
+                value={quickEdit.myProfitPercent}
+                onChange={(event) =>
+                  setQuickEdit((current) =>
+                    current?.field === "profit" ? { ...current, myProfitPercent: event.target.value } : current,
+                  )
+                }
+              />
+              <p className="text-xs text-slate-500">Unesi vrednost izmedju 0 i 100.</p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={closeQuickEdit} disabled={isQuickEditSaving}>
+              Otkazi
+            </Button>
+            <Button type="button" onClick={handleQuickEditSave} disabled={isQuickEditSaving}>
+              {isQuickEditSaving ? "Cuvanje..." : "Sacuvaj"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{isKalaba ? "Kalaba" : "Narudzbine"}</h1>
@@ -2194,11 +2532,17 @@ function OrdersContent() {
                           ) : null}
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-col gap-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                      <div
+                        className="mt-3 flex flex-col gap-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
+                        {...createLongPressHandlers(() => openQuickEdit(order, "contact"))}
+                      >
                         <a
                           href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
                           className="flex flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
-                          onClick={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            if (consumeLongPressClick(event)) return;
+                            event.stopPropagation();
+                          }}
                         >
                           <span className="font-medium text-slate-800">{order.customerName}</span>
                           <span className="flex items-center gap-1 text-xs text-slate-500">
@@ -2220,7 +2564,10 @@ function OrdersContent() {
                             {formatCurrency(nabavnoUkupno, "EUR")}
                           </p>
                         </div>
-                        <div className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1">
+                        <div
+                          className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1"
+                          {...createLongPressHandlers(() => openQuickEdit(order, "transport"))}
+                        >
                           <p className="text-[10px] uppercase tracking-wide text-slate-500">Transport</p>
                           <p className="text-sm font-semibold text-slate-900">{formatCurrency(transport, "EUR")}</p>
                         </div>
@@ -2230,7 +2577,10 @@ function OrdersContent() {
                             {formatCurrency(prodajnoUkupno, "EUR")}
                           </p>
                         </div>
-                        <div className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1">
+                        <div
+                          className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1"
+                          {...createLongPressHandlers(() => openQuickEdit(order, "profit"))}
+                        >
                           <p className="text-[10px] uppercase tracking-wide text-slate-500">Profit (50%)</p>
                           <p className={`text-sm font-semibold ${profitShare < 0 ? "text-red-600" : "text-slate-900"}`}>
                             {formatCurrency(profitShare, "EUR")}
@@ -2256,7 +2606,10 @@ function OrdersContent() {
                           Vracen
                         </label>
                       </div>
-                      <div className="mt-3 rounded-lg border border-slate-100 bg-white px-3 py-2 text-xs text-slate-500">
+                      <div
+                        className="mt-3 rounded-lg border border-slate-100 bg-white px-3 py-2 text-xs text-slate-500"
+                        {...createLongPressHandlers(() => openQuickEdit(order, "address"))}
+                      >
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Adresa</p>
                         <p className="mt-1 line-clamp-2">{order.address || "-"}</p>
                       </div>

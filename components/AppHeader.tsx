@@ -31,8 +31,13 @@ export function AppHeader() {
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
+  const isDashboard = pathname === "/";
+  const shouldElevateMenu = !isDashboard && isMobileMenuOpen;
+  const headerZIndex = shouldElevateMenu ? "z-[120]" : "";
+  const mobileMenuZIndex = isDashboard ? "z-30" : "z-[200]";
+
   const navigation = (
-    <nav className="flex flex-col gap-3 text-sm font-medium text-slate-700 md:flex-row md:items-center md:gap-4">
+    <nav className="z-999999 flex flex-col gap-3 text-sm font-medium text-slate-700 md:flex-row md:items-center md:gap-4">
       {navLinks.map((link) => {
         if (link.adminOnly && user?.role !== "admin") return null;
         const active = isActive(link.href);
@@ -55,7 +60,7 @@ export function AppHeader() {
   );
 
   return (
-    <header className="border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur">
+    <header className={`relative z-9999 border-b border-slate-200 bg-white/90 shadow-sm backdrop-blur ${headerZIndex}`}>
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 md:px-6">
         <div className="flex items-center gap-3">
           <button
@@ -91,7 +96,7 @@ export function AppHeader() {
         </div>
         {status === "authenticated" && (
           <div
-            className={`absolute left-0 right-0 top-20 z-30 origin-top rounded-b-2xl border-b border-slate-200 bg-white px-4 py-4 shadow-lg transition duration-200 md:hidden ${
+            className={`absolute left-0 right-0 top-20 ${mobileMenuZIndex} origin-top rounded-b-2xl border-b border-slate-200 bg-white px-4 py-4 shadow-lg transition duration-200 md:hidden ${
               isMobileMenuOpen ? "opacity-100" : "pointer-events-none -translate-y-3 opacity-0"
             }`}
           >
