@@ -69,7 +69,7 @@ const upsertCustomer = async (
 
   const existing = await ctx.db
     .query("customers")
-    .withIndex("by_user_scope_phone", (q) =>
+    .withIndex("by_user_scope_phone", (q: any) =>
       q.eq("userId", userId).eq("scope", scope).eq("phoneNormalized", phoneNormalized),
     )
     .first();
