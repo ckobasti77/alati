@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, Share2, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -981,28 +982,42 @@ function OrderDetails({
                 const images = (item as any).product?.images ?? [];
                 const mainImage = images.find((image: any) => image.isMain) ?? images[0];
                 const isOnlyItem = (order.items?.length ?? 0) <= 1;
+                const productMedia = mainImage?.url ? (
+                  <div className="h-14 w-14 overflow-hidden rounded-md border border-slate-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={mainImage.url} alt={item.title} className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-slate-200 text-[10px] uppercase text-slate-400">
+                    N/A
+                  </div>
+                );
+                const itemInfo = (
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                    {item.variantLabel ? <p className="text-xs text-slate-500">{item.variantLabel}</p> : null}
+                    <p className="text-xs text-slate-500">Kolicina: {item.kolicina}</p>
+                  </div>
+                );
                 return (
                   <div
                     key={item.id}
                     className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm md:flex-row md:items-center md:justify-between"
                   >
-                    <div className="flex items-center gap-3">
-                      {mainImage?.url ? (
-                        <div className="h-14 w-14 overflow-hidden rounded-md border border-slate-200">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={mainImage.url} alt={item.title} className="h-full w-full object-cover" />
-                        </div>
-                      ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-slate-200 text-[10px] uppercase text-slate-400">
-                          N/A
-                        </div>
-                      )}
-                      <div className="space-y-0.5">
-                        <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                        {item.variantLabel ? <p className="text-xs text-slate-500">{item.variantLabel}</p> : null}
-                        <p className="text-xs text-slate-500">Kolicina: {item.kolicina}</p>
+                    {item.productId ? (
+                      <Link
+                        href={`/proizvodi/${item.productId}`}
+                        className="flex items-center gap-3 rounded-md p-1 -m-1 transition hover:bg-slate-50"
+                      >
+                        {productMedia}
+                        {itemInfo}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        {productMedia}
+                        {itemInfo}
                       </div>
-                    </div>
+                    )}
                     <div className="text-right text-sm">
                       <p className="text-xs uppercase tracking-wide text-slate-500">Prodajna</p>
                       <p className="font-semibold text-slate-900">{formatCurrency(item.prodajnaCena, "EUR")}</p>

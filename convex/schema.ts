@@ -188,6 +188,20 @@ export default defineSchema({
   })
     .index("by_user_scope_lastUsedAt", ["userId", "scope", "lastUsedAt"])
     .index("by_user_scope_phone", ["userId", "scope", "phoneNormalized"]),
+  restockRequests: defineTable({
+    userId: v.optional(v.id("users")),
+    scope: v.union(v.literal("default"), v.literal("kalaba")),
+    name: v.string(),
+    nameNormalized: v.string(),
+    phone: v.string(),
+    phoneNormalized: v.string(),
+    productId: v.optional(v.id("products")),
+    productTitle: v.string(),
+    variantLabel: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_user_scope_createdAt", ["userId", "scope", "createdAt"])
+    .index("by_user_scope_phone", ["userId", "scope", "phoneNormalized"]),
   suppliers: defineTable({
     userId: v.optional(v.id("users")),
     name: v.string(),

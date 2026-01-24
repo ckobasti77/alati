@@ -17,6 +17,7 @@ import type * as inboxImages from "../inboxImages.js";
 import type * as maintenance from "../maintenance.js";
 import type * as orders from "../orders.js";
 import type * as products from "../products.js";
+import type * as restockRequests from "../restockRequests.js";
 import type * as sales from "../sales.js";
 import type * as search from "../search.js";
 import type * as social from "../social.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   maintenance: typeof maintenance;
   orders: typeof orders;
   products: typeof products;
+  restockRequests: typeof restockRequests;
   sales: typeof sales;
   search: typeof search;
   social: typeof social;

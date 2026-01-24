@@ -497,6 +497,35 @@ export const list = query({
   },
 });
 
+export const byProduct = query({
+  args: {
+    token: v.string(),
+    productId: v.id("products"),
+    scope: v.optional(orderScopeSchema),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = args.scope ? normalizeScope(args.scope) : null;
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
+      .collect();
+
+    const matched: Array<Doc<"orders"> & { items: OrderItemRecord[] }> = [];
+    for (const order of orders) {
+      if (scope && normalizeScope(order.scope) !== scope) continue;
+      const items = resolveItemsFromOrder(order);
+      const hasProduct = items.some((item) => String(item.productId) === String(args.productId));
+      if (!hasProduct) continue;
+      matched.push({ ...order, items });
+    }
+
+    return matched.sort(
+      (a, b) => resolveSortIndex(b) - resolveSortIndex(a) || b.kreiranoAt - a.kreiranoAt,
+    );
+  },
+});
+
 export const create = mutation({
   args: {
     token: v.string(),
