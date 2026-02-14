@@ -80,10 +80,12 @@ function DashboardContent() {
     legloOrdersCount,
     ownerCards,
   } = useMemo(() => {
+    const aksBexRows = obracun?.aksBex.byOwner ?? [];
+    const postaRows = obracun?.posta.byOwner ?? [];
     const totalAksBex = obracun?.aksBex.totalWithStarting ?? obracun?.aksBex.total ?? 0;
     const totalPosta = obracun?.posta.total ?? 0;
     const cards = [
-      ...(obracun?.aksBex.byOwner ?? []).map((row) => ({
+      ...aksBexRows.map((row) => ({
         key: `aks-bex-${row.owner}`,
         title: `Aks/Bex - ${row.owner}`,
         value: row.total,
@@ -92,7 +94,7 @@ function DashboardContent() {
         }`,
         count: row.count,
       })),
-      ...(obracun?.posta.byOwner ?? []).map((row) => ({
+      ...postaRows.map((row) => ({
         key: `posta-${row.owner}`,
         title: `Posta - ${row.owner}`,
         value: row.total,
@@ -100,9 +102,11 @@ function DashboardContent() {
         count: row.count,
       })),
     ];
+    const legloCount =
+      aksBexRows.reduce((sum, row) => sum + row.count, 0) + postaRows.reduce((sum, row) => sum + row.count, 0);
     return {
       totalLeglo: totalAksBex + totalPosta,
-      legloOrdersCount: obracun?.meta.ordersCount ?? 0,
+      legloOrdersCount: legloCount,
       ownerCards: cards,
     };
   }, [obracun]);
