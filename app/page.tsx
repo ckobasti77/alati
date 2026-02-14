@@ -12,7 +12,7 @@ import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
-import type { Order, OrdersSummary } from "@/types/order";
+import type { ObracunSummary, Order, OrdersSummary } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 
@@ -29,6 +29,7 @@ function DashboardContent() {
   const sessionToken = token as string;
   const router = useRouter();
   const summary = useConvexQuery<OrdersSummary>("orders:summary", { token: sessionToken });
+  const obracun = useConvexQuery<ObracunSummary>("orders:obracun", { token: sessionToken, scope: "default" });
   const latest = useConvexQuery<Order[]>("orders:latest", { token: sessionToken });
 
   const rows = useMemo(() => latest ?? [], [latest]);
@@ -74,6 +75,37 @@ function DashboardContent() {
       },
     };
   }, [summary]);
+  const {
+    totalLeglo,
+    legloOrdersCount,
+    ownerCards,
+  } = useMemo(() => {
+    const totalAksBex = obracun?.aksBex.totalWithStarting ?? obracun?.aksBex.total ?? 0;
+    const totalPosta = obracun?.posta.total ?? 0;
+    const cards = [
+      ...(obracun?.aksBex.byOwner ?? []).map((row) => ({
+        key: `aks-bex-${row.owner}`,
+        title: `Aks/Bex - ${row.owner}`,
+        value: row.total,
+        description: `Aks ${formatCurrency(row.aks ?? 0, "EUR")} / Bex ${formatCurrency(row.bex ?? 0, "EUR")}${
+          (row.startingAmount ?? 0) > 0 ? ` / Pocetno ${formatCurrency(row.startingAmount ?? 0, "EUR")}` : ""
+        }`,
+        count: row.count,
+      })),
+      ...(obracun?.posta.byOwner ?? []).map((row) => ({
+        key: `posta-${row.owner}`,
+        title: `Posta - ${row.owner}`,
+        value: row.total,
+        description: "Posta uplata",
+        count: row.count,
+      })),
+    ];
+    return {
+      totalLeglo: totalAksBex + totalPosta,
+      legloOrdersCount: obracun?.meta.ordersCount ?? 0,
+      ownerCards: cards,
+    };
+  }, [obracun]);
 
   return (
     <div className="space-y-8">
@@ -100,8 +132,56 @@ function DashboardContent() {
           title="Profit"
           value={formatCurrency(totalProfit, "EUR")}
           percent={percentLabels.profit}
-          description={`${summary?.brojNarudzbina ?? 0} narudzbina`}
+          description={`${summary?.brojNarudzbina ?? 0} narudzbina · umanjeno za Omer ${formatCurrency(summary?.omerUkupno ?? 0, "EUR")}`}
         />
+      </section>
+      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          title="Ukupno leglo"
+          value={formatCurrency(totalLeglo, "EUR")}
+          description={`${legloOrdersCount} narudzbina u statusu Leglo`}
+          accent="blue"
+        />
+        <StatCard
+          title="Ukupno licno preuzimanje"
+          value={formatCurrency(summary?.ukupnoLicnoPreuzimanje ?? 0, "EUR")}
+          description={`${summary?.licnoPreuzimanjeBrojNarudzbina ?? 0} narudzbina`}
+          accent="blue"
+        />
+        <StatCard
+          title="Omer (Aks x 2.5)"
+          value={formatCurrency(summary?.omerUkupno ?? 0, "EUR")}
+          description={`${summary?.omerBrojPosiljki ?? 0} Aks posiljki`}
+          accent="red"
+        />
+      </section>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Racuni i imena za postu</h2>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/obracun">Detaljan obracun</Link>
+          </Button>
+        </div>
+        {ownerCards.length === 0 ? (
+          <Card>
+            <CardContent className="py-6 text-sm text-slate-500">
+              Jos nema porudzbina sa statusom Leglo i unetim racunom/imenom.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {ownerCards.map((card) => (
+              <StatCard
+                key={card.key}
+                title={card.title}
+                value={formatCurrency(card.value, "EUR")}
+                description={card.description}
+                percent={`${card.count}x`}
+                accent="blue"
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <Card>

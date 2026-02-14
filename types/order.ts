@@ -108,7 +108,8 @@ export interface ProductStats {
 
 export type OrderStage = "poruceno" | "poslato" | "stiglo" | "legle_pare" | "na_stanju";
 export type OrderScope = "default" | "kalaba";
-export type TransportMode = "Kol" | "Joe" | "Posta" | "Bex" | "Aks";
+export type TransportMode = "Kol" | "Joe" | "Smg" | "Posta" | "Bex" | "Aks";
+export type SlanjeMode = "Posta" | "Aks" | "Bex";
 
 export interface OrderItem {
   id: string;
@@ -137,8 +138,11 @@ export interface Order {
   nabavnaCena: number;
   prodajnaCena: number;
   napomena?: string;
+  brojPosiljke?: string;
   transportCost?: number;
   transportMode?: TransportMode;
+  slanjeMode?: SlanjeMode;
+  slanjeOwner?: string;
   myProfitPercent?: number;
   povratVracen?: boolean;
   customerName: string;
@@ -168,6 +172,13 @@ export interface OrderListResponse {
     total: number;
     totalPages: number;
   };
+  totals: {
+    nabavno: number;
+    transport: number;
+    prodajno: number;
+    profit: number;
+    povrat: number;
+  };
 }
 
 export interface OrdersSummary {
@@ -176,6 +187,53 @@ export interface OrdersSummary {
   ukupnoNabavno: number;
   ukupnoTransport: number;
   profit: number;
+  omerUkupno: number;
+  omerBrojPosiljki: number;
+  ukupnoLicnoPreuzimanje: number;
+  licnoPreuzimanjeBrojNarudzbina: number;
+}
+
+export interface ObracunOwnerTotal {
+  owner: string;
+  total: number;
+  count: number;
+  aks?: number;
+  bex?: number;
+  ordersTotal?: number;
+  startingAmount?: number;
+}
+
+export interface ObracunSummary {
+  aksBex: {
+    total: number;
+    totalAks: number;
+    totalBex: number;
+    totalFromOrders?: number;
+    totalStarting?: number;
+    totalWithStarting?: number;
+    byOwner: ObracunOwnerTotal[];
+  };
+  posta: {
+    total: number;
+    byOwner: ObracunOwnerTotal[];
+  };
+  meta: {
+    ordersCount: number;
+  };
+}
+
+export interface ShippingOwnerOption {
+  value: string;
+  count: number;
+  lastUsedAt: number;
+  aksCount?: number;
+  bexCount?: number;
+  startingAmount?: number;
+}
+
+export interface ShippingOwnerOptions {
+  aksBexAccounts: ShippingOwnerOption[];
+  postaNames: ShippingOwnerOption[];
 }
 
 export interface OrderItemWithProduct extends OrderItem {

@@ -1,12 +1,12 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type TouchEvent } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, type DeepPartial, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, Bell, GripVertical, PhoneCall, Plus, Trash2, UserRound } from "lucide-react";
+import { ArrowUpRight, Bell, Copy, GripVertical, PhoneCall, Plus, Trash2, UserRound } from "lucide-react";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +23,16 @@ import { normalizeSearchText } from "@/lib/search";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
 import { cn } from "@/lib/utils";
 import type { Customer } from "@/types/customer";
-import type { Order, OrderListResponse, OrderStage, Product, ProductVariant, Supplier } from "@/types/order";
+import type {
+  Order,
+  OrderListResponse,
+  OrderStage,
+  Product,
+  ProductVariant,
+  ShippingOwnerOption,
+  ShippingOwnerOptions,
+  Supplier,
+} from "@/types/order";
 import type { RestockRequest } from "@/types/restockRequest";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -37,9 +46,33 @@ const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
 ];
-const transportModes = ["Kol", "Joe", "Posta", "Bex", "Aks"] as const;
+const transportModes = ["Kol", "Joe", "Smg"] as const;
+const slanjeModes = ["Posta", "Aks", "Bex"] as const;
+const shippingModes = ["Posta", "Aks", "Bex"] as const;
+type ShippingMode = (typeof shippingModes)[number];
 const deleteConfirmPhrase = "potvrdjujem da brisem";
 const requiresDeleteConfirmation = (stage?: OrderStage) => stage === "stiglo" || stage === "legle_pare";
+const emptyOrderListTotals: OrderListResponse["totals"] = {
+  nabavno: 0,
+  transport: 0,
+  prodajno: 0,
+  profit: 0,
+  povrat: 0,
+};
+
+const resolveOrderShippingMode = (order: Pick<Order, "slanjeMode" | "transportMode">): ShippingMode | undefined => {
+  const mode = order.slanjeMode;
+  if (mode && shippingModes.includes(mode as ShippingMode)) {
+    return mode as ShippingMode;
+  }
+  const legacyMode = order.transportMode;
+  if (legacyMode && shippingModes.includes(legacyMode as ShippingMode)) {
+    return legacyMode as ShippingMode;
+  }
+  return undefined;
+};
+
+const resolveShipmentNumber = (order: Pick<Order, "brojPosiljke">) => order.brojPosiljke?.trim() ?? "";
 
 const stageLabels = stageOptions.reduce((acc, item) => {
   acc[item.value] = { label: item.label, tone: item.tone };
@@ -61,43 +94,129 @@ const normalizeStageFilters = (values: string[]) => {
 const areArraysEqual = <T,>(left: T[], right: T[]) =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
-const orderSchema = z.object({
-  stage: z.enum(["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"]),
-  customerName: z.string().min(3, "Ime i prezime porucioca je obavezno."),
-  address: z.string().min(5, "Adresa je obavezna."),
-  phone: z.string().min(5, "Broj telefona je obavezan."),
-  transportCost: z.preprocess(
-    (value) => {
-      if (value === "" || value === undefined || value === null) return undefined;
-      const normalized = typeof value === "string" ? value.replace(",", ".") : value;
-      const parsed = Number(normalized);
-      return Number.isFinite(parsed) ? parsed : undefined;
-    },
-    z.number().min(0, "Transport je obavezan i mora biti 0 ili vise."),
-  ),
-  transportMode: z.preprocess(
-    (value) => {
-      if (value === "" || value === undefined || value === null) return undefined;
-      return typeof value === "string" ? value : undefined;
-    },
-    z.enum(transportModes, { errorMap: () => ({ message: "Izaberi nacin transporta." }) }),
-  ),
-  myProfitPercent: z.preprocess(
-    (value) => {
-      if (value === "" || value === undefined || value === null) return undefined;
-      const normalized = typeof value === "string" ? value.replace(",", ".") : value;
-      const parsed = Number(normalized);
-      return Number.isFinite(parsed) ? parsed : undefined;
-    },
-    z
-      .number()
-      .min(0, "Procenat profita mora biti izmedju 0 i 100.")
-      .max(100, "Procenat profita mora biti izmedju 0 i 100."),
-  ),
-  pickup: z.boolean().optional(),
-  sendEmail: z.boolean().optional(),
-  note: z.string().trim().min(1, "Napomena je obavezna."),
-});
+const normalizeDateInput = (value?: string | null) => {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return "";
+  const [year, month, day] = trimmed.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return "";
+  return trimmed;
+};
+
+const resolveDateTimestamp = (value: string, boundary: "start" | "end") => {
+  if (!value) return undefined;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  if (boundary === "start") {
+    return new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
+  }
+  return new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
+};
+
+const resolveTodayEndTimestamp = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+};
+
+const normalizeOwnerLookupKey = (value?: string) => normalizeSearchText(value?.trim() ?? "");
+
+const orderSchema = z
+  .object({
+    stage: z.enum(["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"]),
+    customerName: z.string().min(3, "Ime i prezime porucioca je obavezno."),
+    address: z.string().min(5, "Adresa je obavezna."),
+    phone: z.string().min(5, "Broj telefona je obavezan."),
+    transportCost: z.preprocess(
+      (value) => {
+        if (value === "" || value === undefined || value === null) return undefined;
+        const normalized = typeof value === "string" ? value.replace(",", ".") : value;
+        const parsed = Number(normalized);
+        return Number.isFinite(parsed) ? parsed : undefined;
+      },
+      z.number().min(0, "Transport je obavezan i mora biti 0 ili vise."),
+    ),
+    transportMode: z.preprocess(
+      (value) => {
+        if (value === "" || value === undefined || value === null) return undefined;
+        return typeof value === "string" ? value : undefined;
+      },
+      z.enum(transportModes, { errorMap: () => ({ message: "Izaberi nacin transporta." }) }),
+    ),
+    slanjeMode: z.preprocess(
+      (value) => {
+        if (value === "" || value === undefined || value === null) return undefined;
+        return typeof value === "string" ? value : undefined;
+      },
+      z.enum(slanjeModes).optional(),
+    ),
+    slanjeOwner: z.preprocess(
+      (value) => {
+        if (value === "" || value === undefined || value === null) return undefined;
+        return typeof value === "string" ? value.trim() : undefined;
+      },
+      z.string().min(2, "Unesi podatak za isplatu.").optional(),
+    ),
+    slanjeOwnerStartingAmount: z.preprocess(
+      (value) => {
+        if (value === "" || value === undefined || value === null) return undefined;
+        const normalized = typeof value === "string" ? value.replace(",", ".") : value;
+        const parsed = Number(normalized);
+        return Number.isFinite(parsed) ? parsed : undefined;
+      },
+      z.number().min(0, "Pocetni iznos mora biti 0 ili vise.").optional(),
+    ),
+    myProfitPercent: z.preprocess(
+      (value) => {
+        if (value === "" || value === undefined || value === null) return undefined;
+        const normalized = typeof value === "string" ? value.replace(",", ".") : value;
+        const parsed = Number(normalized);
+        return Number.isFinite(parsed) ? parsed : undefined;
+      },
+      z
+        .number()
+        .min(0, "Procenat profita mora biti izmedju 0 i 100.")
+        .max(100, "Procenat profita mora biti izmedju 0 i 100."),
+    ),
+    pickup: z.boolean().optional(),
+    sendEmail: z.boolean().optional(),
+    note: z.string().trim().min(1, "Napomena je obavezna."),
+  })
+  .superRefine((values, ctx) => {
+    if (values.slanjeMode && !values.slanjeOwner) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slanjeOwner"],
+        message: "Izaberi na cije ime lezu pare.",
+      });
+      return;
+    }
+    if (values.slanjeOwner && !values.slanjeMode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slanjeMode"],
+        message: "Izaberi nacin slanja.",
+      });
+      return;
+    }
+    if (values.slanjeMode === "Posta" && (!values.slanjeOwner || values.slanjeOwner.trim().length < 2)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slanjeOwner"],
+        message: "Unesi na ime.",
+      });
+    }
+    if (
+      (values.slanjeMode === "Aks" || values.slanjeMode === "Bex") &&
+      (!values.slanjeOwner || values.slanjeOwner.trim().length < 2)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slanjeOwner"],
+        message: "Unesi na ciji racun lezu pare.",
+      });
+    }
+  });
 
 type OrderFormValues = z.infer<typeof orderSchema>;
 
@@ -108,6 +227,9 @@ const defaultFormValues: DeepPartial<OrderFormValues> = {
   phone: "",
   transportCost: undefined,
   transportMode: undefined,
+  slanjeMode: undefined,
+  slanjeOwner: undefined,
+  slanjeOwnerStartingAmount: undefined,
   myProfitPercent: 100,
   pickup: false,
   sendEmail: true,
@@ -120,6 +242,9 @@ const orderFocusOrder: (keyof OrderFormValues)[] = [
   "phone",
   "transportCost",
   "transportMode",
+  "slanjeMode",
+  "slanjeOwner",
+  "slanjeOwnerStartingAmount",
   "myProfitPercent",
   "note",
 ];
@@ -197,6 +322,11 @@ type QuickEditState =
       transportCost: string;
       transportMode: string;
     };
+
+type ShipmentStageModalState = {
+  order: Order;
+  nextStage: OrderStage;
+};
 
 function RichTextSnippet({ text, className }: { text?: string | null; className?: string }) {
   if (!text || text.trim().length === 0) return null;
@@ -305,15 +435,21 @@ export default function OrdersPage() {
 }
 
 function OrdersContent() {
-  const pathname = usePathname();
-  const isKalaba = pathname?.startsWith("/kalaba");
-  const basePath = isKalaba ? "/kalaba" : "/narudzbine";
-  const emailToEnvKey = isKalaba ? "CONTACT_EMAIL_TO_2" : "CONTACT_EMAIL_TO";
-  const orderScope = isKalaba ? "kalaba" : "default";
+  const basePath = "/narudzbine";
+  const emailToEnvKey = "CONTACT_EMAIL_TO";
+  const orderScope = "default";
   const router = useRouter();
   const searchParams = useSearchParams();
   const searchParamsString = useMemo(() => searchParams?.toString() ?? "", [searchParams]);
   const searchQuery = useMemo(() => searchParams?.get("q") ?? "", [searchParamsString, searchParams]);
+  const dateFromQuery = useMemo(
+    () => normalizeDateInput(searchParams?.get("from")),
+    [searchParamsString, searchParams],
+  );
+  const dateToQuery = useMemo(
+    () => normalizeDateInput(searchParams?.get("to")),
+    [searchParamsString, searchParams],
+  );
   const stageQuery = useMemo(
     () => normalizeStageFilters(searchParams ? searchParams.getAll("stage") : []),
     [searchParamsString, searchParams],
@@ -325,9 +461,12 @@ function OrdersContent() {
   const { token } = useAuth();
   const sessionToken = token as string;
   const [search, setSearch] = useState(searchQuery);
+  const [dateFrom, setDateFrom] = useState(dateFromQuery);
+  const [dateTo, setDateTo] = useState(dateToQuery);
   const [stageFilters, setStageFilters] = useState<OrderStage[]>(stageQuery);
   const [showUnreturnedOnly, setShowUnreturnedOnly] = useState(effectiveUnreturnedQuery);
   const [showReturnedOnly, setShowReturnedOnly] = useState(effectiveReturnedQuery);
+  const [filterMenuMode, setFilterMenuMode] = useState<"closed" | "hover" | "pinned">("closed");
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState<Order[]>([]);
   const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
@@ -338,6 +477,7 @@ function OrdersContent() {
     total: 0,
     totalPages: 1,
   });
+  const [ordersTotals, setOrdersTotals] = useState<OrderListResponse["totals"]>(emptyOrderListTotals);
   const [isLoadingMoreOrders, setIsLoadingMoreOrders] = useState(false);
   const [productInput, setProductInput] = useState("");
   const [productSearch, setProductSearch] = useState("");
@@ -373,8 +513,12 @@ function OrdersContent() {
   const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
   const [quickEdit, setQuickEdit] = useState<QuickEditState | null>(null);
   const [isQuickEditSaving, setIsQuickEditSaving] = useState(false);
+  const [shipmentStageModal, setShipmentStageModal] = useState<ShipmentStageModalState | null>(null);
+  const [shipmentNumberDraft, setShipmentNumberDraft] = useState("");
+  const [isShipmentStageSaving, setIsShipmentStageSaving] = useState(false);
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const restockProductInputRef = useRef<HTMLInputElement | null>(null);
+  const previousSlanjeModeRef = useRef<(typeof slanjeModes)[number] | undefined>(undefined);
   const ordersLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMoreOrdersTimerRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
@@ -395,6 +539,8 @@ function OrdersContent() {
     stageFilters: OrderStage[];
     showUnreturnedOnly: boolean;
     showReturnedOnly: boolean;
+    dateFrom: string;
+    dateTo: string;
   }>({
     orders: [],
     page: 1,
@@ -403,6 +549,8 @@ function OrdersContent() {
     stageFilters: [],
     showUnreturnedOnly: false,
     showReturnedOnly: false,
+    dateFrom: "",
+    dateTo: "",
   });
   const [pendingScrollY, setPendingScrollY] = useState<number | null>(null);
   const preselectProductId = searchParams?.get("productId") ?? "";
@@ -435,6 +583,13 @@ function OrdersContent() {
     setRestockPhone("");
   }, [restockModalOpen]);
 
+  const dateFromTimestamp = useMemo(() => resolveDateTimestamp(dateFrom, "start"), [dateFrom]);
+  const dateToTimestamp = useMemo(() => {
+    if (dateTo) return resolveDateTimestamp(dateTo, "end");
+    if (dateFrom) return resolveTodayEndTimestamp();
+    return undefined;
+  }, [dateFrom, dateTo]);
+
   const list = useConvexQuery<OrderListResponse>("orders:list", {
     token: sessionToken,
     search: search.trim() ? search.trim() : undefined,
@@ -443,11 +598,19 @@ function OrdersContent() {
     stages: stageFilters,
     unreturnedOnly: showUnreturnedOnly,
     returnedOnly: showReturnedOnly,
+    dateFrom: dateFromTimestamp,
+    dateTo: dateToTimestamp,
     scope: orderScope,
   });
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const createOrder = useConvexMutation("orders:create");
   const updateOrder = useConvexMutation("orders:update");
+  const upsertShippingAccount = useConvexMutation<{
+    token: string;
+    scope: "default" | "kalaba";
+    value: string;
+    startingAmount: number;
+  }>("orders:upsertShippingAccount");
   const reorderOrders = useConvexMutation<{
     token: string;
     scope: "default" | "kalaba";
@@ -462,6 +625,10 @@ function OrdersContent() {
     scope: orderScope,
     search: customerQuery.trim() ? customerQuery.trim() : undefined,
     limit: customerQuery.trim() ? 8 : 5,
+  });
+  const shippingOwners = useConvexQuery<ShippingOwnerOptions>("orders:shippingOwners", {
+    token: sessionToken,
+    scope: orderScope,
   });
   const restockRequests = useConvexQuery<RestockRequest[]>("restockRequests:list", {
     token: sessionToken,
@@ -533,7 +700,10 @@ function OrdersContent() {
   const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
   const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
   const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
-  const activeFilterCount = stageFilters.length + (showUnreturnedOnly ? 1 : 0) + (showReturnedOnly ? 1 : 0);
+  const dateFilterActive = Boolean(dateFrom || dateTo);
+  const activeFilterCount =
+    stageFilters.length + (showUnreturnedOnly ? 1 : 0) + (showReturnedOnly ? 1 : 0) + (dateFilterActive ? 1 : 0);
+  const isFilterMenuOpen = filterMenuMode !== "closed";
   const restockEntries = restockRequests ?? [];
   const isRestockLoading = restockRequests === undefined;
   const restockFilteredProducts = useMemo(() => {
@@ -564,8 +734,10 @@ function OrdersContent() {
       stageFilters,
       showUnreturnedOnly,
       showReturnedOnly,
+      dateFrom,
+      dateTo,
     };
-  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, stageFilters]);
+  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, stageFilters, dateFrom, dateTo]);
 
   useEffect(() => {
     if (didRestoreRef.current) return;
@@ -577,11 +749,19 @@ function OrdersContent() {
     const storedStages = normalizeStageFilters(storedStagesRaw);
     const storedUnreturned = stored.extra?.showUnreturnedOnly === true;
     const storedReturned = stored.extra?.showReturnedOnly === true;
+    const storedDateFrom = normalizeDateInput(
+      typeof stored.extra?.dateFrom === "string" ? stored.extra.dateFrom : "",
+    );
+    const storedDateTo = normalizeDateInput(
+      typeof stored.extra?.dateTo === "string" ? stored.extra.dateTo : "",
+    );
     if (
       storedSearch !== searchQuery ||
       !areArraysEqual(storedStages, stageQuery) ||
       storedUnreturned !== effectiveUnreturnedQuery ||
-      storedReturned !== effectiveReturnedQuery
+      storedReturned !== effectiveReturnedQuery ||
+      storedDateFrom !== dateFromQuery ||
+      storedDateTo !== dateToQuery
     ) {
       return;
     }
@@ -593,12 +773,22 @@ function OrdersContent() {
       setOrdersPagination(stored.pagination);
     }
     setSearch(searchQuery);
+    setDateFrom(dateFromQuery);
+    setDateTo(dateToQuery);
     setStageFilters(stageQuery);
     setShowUnreturnedOnly(effectiveUnreturnedQuery);
     setShowReturnedOnly(effectiveReturnedQuery);
     setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
     clearListState(listStateKey);
-  }, [listStateKey, searchQuery, stageQuery, effectiveUnreturnedQuery, effectiveReturnedQuery]);
+  }, [
+    listStateKey,
+    searchQuery,
+    stageQuery,
+    effectiveUnreturnedQuery,
+    effectiveReturnedQuery,
+    dateFromQuery,
+    dateToQuery,
+  ]);
 
   useEffect(() => {
     if (pendingScrollY === null) return;
@@ -626,6 +816,8 @@ function OrdersContent() {
           stageFilters: snapshot.stageFilters,
           showUnreturnedOnly: snapshot.showUnreturnedOnly,
           showReturnedOnly: snapshot.showReturnedOnly,
+          dateFrom: snapshot.dateFrom,
+          dateTo: snapshot.dateTo,
         },
       });
     };
@@ -641,6 +833,7 @@ function OrdersContent() {
     setDragOverOrderId(null);
     setPage(1);
     setOrdersPagination((prev) => ({ ...prev, page: 1, total: 0, totalPages: 1 }));
+    setOrdersTotals(emptyOrderListTotals);
     setIsLoadingMoreOrders(false);
   }, []);
 
@@ -648,15 +841,23 @@ function OrdersContent() {
     const current = listStateRef.current;
     const normalizedStageFilters = normalizeStageFilters(current.stageFilters);
     const searchChanged = current.search !== searchQuery;
+    const dateFromChanged = current.dateFrom !== dateFromQuery;
+    const dateToChanged = current.dateTo !== dateToQuery;
     const stagesChanged = !areArraysEqual(normalizedStageFilters, stageQuery);
     const unreturnedChanged = current.showUnreturnedOnly !== effectiveUnreturnedQuery;
     const returnedChanged = current.showReturnedOnly !== effectiveReturnedQuery;
-    if (!searchChanged && !stagesChanged && !unreturnedChanged && !returnedChanged) {
+    if (!searchChanged && !dateFromChanged && !dateToChanged && !stagesChanged && !unreturnedChanged && !returnedChanged) {
       skipUrlSyncRef.current = false;
       return;
     }
     if (searchChanged) {
       setSearch(searchQuery);
+    }
+    if (dateFromChanged) {
+      setDateFrom(dateFromQuery);
+    }
+    if (dateToChanged) {
+      setDateTo(dateToQuery);
     }
     if (stagesChanged) {
       setStageFilters(stageQuery);
@@ -671,7 +872,15 @@ function OrdersContent() {
       resetOrdersFeed();
     }
     skipUrlSyncRef.current = false;
-  }, [resetOrdersFeed, searchQuery, stageQuery, effectiveUnreturnedQuery, effectiveReturnedQuery]);
+  }, [
+    resetOrdersFeed,
+    searchQuery,
+    stageQuery,
+    effectiveUnreturnedQuery,
+    effectiveReturnedQuery,
+    dateFromQuery,
+    dateToQuery,
+  ]);
 
   useEffect(() => {
     if (!searchParams) return;
@@ -679,6 +888,8 @@ function OrdersContent() {
     const nextSearch = search.trim();
     const needsUpdate =
       nextSearch !== searchQuery ||
+      dateFrom !== dateFromQuery ||
+      dateTo !== dateToQuery ||
       !areArraysEqual(normalizedStages, stageQuery) ||
       showUnreturnedOnly !== effectiveUnreturnedQuery ||
       showReturnedOnly !== effectiveReturnedQuery;
@@ -688,6 +899,16 @@ function OrdersContent() {
       params.set("q", nextSearch);
     } else {
       params.delete("q");
+    }
+    if (dateFrom) {
+      params.set("from", dateFrom);
+    } else {
+      params.delete("from");
+    }
+    if (dateTo) {
+      params.set("to", dateTo);
+    } else {
+      params.delete("to");
     }
     params.delete("stage");
     normalizedStages.forEach((stage) => params.append("stage", stage));
@@ -715,6 +936,10 @@ function OrdersContent() {
     stageQuery,
     effectiveUnreturnedQuery,
     effectiveReturnedQuery,
+    dateFrom,
+    dateTo,
+    dateFromQuery,
+    dateToQuery,
   ]);
 
   const handleStageFilterToggle = useCallback(
@@ -747,6 +972,40 @@ function OrdersContent() {
     [resetOrdersFeed],
   );
 
+  const handleDateFromChange = useCallback(
+    (value: string) => {
+      setDateFrom(normalizeDateInput(value));
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  const handleDateToChange = useCallback(
+    (value: string) => {
+      setDateTo(normalizeDateInput(value));
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  const handleClearDateFilter = useCallback(() => {
+    setDateFrom("");
+    setDateTo("");
+    resetOrdersFeed();
+  }, [resetOrdersFeed]);
+
+  const handleFilterMenuEnter = useCallback(() => {
+    setFilterMenuMode((prev) => (prev === "pinned" ? prev : "hover"));
+  }, []);
+
+  const handleFilterMenuLeave = useCallback(() => {
+    setFilterMenuMode((prev) => (prev === "hover" ? "closed" : prev));
+  }, []);
+
+  const handleFilterMenuToggle = useCallback(() => {
+    setFilterMenuMode((prev) => (prev === "pinned" ? "closed" : "pinned"));
+  }, []);
+
   useEffect(() => {
     if (skipInitialResetRef.current) {
       skipInitialResetRef.current = false;
@@ -763,6 +1022,9 @@ function OrdersContent() {
     }
     if (list.pagination) {
       setOrdersPagination(list.pagination);
+    }
+    if (list.totals) {
+      setOrdersTotals(list.totals);
     }
     if (list.items) {
       setOrders((prev) => {
@@ -819,6 +1081,63 @@ function OrdersContent() {
     defaultValues: defaultFormValues,
     mode: "onBlur",
   });
+  const slanjeModeValue = form.watch("slanjeMode");
+  const slanjeOwnerValue = form.watch("slanjeOwner");
+  const slanjeOwnerStartingAmountValue = form.watch("slanjeOwnerStartingAmount");
+  const slanjeOwnerLabel =
+    slanjeModeValue === "Posta"
+      ? "Posta - na ime"
+      : slanjeModeValue
+        ? "Aks/Bex - na ciji racun"
+        : "Slanje - na ciji racun";
+  const slanjeOwnerPlaceholder =
+    slanjeModeValue === "Posta"
+      ? "Unesi na ime"
+      : slanjeModeValue
+        ? "Unesi na ciji racun"
+        : "Izaberi slanje prvo";
+  const slanjeOwnerOptions = useMemo<ShippingOwnerOption[]>(() => {
+    if (!slanjeModeValue) return [];
+    if (slanjeModeValue === "Posta") {
+      return shippingOwners?.postaNames ?? [];
+    }
+    return shippingOwners?.aksBexAccounts ?? [];
+  }, [shippingOwners, slanjeModeValue]);
+  const slanjeOwnerQuickOptions = useMemo(
+    () => slanjeOwnerOptions.slice(0, 12),
+    [slanjeOwnerOptions],
+  );
+  const normalizedSlanjeOwnerValue = (slanjeOwnerValue ?? "").trim();
+  const normalizedSlanjeOwnerLookupKey = normalizeOwnerLookupKey(slanjeOwnerValue);
+  const isAksBexMode = slanjeModeValue === "Aks" || slanjeModeValue === "Bex";
+  const selectedAksBexAccount = useMemo(() => {
+    if (!isAksBexMode) return undefined;
+    if (!normalizedSlanjeOwnerLookupKey) return undefined;
+    const accounts = shippingOwners?.aksBexAccounts ?? [];
+    return accounts.find((option) => normalizeOwnerLookupKey(option.value) === normalizedSlanjeOwnerLookupKey);
+  }, [isAksBexMode, normalizedSlanjeOwnerLookupKey, shippingOwners?.aksBexAccounts]);
+  const shouldAskForNewAccountStartingAmount =
+    isAksBexMode &&
+    shippingOwners !== undefined &&
+    normalizedSlanjeOwnerLookupKey.length > 0 &&
+    !selectedAksBexAccount;
+  useEffect(() => {
+    const previousMode = previousSlanjeModeRef.current;
+    if (!slanjeModeValue) {
+      previousSlanjeModeRef.current = undefined;
+      form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+      return;
+    }
+    if (previousMode && previousMode !== slanjeModeValue) {
+      form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+    }
+    previousSlanjeModeRef.current = slanjeModeValue;
+  }, [form, slanjeModeValue]);
+  useEffect(() => {
+    if (shouldAskForNewAccountStartingAmount) return;
+    if (slanjeOwnerStartingAmountValue === undefined) return;
+    form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
+  }, [form, shouldAskForNewAccountStartingAmount, slanjeOwnerStartingAmountValue]);
   const selectedProduct = useMemo(
     () => (products ?? []).find((item) => item._id === itemProductId),
     [products, itemProductId],
@@ -918,6 +1237,33 @@ function OrdersContent() {
     [clearLongPressTimer, consumeLongPressClick],
   );
 
+  const copyText = useCallback(async (value: string, successMessage: string) => {
+    const text = value.trim();
+    if (!text) {
+      toast.error("Nema vrednosti za kopiranje.");
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const temp = document.createElement("textarea");
+        temp.value = text;
+        temp.setAttribute("readonly", "true");
+        temp.style.position = "fixed";
+        temp.style.opacity = "0";
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand("copy");
+        document.body.removeChild(temp);
+      }
+      toast.success(successMessage);
+    } catch (error) {
+      console.error(error);
+      toast.error("Kopiranje nije uspelo.");
+    }
+  }, []);
+
   const openQuickEdit = useCallback((order: Order, field: QuickEditField) => {
     if (field === "contact") {
       setQuickEdit({
@@ -993,6 +1339,10 @@ function OrdersContent() {
         phone: values.phone?.trim() ?? "",
         transportCost: values.transportCost ?? null,
         transportMode: values.transportMode ?? null,
+        slanjeMode: values.slanjeMode ?? null,
+        slanjeOwner: values.slanjeOwner ?? null,
+        slanjeOwnerStartingAmount:
+          typeof values.slanjeOwnerStartingAmount === "number" ? values.slanjeOwnerStartingAmount : null,
         myProfitPercent: typeof values.myProfitPercent === "number" ? values.myProfitPercent : 100,
         pickup: Boolean(values.pickup),
         sendEmail: values.sendEmail ?? true,
@@ -1299,6 +1649,33 @@ function OrdersContent() {
     try {
       const pickup = Boolean(values.pickup);
       const shouldSendEmail = values.sendEmail ?? true;
+      const ownerInput = values.slanjeOwner?.trim();
+      const ownerLookupKey = normalizeOwnerLookupKey(ownerInput);
+      const isAksBexAccount = values.slanjeMode === "Aks" || values.slanjeMode === "Bex";
+      const existingAksBexAccount =
+        isAksBexAccount && ownerLookupKey
+          ? (shippingOwners?.aksBexAccounts ?? []).find(
+              (option) => normalizeOwnerLookupKey(option.value) === ownerLookupKey,
+            )
+          : undefined;
+      const shouldCreateAksBexAccount =
+        isAksBexAccount &&
+        shippingOwners !== undefined &&
+        ownerLookupKey.length > 0 &&
+        !existingAksBexAccount;
+      if (shouldCreateAksBexAccount) {
+        if (values.slanjeOwnerStartingAmount === undefined) {
+          toast.error("Unesi pocetni iznos za novi racun.");
+          focusOrderField("slanjeOwnerStartingAmount");
+          return;
+        }
+        await upsertShippingAccount({
+          token: sessionToken,
+          scope: orderScope,
+          value: ownerInput ?? "",
+          startingAmount: values.slanjeOwnerStartingAmount,
+        });
+      }
       const payloadItems = draftItems.map((item) => ({
         id: item.id,
         productId: item.product._id,
@@ -1316,6 +1693,9 @@ function OrdersContent() {
         title: payloadItems[0]?.title ?? "Narudzbina",
         transportCost: values.transportCost,
         transportMode: values.transportMode,
+        slanjeMode: values.slanjeMode,
+        slanjeOwner: ownerInput,
+        brojPosiljke: editingOrder?.brojPosiljke,
         myProfitPercent: values.myProfitPercent,
         customerName: values.customerName.trim(),
         address: values.address.trim(),
@@ -1518,9 +1898,12 @@ function OrdersContent() {
       phone: order.phone,
       transportCost: order.transportCost,
       transportMode: order.transportMode,
+      slanjeMode: order.slanjeMode,
+      slanjeOwner: order.slanjeOwner,
       myProfitPercent: order.myProfitPercent,
       pickup: order.pickup,
       napomena: order.napomena,
+      brojPosiljke: order.brojPosiljke,
       povratVracen: order.povratVracen,
       items: order.items,
     }),
@@ -1617,17 +2000,59 @@ function OrdersContent() {
     }
   };
 
-  const handleStageChange = async (order: Order, nextStage: OrderStage) => {
-    try {
-      await updateOrder({ ...buildOrderUpdatePayload(order), stage: nextStage });
+  const persistStageChange = useCallback(
+    async (order: Order, nextStage: OrderStage, patch: Partial<Order> = {}) => {
+      await updateOrder({ ...buildOrderUpdatePayload(order), stage: nextStage, ...patch });
       setOrders((prev) =>
         prev.flatMap((item) => {
           if (item._id !== order._id) return [item];
           if (stageFilters.length > 0 && !stageFilters.includes(nextStage)) return [];
-          return [{ ...item, stage: nextStage }];
+          return [{ ...item, stage: nextStage, ...patch }];
         }),
       );
       toast.success("Status narudzbine promenjen.");
+    },
+    [buildOrderUpdatePayload, stageFilters, updateOrder],
+  );
+
+  const closeShipmentStageModal = useCallback(() => {
+    if (isShipmentStageSaving) return;
+    setShipmentStageModal(null);
+    setShipmentNumberDraft("");
+  }, [isShipmentStageSaving]);
+
+  const openShipmentStageModal = useCallback((order: Order, nextStage: OrderStage) => {
+    setShipmentStageModal({ order, nextStage });
+    setShipmentNumberDraft(resolveShipmentNumber(order));
+  }, []);
+
+  const handleShipmentStageSubmit = useCallback(async () => {
+    if (!shipmentStageModal || isShipmentStageSaving) return;
+    const shipmentNumber = shipmentNumberDraft.trim();
+    if (!shipmentNumber) {
+      toast.error("Unesi broj porudzbine.");
+      return;
+    }
+    setIsShipmentStageSaving(true);
+    try {
+      await persistStageChange(shipmentStageModal.order, shipmentStageModal.nextStage, { brojPosiljke: shipmentNumber });
+      setShipmentStageModal(null);
+      setShipmentNumberDraft("");
+    } catch (error) {
+      console.error(error);
+      toast.error("Nije moguce promeniti status.");
+    } finally {
+      setIsShipmentStageSaving(false);
+    }
+  }, [isShipmentStageSaving, persistStageChange, shipmentNumberDraft, shipmentStageModal]);
+
+  const handleStageChange = async (order: Order, nextStage: OrderStage) => {
+    if (nextStage === "poslato") {
+      openShipmentStageModal(order, nextStage);
+      return;
+    }
+    try {
+      await persistStageChange(order, nextStage);
     } catch (error) {
       console.error(error);
       toast.error("Nije moguce promeniti status.");
@@ -2274,6 +2699,170 @@ function OrdersContent() {
                 )}
               />
               <FormField
+                name="slanjeMode"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>Slanje</FormLabel>
+                    <div className="space-y-2">
+                      <div className="hidden flex-wrap gap-2 md:flex">
+                        {slanjeModes.map((mode) => {
+                          const isActive = field.value === mode;
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              className={cn(
+                                "rounded-full border px-3 py-1 text-xs font-semibold transition",
+                                isActive
+                                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-200",
+                              )}
+                              onClick={() => field.onChange(mode)}
+                            >
+                              {mode}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          className={cn(
+                            "rounded-full border px-3 py-1 text-xs font-semibold transition",
+                            !field.value
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                          )}
+                          onClick={() => field.onChange(undefined)}
+                        >
+                          Bez slanja
+                        </button>
+                      </div>
+                      <div className="md:hidden">
+                        <select
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          ref={field.ref}
+                          name={field.name}
+                          value={field.value ?? ""}
+                          onChange={(event) => field.onChange(event.target.value || undefined)}
+                          onBlur={field.onBlur}
+                        >
+                          <option value="">Bez slanja</option>
+                          {slanjeModes.map((mode) => (
+                            <option key={mode} value={mode}>
+                              {mode}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500">Odaberi da li ide Posta, Aks ili Bex.</p>
+                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                name="slanjeOwner"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>{slanjeOwnerLabel}</FormLabel>
+                    <Input
+                      className="disabled:cursor-not-allowed disabled:bg-slate-100"
+                      ref={field.ref}
+                      name={field.name}
+                      value={field.value ?? ""}
+                      placeholder={slanjeOwnerPlaceholder}
+                      disabled={!slanjeModeValue}
+                      list={slanjeModeValue ? `slanje-owner-list-${slanjeModeValue.toLowerCase()}` : undefined}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                    />
+                    {slanjeModeValue ? (
+                      <datalist id={`slanje-owner-list-${slanjeModeValue.toLowerCase()}`}>
+                        {slanjeOwnerOptions.map((option) => (
+                          <option key={option.value} value={option.value} />
+                        ))}
+                      </datalist>
+                    ) : null}
+                    {slanjeModeValue && slanjeOwnerQuickOptions.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {slanjeOwnerQuickOptions.map((option) => {
+                          const isActive = normalizedSlanjeOwnerValue === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              className={cn(
+                                "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                                isActive
+                                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-200",
+                              )}
+                              onClick={() => field.onChange(option.value)}
+                            >
+                              {option.value}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {slanjeModeValue && slanjeOwnerOptions.length > slanjeOwnerQuickOptions.length ? (
+                      <p className="text-[11px] text-slate-500">
+                        Prikazano prvih {slanjeOwnerQuickOptions.length} od {slanjeOwnerOptions.length} sacuvanih.
+                      </p>
+                    ) : null}
+                    <p className="text-xs text-slate-500">
+                      {slanjeModeValue === "Posta"
+                        ? slanjeOwnerOptions.length > 0
+                          ? "Izaberi sacuvano ime ili unesi novo."
+                          : "Unesi na ime kome posta isplacuje."
+                        : slanjeModeValue
+                          ? slanjeOwnerOptions.length > 0
+                            ? "Izaberi sacuvan racun ili unesi novi."
+                            : "Na ciji bankovni racun lezu pare preko Aksa/Bexa."
+                          : "Izaberi slanje da bi odabrao ime."}
+                    </p>
+                    {isAksBexMode && selectedAksBexAccount ? (
+                      <p className="text-xs text-slate-500">
+                        Pocetno stanje ovog racuna: {formatCurrency(selectedAksBexAccount.startingAmount ?? 0, "EUR")}
+                      </p>
+                    ) : null}
+                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                  </FormItem>
+                )}
+              />
+              {shouldAskForNewAccountStartingAmount ? (
+                <FormField
+                  name="slanjeOwnerStartingAmount"
+                  render={({ field, fieldState }) => (
+                    <FormItem>
+                      <FormLabel>Pocetno stanje novog racuna</FormLabel>
+                      <Input
+                        ref={field.ref}
+                        name={field.name}
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="npr. 1200"
+                        value={field.value ?? ""}
+                        onChange={(event) => {
+                          const normalized = event.target.value.replace(",", ".").trim();
+                          if (normalized === "") {
+                            field.onChange(undefined);
+                            return;
+                          }
+                          const parsed = Number(normalized);
+                          if (Number.isNaN(parsed)) return;
+                          field.onChange(parsed);
+                        }}
+                        onBlur={field.onBlur}
+                      />
+                      <p className="text-xs text-slate-500">
+                        Koliko je vec leglo na ovaj novi racun pre prvih narudzbina u aplikaciji.
+                      </p>
+                      <FormMessage>{fieldState.error?.message}</FormMessage>
+                    </FormItem>
+                  )}
+                />
+              ) : null}
+              <FormField
                 name="myProfitPercent"
                 render={({ field, fieldState }) => (
                   <FormItem>
@@ -2916,9 +3505,53 @@ function OrdersContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={Boolean(shipmentStageModal)}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeShipmentStageModal();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Broj porudzbine</DialogTitle>
+            <DialogDescription>
+              Unesi broj porudzbine pre promene statusa na "Poslato"
+              {shipmentStageModal?.order ? ` (${resolveOrderShippingMode(shipmentStageModal.order) ?? "Slanje"})` : ""}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700" htmlFor="shipment-number-input">
+              Broj porudzbine
+            </label>
+            <Input
+              id="shipment-number-input"
+              value={shipmentNumberDraft}
+              placeholder="Unesi broj porudzbine"
+              autoFocus
+              onChange={(event) => setShipmentNumberDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleShipmentStageSubmit();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={closeShipmentStageModal} disabled={isShipmentStageSaving}>
+              Otkazi
+            </Button>
+            <Button type="button" onClick={() => void handleShipmentStageSubmit()} disabled={isShipmentStageSaving}>
+              {isShipmentStageSaving ? "Cuvanje..." : "Sacuvaj i oznaci kao poslato"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{isKalaba ? "Kalaba" : "Narudzbine"}</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Narudzbine</h1>
           <p className="text-sm text-slate-500">Tabela narudzbina, klik na red otvara detalje. Forma je u modalu.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -2950,8 +3583,8 @@ function OrdersContent() {
                 className="sm:w-72"
               />
               <div className="flex items-center gap-2 sm:ml-auto">
-                <div className="group relative">
-                  <Button type="button" variant="outline" className="gap-2">
+                <div className="relative" onMouseEnter={handleFilterMenuEnter} onMouseLeave={handleFilterMenuLeave}>
+                  <Button type="button" variant="outline" className="gap-2" onClick={handleFilterMenuToggle} aria-expanded={isFilterMenuOpen}>
                     Filteri
                     {activeFilterCount > 0 ? (
                       <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
@@ -2959,70 +3592,110 @@ function OrdersContent() {
                       </span>
                     ) : null}
                   </Button>
-                  <div className="pointer-events-none absolute right-0 top-full z-30 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stage</p>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {stageOptions.map((option) => {
-                            const isActive = stageFilters.includes(option.value);
-                            return (
-                              <label
-                                key={option.value}
-                                className={cn(
-                                  "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                                  isActive
-                                    ? option.tone
-                                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                                )}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isActive}
-                                  onChange={() => handleStageFilterToggle(option.value)}
-                                  className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                {option.label}
-                              </label>
-                            );
-                          })}
+                  <div
+                    className={cn(
+                      "fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-3 transition md:absolute md:inset-auto md:right-0 md:top-full md:z-30 md:block md:w-72 md:bg-transparent md:p-0 md:pt-2",
+                      isFilterMenuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+                    )}
+                    onClick={() => setFilterMenuMode("closed")}
+                  >
+                    <div
+                      className="max-h-[90vh] w-[min(96vw,40rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-lg md:max-h-none md:w-72"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stage</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {stageOptions.map((option) => {
+                              const isActive = stageFilters.includes(option.value);
+                              return (
+                                <label
+                                  key={option.value}
+                                  className={cn(
+                                    "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
+                                    isActive
+                                      ? option.tone
+                                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isActive}
+                                    onChange={() => handleStageFilterToggle(option.value)}
+                                    className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  {option.label}
+                                </label>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Povrat</p>
-                        <div className="flex flex-col gap-2">
-                          <label
-                            className={cn(
-                              "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                              showUnreturnedOnly
-                                ? "border-rose-200 bg-rose-50 text-rose-700"
-                                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={showUnreturnedOnly}
-                              onChange={(event) => handleUnreturnedToggle(event.target.checked)}
-                              className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            Nepovraceni
-                          </label>
-                          <label
-                            className={cn(
-                              "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                              showReturnedOnly
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={showReturnedOnly}
-                              onChange={(event) => handleReturnedToggle(event.target.checked)}
-                              className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            Povraceno
-                          </label>
+                        <div className="space-y-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Povrat</p>
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className={cn(
+                                "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
+                                showUnreturnedOnly
+                                  ? "border-rose-200 bg-rose-50 text-rose-700"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={showUnreturnedOnly}
+                                onChange={(event) => handleUnreturnedToggle(event.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              Nepovraceni
+                            </label>
+                            <label
+                              className={cn(
+                                "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
+                                showReturnedOnly
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={showReturnedOnly}
+                                onChange={(event) => handleReturnedToggle(event.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              Povraceno
+                            </label>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Datum</p>
+                          <div className="grid gap-2">
+                            <label className="space-y-1 text-xs text-slate-600">
+                              <span className="font-semibold uppercase tracking-wide text-[10px] text-slate-400">Od</span>
+                              <Input
+                                type="date"
+                                value={dateFrom}
+                                onChange={(event) => handleDateFromChange(event.target.value)}
+                              />
+                            </label>
+                            <label className="space-y-1 text-xs text-slate-600">
+                              <span className="font-semibold uppercase tracking-wide text-[10px] text-slate-400">Do</span>
+                              <Input type="date" value={dateTo} onChange={(event) => handleDateToChange(event.target.value)} />
+                            </label>
+                            <div className="flex items-center justify-between text-[11px] text-slate-500">
+                              <span>Prazno = od pocetka / do danas</span>
+                              {dateFilterActive ? (
+                                <button
+                                  type="button"
+                                  className="text-xs font-semibold text-blue-700 hover:underline"
+                                  onClick={handleClearDateFilter}
+                                >
+                                  Resetuj
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -3054,6 +3727,35 @@ function OrdersContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 md:hidden">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+              Ukupno za prikazane narudzbine
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Nabavno</p>
+                <p className="text-sm font-semibold text-slate-900">{formatCurrency(ordersTotals.nabavno, "EUR")}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Transport</p>
+                <p className="text-sm font-semibold text-slate-900">{formatCurrency(ordersTotals.transport, "EUR")}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Prodajno</p>
+                <p className="text-sm font-semibold text-slate-900">{formatCurrency(ordersTotals.prodajno, "EUR")}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Profit (50%)</p>
+                <p className={cn("text-sm font-semibold", ordersTotals.profit < 0 ? "text-red-600" : "text-slate-900")}>
+                  {formatCurrency(ordersTotals.profit, "EUR")}
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white px-2 py-1 col-span-2">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">Povrat</p>
+                <p className="text-sm font-semibold text-slate-900">{formatCurrency(ordersTotals.povrat, "EUR")}</p>
+              </div>
+            </div>
+          </div>
           <div className="space-y-3 md:hidden">
             {isOrdersLoading ? (
               <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
@@ -3075,6 +3777,8 @@ function OrdersContent() {
                   const primaryTitle = itemNames[0] ?? order.title;
                   const secondaryNames = itemNames.slice(1, 3);
                   const remainingCount = itemNames.length > 3 ? itemNames.length - 3 : 0;
+                  const shipmentNumber = resolveShipmentNumber(order);
+                  const showShipmentNumberInNote = order.stage === "poslato" && shipmentNumber.length > 0;
 
                   return (
                     <div
@@ -3137,20 +3841,55 @@ function OrdersContent() {
                         className="mt-3 flex flex-col gap-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
                         {...createLongPressHandlers(() => openQuickEdit(order, "contact"))}
                       >
-                        <a
-                          href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
-                          className="flex flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
-                          onClick={(event) => {
-                            if (consumeLongPressClick(event)) return;
-                            event.stopPropagation();
-                          }}
-                        >
-                          <span className="font-medium text-slate-800">{order.customerName}</span>
-                          <span className="flex items-center gap-1 text-xs text-slate-500">
+                        <div className="flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            className="truncate text-left font-medium text-slate-800 hover:text-blue-700"
+                            onClick={(event) => {
+                              if (consumeLongPressClick(event)) return;
+                              event.stopPropagation();
+                              void copyText(order.customerName, "Ime je kopirano.");
+                            }}
+                          >
+                            {order.customerName}
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void copyText(order._id, "Broj porudzbine je kopiran.");
+                            }}
+                            title={order._id}
+                          >
+                            ID
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <a
+                            href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
+                            className="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
+                            onClick={(event) => {
+                              if (consumeLongPressClick(event)) return;
+                              event.stopPropagation();
+                            }}
+                          >
                             <PhoneCall className="h-4 w-4 text-blue-500" />
                             {order.phone}
-                          </span>
-                        </a>
+                          </a>
+                          <button
+                            type="button"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void copyText(order.phone, "Broj telefona je kopiran.");
+                            }}
+                            title="Kopiraj broj telefona"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                         {order.pickup ? (
                           <span className="inline-flex items-center gap-1 self-start rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
                             <UserRound className="h-3.5 w-3.5" />
@@ -3214,6 +3953,19 @@ function OrdersContent() {
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Adresa</p>
                         <p className="mt-1 line-clamp-2">{order.address || "-"}</p>
                       </div>
+                      {showShipmentNumberInNote ? (
+                        <button
+                          type="button"
+                          className="mt-3 flex w-full items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-left text-xs text-blue-700"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void copyText(shipmentNumber, "Broj porudzbine je kopiran.");
+                          }}
+                        >
+                          <span className="font-semibold uppercase tracking-wide">Broj porudzbine</span>
+                          <span className="font-mono text-sm">{shipmentNumber}</span>
+                        </button>
+                      ) : null}
                       <div
                         className="mt-3 flex flex-wrap items-center gap-2"
                         onClick={(event) => event.stopPropagation()}
@@ -3255,12 +4007,39 @@ function OrdersContent() {
                 <TableHead className="text-center">Stage</TableHead>
                 <TableHead className="text-center">Naslov</TableHead>
                 <TableHead className="text-center">Kontakt</TableHead>
-                <TableHead className="text-center">Nabavno</TableHead>
-                <TableHead className="text-center">Transport</TableHead>
-                <TableHead className="text-center">Prodajno</TableHead>
-                <TableHead className="text-center text-nowrap">Profit (50%)</TableHead>
-                <TableHead className="text-center">Povrat</TableHead>
-                <TableHead className="text-center">Napomena</TableHead>
+                <TableHead className="text-center">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span>Nabavno</span>
+                    <span className="text-[11px] text-slate-500">({formatCurrency(ordersTotals.nabavno, "EUR")})</span>
+                  </div>
+                </TableHead>
+                <TableHead className="text-center">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span>Transport</span>
+                    <span className="text-[11px] text-slate-500">({formatCurrency(ordersTotals.transport, "EUR")})</span>
+                  </div>
+                </TableHead>
+                <TableHead className="text-center">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span>Prodajno</span>
+                    <span className="text-[11px] text-slate-500">({formatCurrency(ordersTotals.prodajno, "EUR")})</span>
+                  </div>
+                </TableHead>
+                <TableHead className="text-center text-nowrap">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span>Profit (50%)</span>
+                    <span className={cn("text-[11px]", ordersTotals.profit < 0 ? "text-red-600" : "text-slate-500")}>
+                      ({formatCurrency(ordersTotals.profit, "EUR")})
+                    </span>
+                  </div>
+                </TableHead>
+                <TableHead className="text-center">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span>Povrat</span>
+                    <span className="text-[11px] text-slate-500">({formatCurrency(ordersTotals.povrat, "EUR")})</span>
+                  </div>
+                </TableHead>
+                <TableHead className="text-center">Broj porudzbine</TableHead>
                 <TableHead className="text-center">Akcije</TableHead>
               </TableRow>
               </TableHeader>
@@ -3285,7 +4064,6 @@ function OrdersContent() {
                     nabavnoUkupno,
                     transport,
                     profitShare,
-                    profitSharePercent,
                     povrat,
                   }) => {
                     const previewImages = getOrderPreviewImages(order);
@@ -3298,6 +4076,8 @@ function OrdersContent() {
                     const primaryTitle = itemNames[0] ?? order.title;
                     const secondaryNames = itemNames.slice(1, 3);
                     const remainingCount = itemNames.length > 3 ? itemNames.length - 3 : 0;
+                    const shipmentNumber = resolveShipmentNumber(order);
+                    const showShipmentNumberInNote = order.stage === "poslato" && shipmentNumber.length > 0;
 
                     return (
                       <TableRow
@@ -3375,17 +4155,52 @@ function OrdersContent() {
                         </TableCell>
                         <TableCell className="max-w-[220px]">
                           <div className="flex flex-col gap-1">
-                            <a
-                              href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
-                              className="flex flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              <span className="font-medium text-slate-800">{order.customerName}</span>
-                              <span className="flex items-center gap-1 text-xs text-slate-500">
+                            <div className="flex items-center justify-between gap-2 rounded-md border border-transparent px-2 py-1">
+                              <button
+                                type="button"
+                                className="truncate text-left font-medium text-slate-800 hover:text-blue-700"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void copyText(order.customerName, "Ime je kopirano.");
+                                }}
+                                title={order.customerName}
+                              >
+                                {order.customerName}
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void copyText(order._id, "Broj porudzbine je kopiran.");
+                                }}
+                                title={order._id}
+                              >
+                                ID
+                                <Copy className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50">
+                              <a
+                                href={`tel:${order.phone.replace(/[^+\d]/g, "")}`}
+                                className="flex min-w-0 items-center gap-1 text-xs text-slate-500"
+                                onClick={(event) => event.stopPropagation()}
+                              >
                                 <PhoneCall className="h-4 w-4 text-blue-500" />
-                                {order.phone}
-                              </span>
-                            </a>
+                                <span className="truncate">{order.phone}</span>
+                              </a>
+                              <button
+                                type="button"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void copyText(order.phone, "Broj telefona je kopiran.");
+                                }}
+                                title="Kopiraj broj telefona"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                             {order.pickup ? (
                               <span className="inline-flex items-center gap-1 self-start rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-800 shadow ring-1 ring-slate-200">
                                 <UserRound className="h-3.5 w-3.5" />
@@ -3418,7 +4233,21 @@ function OrdersContent() {
                           </div>
                         </TableCell>
                         <TableCell className="max-w-[180px] truncate text-sm text-slate-500">
-                          {order.napomena || "-"}
+                          {showShipmentNumberInNote ? (
+                            <button
+                              type="button"
+                              className="inline-flex max-w-full items-center gap-1 truncate font-mono text-blue-700 hover:underline"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void copyText(shipmentNumber, "Broj porudzbine je kopiran.");
+                              }}
+                              title={shipmentNumber}
+                            >
+                              {shipmentNumber}
+                            </button>
+                          ) : (
+                            order.napomena || "-"
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-nowrap items-center gap-2" onClick={(event) => event.stopPropagation()}>

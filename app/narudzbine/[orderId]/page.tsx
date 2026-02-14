@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, Share2, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,9 +25,29 @@ const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
 ];
-const transportModes = ["Kol", "Joe", "Posta", "Bex", "Aks"] as const;
+const transportModes = ["Kol", "Joe", "Smg"] as const;
+const slanjeModes = ["Posta", "Aks", "Bex"] as const;
+const shippingModes = ["Posta", "Aks", "Bex"] as const;
+type ShippingMode = (typeof shippingModes)[number];
 const deleteConfirmPhrase = "potvrdjujem da brisem";
 const requiresDeleteConfirmation = (stage?: OrderStage) => stage === "stiglo" || stage === "legle_pare";
+
+const resolveOrderShippingMode = (
+  order?: Pick<OrderWithProduct, "slanjeMode" | "transportMode"> | null,
+): ShippingMode | undefined => {
+  if (!order) return undefined;
+  const mode = order.slanjeMode;
+  if (mode && shippingModes.includes(mode as ShippingMode)) {
+    return mode as ShippingMode;
+  }
+  const legacyMode = order.transportMode;
+  if (legacyMode && shippingModes.includes(legacyMode as ShippingMode)) {
+    return legacyMode as ShippingMode;
+  }
+  return undefined;
+};
+
+const resolveShipmentNumber = (order?: Pick<OrderWithProduct, "brojPosiljke"> | null) => order?.brojPosiljke?.trim() ?? "";
 
 const stageLabels = stageOptions.reduce((acc, item) => {
   acc[item.value] = { label: item.label, tone: item.tone };
@@ -273,11 +293,9 @@ export default function OrderDetailsPage() {
 
 function OrderDetailsContent() {
   const params = useParams();
-  const pathname = usePathname();
-  const isKalaba = pathname?.startsWith("/kalaba");
-  const basePath = isKalaba ? "/kalaba" : "/narudzbine";
-  const backLabel = isKalaba ? "Nazad na Kalaba" : "Nazad na narudzbine";
-  const orderScope = isKalaba ? "kalaba" : "default";
+  const basePath = "/narudzbine";
+  const backLabel = "Nazad na narudzbine";
+  const orderScope = "default";
   const router = useRouter();
   const orderId = typeof params?.orderId === "string" ? params.orderId : "";
   const handleBack = useCallback(() => {
@@ -348,6 +366,9 @@ function OrderDetails({
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [shipmentStageModalOpen, setShipmentStageModalOpen] = useState(false);
+  const [shipmentNumberDraft, setShipmentNumberDraft] = useState("");
+  const [isShipmentStageSaving, setIsShipmentStageSaving] = useState(false);
   const productInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -505,8 +526,11 @@ function OrderDetails({
     nabavnaCena: current.nabavnaCena,
     prodajnaCena: current.prodajnaCena,
     napomena: current.napomena,
+    brojPosiljke: current.brojPosiljke,
     transportCost: current.transportCost,
     transportMode: current.transportMode,
+    slanjeMode: current.slanjeMode,
+    slanjeOwner: current.slanjeOwner,
     myProfitPercent: current.myProfitPercent,
     customerName: current.customerName,
     address: current.address,
@@ -549,6 +573,8 @@ function OrderDetails({
       | "prodajnaCena"
       | "transportCost"
       | "transportMode"
+      | "slanjeMode"
+      | "slanjeOwner"
       | "myProfitPercent"
       | "customerName"
       | "address"
@@ -612,6 +638,32 @@ function OrderDetails({
     if (field === "transportMode") {
       const normalized = transportModes.find((mode) => mode.toLowerCase() === trimmed.toLowerCase());
       await applyOrderUpdate((current) => ({ ...current, transportMode: normalized }), "Sacuvano.");
+      return;
+    }
+
+    if (field === "slanjeMode") {
+      const normalized = slanjeModes.find((mode) => mode.toLowerCase() === trimmed.toLowerCase());
+      await applyOrderUpdate(
+        (current) => ({
+          ...current,
+          slanjeMode: normalized,
+          slanjeOwner: normalized ? current.slanjeOwner : undefined,
+        }),
+        "Sacuvano.",
+      );
+      return;
+    }
+
+    if (field === "slanjeOwner") {
+      if (!order.slanjeMode) {
+        toast.error("Prvo izaberi slanje.");
+        throw new Error("Missing slanje");
+      }
+      if (!trimmed) {
+        await applyOrderUpdate((current) => ({ ...current, slanjeOwner: undefined }), "Sacuvano.");
+        return;
+      }
+      await applyOrderUpdate((current) => ({ ...current, slanjeOwner: trimmed }), "Sacuvano.");
       return;
     }
 
@@ -753,6 +805,18 @@ function OrderDetails({
   const nabavnoUkupno = totals?.totalNabavno ?? 0;
   const transport = totals?.transport ?? 0;
   const prof = totals?.profit ?? 0;
+  const slanjeOwnerLabel =
+    order?.slanjeMode === "Posta"
+      ? "Posta - na ime"
+      : order?.slanjeMode
+        ? "Aks/Bex - na ciji racun"
+        : "Slanje - na ciji racun";
+  const slanjeOwnerPlaceholder =
+    order?.slanjeMode === "Posta"
+      ? "Unesi na ime"
+      : order?.slanjeMode
+        ? "Unesi na ciji racun"
+        : "Izaberi slanje prvo";
   const myProfitPercent = resolveProfitPercent(order?.myProfitPercent);
   const myProfit = prof * (myProfitPercent / 100);
   const profitShare = myProfit * 0.5;
@@ -760,8 +824,43 @@ function OrderDetails({
   const povrat = nabavnoUkupno + transport + profitShare;
   const telHref = order ? `tel:${order.phone.replace(/[^+\d]/g, "")}` : "";
 
+  const closeShipmentStageModal = useCallback(() => {
+    if (isShipmentStageSaving) return;
+    setShipmentStageModalOpen(false);
+    setShipmentNumberDraft("");
+  }, [isShipmentStageSaving]);
+
+  const handleShipmentStageSubmit = useCallback(async () => {
+    if (!order || isShipmentStageSaving) return;
+    const shipmentNumber = shipmentNumberDraft.trim();
+    if (!shipmentNumber) {
+      toast.error("Unesi broj porudzbine.");
+      return;
+    }
+    setIsShipmentStageSaving(true);
+    setIsUpdatingStage(true);
+    try {
+      await applyOrderUpdate(
+        (current) => ({ ...current, stage: "poslato", brojPosiljke: shipmentNumber }),
+        "Status narudzbine je azuriran.",
+      );
+      setShipmentStageModalOpen(false);
+      setShipmentNumberDraft("");
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsShipmentStageSaving(false);
+      setIsUpdatingStage(false);
+    }
+  }, [applyOrderUpdate, isShipmentStageSaving, order, shipmentNumberDraft]);
+
   const handleStageChange = async (nextStage: OrderStage) => {
     if (!order) return;
+    if (nextStage === "poslato") {
+      setShipmentStageModalOpen(true);
+      setShipmentNumberDraft(resolveShipmentNumber(order));
+      return;
+    }
     setIsUpdatingStage(true);
     try {
       await applyOrderUpdate((current) => ({ ...current, stage: nextStage }), "Status narudzbine je azuriran.");
@@ -915,6 +1014,50 @@ function OrderDetails({
             </Button>
             <Button type="button" variant="destructive" onClick={handleDeleteOrder} disabled={isDeleteDisabled}>
               {isDeletingOrder ? "Brisanje..." : "Obrisi"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={shipmentStageModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeShipmentStageModal();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Broj porudzbine</DialogTitle>
+            <DialogDescription>
+              Unesi broj porudzbine pre promene statusa na "Poslato"
+              {order ? ` (${resolveOrderShippingMode(order) ?? "Slanje"})` : ""}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700" htmlFor="shipment-number-details">
+              Broj porudzbine
+            </label>
+            <Input
+              id="shipment-number-details"
+              value={shipmentNumberDraft}
+              placeholder="Unesi broj porudzbine"
+              autoFocus
+              onChange={(event) => setShipmentNumberDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleShipmentStageSubmit();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={closeShipmentStageModal} disabled={isShipmentStageSaving}>
+              Otkazi
+            </Button>
+            <Button type="button" onClick={() => void handleShipmentStageSubmit()} disabled={isShipmentStageSaving}>
+              {isShipmentStageSaving ? "Cuvanje..." : "Sacuvaj i oznaci kao poslato"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1392,6 +1535,46 @@ function OrderDetails({
                 Bez kurira
               </button>
             </div>
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Slanje</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {slanjeModes.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                      order.slanjeMode === mode
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-blue-200"
+                    }`}
+                    onClick={() => handleOrderFieldSave("slanjeMode", mode)}
+                  >
+                    {mode}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                    !order.slanjeMode
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  }`}
+                  onClick={() => handleOrderFieldSave("slanjeMode", "")}
+                >
+                  Bez slanja
+                </button>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{slanjeOwnerLabel}</p>
+                <Input
+                  className="disabled:cursor-not-allowed disabled:bg-slate-100"
+                  value={order.slanjeOwner ?? ""}
+                  placeholder={slanjeOwnerPlaceholder}
+                  disabled={!order.slanjeMode}
+                  onChange={(event) => handleOrderFieldSave("slanjeOwner", event.target.value)}
+                />
+              </div>
+            </div>
             <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
                 <input
@@ -1466,6 +1649,46 @@ function OrderDetails({
               >
                 Bez kurira
               </button>
+            </div>
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Slanje</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {slanjeModes.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                      order.slanjeMode === mode
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-blue-200"
+                    }`}
+                    onClick={() => handleOrderFieldSave("slanjeMode", mode)}
+                  >
+                    {mode}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                    !order.slanjeMode
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  }`}
+                  onClick={() => handleOrderFieldSave("slanjeMode", "")}
+                >
+                  Bez slanja
+                </button>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{slanjeOwnerLabel}</p>
+                <Input
+                  className="disabled:cursor-not-allowed disabled:bg-slate-100"
+                  value={order.slanjeOwner ?? ""}
+                  placeholder={slanjeOwnerPlaceholder}
+                  disabled={!order.slanjeMode}
+                  onChange={(event) => handleOrderFieldSave("slanjeOwner", event.target.value)}
+                />
+              </div>
             </div>
             <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">

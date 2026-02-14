@@ -324,7 +324,11 @@ function ProductDetailsContent() {
   const queryResult = useConvexQuery<ProductWithUrls | null>("products:get", { token: sessionToken, id: productId });
   const categories = useConvexQuery<Category[]>("categories:list", { token: sessionToken });
   const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
-  const productOrders = useConvexQuery<Order[]>("orders:byProduct", { token: sessionToken, productId });
+  const productOrders = useConvexQuery<Order[]>("orders:byProduct", {
+    token: sessionToken,
+    productId,
+    scope: "default",
+  });
   const updateProduct = useConvexMutation("products:update");
   const createCategory = useConvexMutation<
     {
@@ -1991,7 +1995,7 @@ function ProductDetailsContent() {
                 const primaryLabel = matchedLabels[0] ?? "";
                 const secondaryLabels = matchedLabels.slice(1, 3);
                 const remainingCount = matchedLabels.length > 3 ? matchedLabels.length - 3 : 0;
-                const orderHref = order.scope === "kalaba" ? `/kalaba/${order._id}` : `/narudzbine/${order._id}`;
+                const orderHref = `/narudzbine/${order._id}`;
 
                 return (
                   <Link

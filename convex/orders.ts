@@ -5,7 +5,9 @@ import { requireUser } from "./auth";
 import { normalizeSearchText } from "./search";
 
 const orderStages = ["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"] as const;
-const transportModes = ["Kol", "Joe", "Posta", "Bex", "Aks"] as const;
+const transportModes = ["Kol", "Joe", "Smg"] as const;
+const legacyTransportModes = ["Posta", "Bex", "Aks"] as const;
+const slanjeModes = ["Posta", "Aks", "Bex"] as const;
 const orderScopes = ["default", "kalaba"] as const;
 
 const stageSchema = v.union(
@@ -19,9 +21,16 @@ const transportModeSchema = v.union(
   v.literal(transportModes[0]),
   v.literal(transportModes[1]),
   v.literal(transportModes[2]),
-  v.literal(transportModes[3]),
-  v.literal(transportModes[4]),
+  v.literal(legacyTransportModes[0]),
+  v.literal(legacyTransportModes[1]),
+  v.literal(legacyTransportModes[2]),
 );
+const slanjeModeSchema = v.union(
+  v.literal(slanjeModes[0]),
+  v.literal(slanjeModes[1]),
+  v.literal(slanjeModes[2]),
+);
+const slanjeOwnerSchema = v.string();
 const orderScopeSchema = v.union(v.literal(orderScopes[0]), v.literal(orderScopes[1]));
 
 const normalizeStage = (stage?: (typeof orderStages)[number]) => {
@@ -39,9 +48,29 @@ const normalizeTransportCost = (value?: number) => {
   return Math.max(value, 0);
 };
 
-const normalizeTransportMode = (mode?: (typeof transportModes)[number]) => {
+const normalizeTransportMode = (mode?: string) => {
   if (!mode) return undefined;
-  return transportModes.includes(mode) ? mode : undefined;
+  return (transportModes as readonly string[]).includes(mode) ? (mode as (typeof transportModes)[number]) : undefined;
+};
+
+const normalizeSlanjeMode = (mode?: string) => {
+  if (!mode) return undefined;
+  return (slanjeModes as readonly string[]).includes(mode) ? (mode as (typeof slanjeModes)[number]) : undefined;
+};
+
+const normalizeSlanjeOwner = (mode: (typeof slanjeModes)[number] | undefined, owner?: string) => {
+  const trimmed = owner?.trim();
+  if (!mode || !trimmed) return undefined;
+  return trimmed;
+};
+
+const normalizeOwnerKey = (value?: string) => normalizeSearchText(value?.trim() ?? "");
+
+const normalizeStartingAmount = (value?: number) => {
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isFinite(value)) return undefined;
+  if (value < 0) return undefined;
+  return value;
 };
 
 const normalizeProfitPercent = (value?: number) => {
@@ -50,6 +79,14 @@ const normalizeProfitPercent = (value?: number) => {
   if (value < 0 || value > 100) return undefined;
   return value;
 };
+
+const normalizeShipmentNumber = (value?: string) => {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+};
+
+const resolveProfitPercent = (value?: number) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 100;
 
 const normalizePhone = (value: string) => value.replace(/[^\d]/g, "");
 
@@ -303,6 +340,26 @@ const orderTotals = (order: Doc<"orders">) => {
   return { items, totals, transport, profit };
 };
 
+const resolveSlanjeModeFromOrder = (order: Doc<"orders">) => {
+  const direct = normalizeSlanjeMode(order.slanjeMode as any);
+  if (direct) return direct;
+  const legacy = order.transportMode;
+  return (legacyTransportModes as readonly string[]).includes(legacy as string) ? (legacy as typeof slanjeModes[number]) : undefined;
+};
+
+const resolveSlanjeOwnerFromOrder = (order: Doc<"orders">, mode?: (typeof slanjeModes)[number]) => {
+  const rawOwner = typeof order.slanjeOwner === "string" ? order.slanjeOwner.trim() : "";
+  const normalized = normalizeSlanjeOwner(mode, rawOwner);
+  if (normalized) return normalized;
+  return rawOwner || undefined;
+};
+
+const sortOwnerOptions = <T extends { count: number; lastUsedAt: number; value: string }>(left: T, right: T) => {
+  if (right.count !== left.count) return right.count - left.count;
+  if (right.lastUsedAt !== left.lastUsedAt) return right.lastUsedAt - left.lastUsedAt;
+  return left.value.localeCompare(right.value);
+};
+
 const loadProductWithAssets = async (ctx: any, productId: Id<"products">, userId: Id<"users">) => {
   const storedProduct = await ctx.db.get(productId);
   if (!storedProduct || storedProduct.userId !== userId) return null;
@@ -370,15 +427,25 @@ export const summary = query({
       .collect();
     const scoped = orders.filter((order) => normalizeScope(order.scope) === "default");
     const paidOrders = scoped.filter((order) => normalizeStage(order.stage as any) === "legle_pare");
+    const omerFeePerAksShipment = 2.5;
 
-    return paidOrders.reduce(
+    const totals = paidOrders.reduce(
       (acc, order) => {
-        const { totals, transport, profit } = orderTotals(order);
+        const { totals: orderSums, transport, profit } = orderTotals(order);
+        const shippingMode = resolveSlanjeModeFromOrder(order);
         acc.brojNarudzbina += 1;
-        acc.ukupnoProdajno += totals.totalProdajno;
-        acc.ukupnoNabavno += totals.totalNabavno;
+        acc.ukupnoProdajno += orderSums.totalProdajno;
+        acc.ukupnoNabavno += orderSums.totalNabavno;
         acc.ukupnoTransport += transport;
         acc.profit += profit;
+        if (shippingMode === "Aks") {
+          acc.omerBrojPosiljki += 1;
+          acc.omerUkupno += omerFeePerAksShipment;
+        }
+        if (order.pickup) {
+          acc.licnoPreuzimanjeBrojNarudzbina += 1;
+          acc.ukupnoLicnoPreuzimanje += orderSums.totalProdajno;
+        }
         return acc;
       },
       {
@@ -387,8 +454,282 @@ export const summary = query({
         ukupnoNabavno: 0,
         ukupnoTransport: 0,
         profit: 0,
+        omerUkupno: 0,
+        omerBrojPosiljki: 0,
+        ukupnoLicnoPreuzimanje: 0,
+        licnoPreuzimanjeBrojNarudzbina: 0,
       },
     );
+
+    return {
+      ...totals,
+      profit: totals.profit - totals.omerUkupno,
+    };
+  },
+});
+
+export const obracun = query({
+  args: { token: v.string(), scope: v.optional(orderScopeSchema) },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
+      .collect();
+    const scoped = orders.filter((order) => normalizeScope(order.scope) === scope);
+    const paidOrders = scoped.filter((order) => normalizeStage(order.stage as any) === "legle_pare");
+
+    const postaMap = new Map<string, { owner: string; total: number; count: number }>();
+    const aksBexMap = new Map<
+      string,
+      {
+        owner: string;
+        total: number;
+        ordersTotal: number;
+        startingAmount: number;
+        aks: number;
+        bex: number;
+        count: number;
+      }
+    >();
+    let totalPosta = 0;
+    let totalAks = 0;
+    let totalBex = 0;
+
+    for (const order of paidOrders) {
+      const mode = resolveSlanjeModeFromOrder(order);
+      if (!mode) continue;
+      const owner = resolveSlanjeOwnerFromOrder(order, mode) ?? "Nepoznato";
+      const ownerKey = normalizeOwnerKey(owner);
+      if (!ownerKey) continue;
+      const { totals } = orderTotals(order);
+      const amount = totals.totalProdajno;
+
+      if (mode === "Posta") {
+        const existing = postaMap.get(ownerKey) ?? { owner, total: 0, count: 0 };
+        existing.total += amount;
+        existing.count += 1;
+        postaMap.set(ownerKey, existing);
+        totalPosta += amount;
+        continue;
+      }
+
+      const existing = aksBexMap.get(ownerKey) ?? {
+        owner,
+        total: 0,
+        ordersTotal: 0,
+        startingAmount: 0,
+        aks: 0,
+        bex: 0,
+        count: 0,
+      };
+      existing.ordersTotal += amount;
+      existing.total = existing.ordersTotal + existing.startingAmount;
+      existing.count += 1;
+      if (mode === "Aks") {
+        existing.aks += amount;
+        totalAks += amount;
+      } else {
+        existing.bex += amount;
+        totalBex += amount;
+      }
+      aksBexMap.set(ownerKey, existing);
+    }
+
+    const shippingAccounts = await ctx.db
+      .query("shippingAccounts")
+      .withIndex("by_user_scope_updatedAt", (q) => q.eq("userId", user._id).eq("scope", scope))
+      .collect();
+
+    let totalStarting = 0;
+    for (const account of shippingAccounts) {
+      const owner = account.value.trim();
+      const ownerKey = account.valueNormalized || normalizeOwnerKey(owner);
+      if (!ownerKey) continue;
+      const startingAmount = normalizeStartingAmount(account.startingAmount) ?? 0;
+      const existing = aksBexMap.get(ownerKey) ?? {
+        owner: owner || "Nepoznato",
+        total: 0,
+        ordersTotal: 0,
+        startingAmount: 0,
+        aks: 0,
+        bex: 0,
+        count: 0,
+      };
+      existing.owner = existing.owner || owner || "Nepoznato";
+      existing.startingAmount = startingAmount;
+      existing.total = existing.ordersTotal + startingAmount;
+      aksBexMap.set(ownerKey, existing);
+      totalStarting += startingAmount;
+    }
+
+    const totalFromOrders = totalAks + totalBex;
+    const totalWithStarting = totalFromOrders + totalStarting;
+
+    return {
+      aksBex: {
+        total: totalWithStarting,
+        totalAks,
+        totalBex,
+        totalFromOrders,
+        totalStarting,
+        totalWithStarting,
+        byOwner: Array.from(aksBexMap.values()).sort(
+          (a, b) => b.total - a.total || b.ordersTotal - a.ordersTotal || a.owner.localeCompare(b.owner),
+        ),
+      },
+      posta: {
+        total: totalPosta,
+        byOwner: Array.from(postaMap.values()).sort((a, b) => b.total - a.total || a.owner.localeCompare(b.owner)),
+      },
+      meta: {
+        ordersCount: paidOrders.length,
+      },
+    };
+  },
+});
+
+export const shippingOwners = query({
+  args: { token: v.string(), scope: v.optional(orderScopeSchema) },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
+      .collect();
+    const scoped = orders.filter((order) => normalizeScope(order.scope) === scope);
+
+    const postaMap = new Map<string, { value: string; count: number; lastUsedAt: number }>();
+    const accountMap = new Map<
+      string,
+      {
+        value: string;
+        count: number;
+        lastUsedAt: number;
+        aksCount: number;
+        bexCount: number;
+        startingAmount: number;
+      }
+    >();
+
+    for (const order of scoped) {
+      const mode = resolveSlanjeModeFromOrder(order);
+      const owner = resolveSlanjeOwnerFromOrder(order, mode);
+      if (!mode || !owner) continue;
+      const ownerKey = normalizeOwnerKey(owner);
+      if (!ownerKey) continue;
+
+      if (mode === "Posta") {
+        const existing = postaMap.get(ownerKey) ?? { value: owner, count: 0, lastUsedAt: 0 };
+        existing.count += 1;
+        existing.lastUsedAt = Math.max(existing.lastUsedAt, order.kreiranoAt);
+        postaMap.set(ownerKey, existing);
+        continue;
+      }
+
+      const existing = accountMap.get(ownerKey) ?? {
+        value: owner,
+        count: 0,
+        lastUsedAt: 0,
+        aksCount: 0,
+        bexCount: 0,
+        startingAmount: 0,
+      };
+      existing.count += 1;
+      existing.lastUsedAt = Math.max(existing.lastUsedAt, order.kreiranoAt);
+      if (mode === "Aks") {
+        existing.aksCount += 1;
+      } else {
+        existing.bexCount += 1;
+      }
+      accountMap.set(ownerKey, existing);
+    }
+
+    const shippingAccounts = await ctx.db
+      .query("shippingAccounts")
+      .withIndex("by_user_scope_updatedAt", (q) => q.eq("userId", user._id).eq("scope", scope))
+      .collect();
+
+    for (const account of shippingAccounts) {
+      const value = account.value.trim();
+      const key = account.valueNormalized || normalizeOwnerKey(value);
+      if (!key) continue;
+      const startingAmount = normalizeStartingAmount(account.startingAmount) ?? 0;
+      const existing = accountMap.get(key) ?? {
+        value,
+        count: 0,
+        lastUsedAt: 0,
+        aksCount: 0,
+        bexCount: 0,
+        startingAmount: 0,
+      };
+      existing.value = existing.value || value;
+      existing.lastUsedAt = Math.max(existing.lastUsedAt, account.updatedAt);
+      existing.startingAmount = startingAmount;
+      accountMap.set(key, existing);
+    }
+
+    return {
+      aksBexAccounts: Array.from(accountMap.values()).sort(sortOwnerOptions),
+      postaNames: Array.from(postaMap.values()).sort(sortOwnerOptions),
+    };
+  },
+});
+
+export const upsertShippingAccount = mutation({
+  args: {
+    token: v.string(),
+    scope: v.optional(orderScopeSchema),
+    value: v.string(),
+    startingAmount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const value = args.value.trim();
+    if (value.length < 2) {
+      throw new Error("Unesi naziv racuna.");
+    }
+
+    const valueNormalized = normalizeOwnerKey(value);
+    if (!valueNormalized) {
+      throw new Error("Unesi naziv racuna.");
+    }
+
+    const startingAmount = normalizeStartingAmount(args.startingAmount);
+    if (startingAmount === undefined) {
+      throw new Error("Pocetni iznos mora biti 0 ili vise.");
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("shippingAccounts")
+      .withIndex("by_user_scope_value", (q) =>
+        q.eq("userId", user._id).eq("scope", scope).eq("valueNormalized", valueNormalized),
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        value,
+        startingAmount,
+        updatedAt: now,
+      });
+      return { id: existing._id, value, startingAmount };
+    }
+
+    const id = await ctx.db.insert("shippingAccounts", {
+      userId: user._id,
+      scope,
+      value,
+      valueNormalized,
+      startingAmount,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { id, value, startingAmount };
   },
 });
 
@@ -432,6 +773,8 @@ export const list = query({
     stages: v.optional(v.array(stageSchema)),
     unreturnedOnly: v.optional(v.boolean()),
     returnedOnly: v.optional(v.boolean()),
+    dateFrom: v.optional(v.number()),
+    dateTo: v.optional(v.number()),
     scope: v.optional(orderScopeSchema),
   },
   handler: async (ctx, args) => {
@@ -439,6 +782,10 @@ export const list = query({
     const scope = normalizeScope(args.scope);
     const page = Math.max(args.page ?? 1, 1);
     const pageSize = Math.max(Math.min(args.pageSize ?? 20, 100), 1);
+    const rawFrom = typeof args.dateFrom === "number" && Number.isFinite(args.dateFrom) ? args.dateFrom : undefined;
+    const rawTo = typeof args.dateTo === "number" && Number.isFinite(args.dateTo) ? args.dateTo : undefined;
+    const dateFrom = rawFrom !== undefined && rawTo !== undefined && rawFrom > rawTo ? rawTo : rawFrom;
+    const dateTo = rawFrom !== undefined && rawTo !== undefined && rawFrom > rawTo ? rawFrom : rawTo;
 
     let orders = await ctx.db
       .query("orders")
@@ -470,6 +817,13 @@ export const list = query({
       }
     }
 
+    if (dateFrom !== undefined) {
+      orders = orders.filter((order) => order.kreiranoAt >= dateFrom);
+    }
+    if (dateTo !== undefined) {
+      orders = orders.filter((order) => order.kreiranoAt <= dateTo);
+    }
+
     if (args.stages && args.stages.length > 0) {
       const allowedStages = new Set(args.stages.map((stage) => normalizeStage(stage)));
       orders = orders.filter((order) => allowedStages.has(normalizeStage(order.stage as any)));
@@ -480,6 +834,23 @@ export const list = query({
     } else if (args.unreturnedOnly) {
       orders = orders.filter((order) => !order.povratVracen);
     }
+
+    const totals = orders.reduce(
+      (acc, order) => {
+        const summary = orderTotals(order);
+        const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
+        const myProfit = summary.profit * (myProfitPercent / 100);
+        const profitShare = myProfit * 0.5;
+        const povrat = summary.totals.totalNabavno + summary.transport + profitShare;
+        acc.nabavno += summary.totals.totalNabavno;
+        acc.transport += summary.transport;
+        acc.prodajno += summary.totals.totalProdajno;
+        acc.profit += profitShare;
+        acc.povrat += povrat;
+        return acc;
+      },
+      { nabavno: 0, transport: 0, prodajno: 0, profit: 0, povrat: 0 },
+    );
 
     const total = orders.length;
     const offset = (page - 1) * pageSize;
@@ -493,6 +864,7 @@ export const list = query({
         total,
         totalPages: Math.max(Math.ceil(total / pageSize), 1),
       },
+      totals,
     };
   },
 });
@@ -540,9 +912,12 @@ export const create = mutation({
     nabavnaCena: v.optional(v.number()),
     prodajnaCena: v.optional(v.number()),
     napomena: v.optional(v.string()),
+    brojPosiljke: v.optional(v.string()),
     povratVracen: v.optional(v.boolean()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
+    slanjeMode: v.optional(slanjeModeSchema),
+    slanjeOwner: v.optional(slanjeOwnerSchema),
     myProfitPercent: v.optional(v.number()),
     customerName: v.string(),
     address: v.string(),
@@ -558,6 +933,9 @@ export const create = mutation({
     const povratVracen = args.povratVracen ?? false;
     const transportCost = normalizeTransportCost(args.transportCost);
     const transportMode = normalizeTransportMode(args.transportMode);
+    const slanjeMode = normalizeSlanjeMode(args.slanjeMode);
+    const slanjeOwner = normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
+    const brojPosiljke = normalizeShipmentNumber(args.brojPosiljke);
     const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
     if (args.myProfitPercent !== undefined && myProfitPercent === undefined) {
       throw new Error("Procenat profita mora biti izmedju 0 i 100.");
@@ -606,9 +984,12 @@ export const create = mutation({
       nabavnaCena: totals.avgNabavna,
       prodajnaCena: totals.avgProdajna,
       napomena: args.napomena?.trim() || undefined,
+      brojPosiljke,
       povratVracen,
       transportCost,
       transportMode,
+      slanjeMode,
+      slanjeOwner,
       myProfitPercent: resolvedProfitPercent,
       customerName,
       address,
@@ -644,9 +1025,12 @@ export const update = mutation({
     nabavnaCena: v.optional(v.number()),
     prodajnaCena: v.optional(v.number()),
     napomena: v.optional(v.string()),
+    brojPosiljke: v.optional(v.string()),
     povratVracen: v.optional(v.boolean()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
+    slanjeMode: v.optional(slanjeModeSchema),
+    slanjeOwner: v.optional(slanjeOwnerSchema),
     myProfitPercent: v.optional(v.number()),
     customerName: v.string(),
     address: v.string(),
@@ -672,6 +1056,12 @@ export const update = mutation({
     const povratVracen = args.povratVracen ?? existing.povratVracen ?? false;
     const transportCost = normalizeTransportCost(args.transportCost);
     const transportMode = normalizeTransportMode(args.transportMode);
+    const slanjeMode = normalizeSlanjeMode(args.slanjeMode);
+    const slanjeOwner = normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
+    const brojPosiljke =
+      args.brojPosiljke === undefined
+        ? normalizeShipmentNumber(existing.brojPosiljke)
+        : normalizeShipmentNumber(args.brojPosiljke);
     const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
     if (args.myProfitPercent !== undefined && myProfitPercent === undefined) {
       throw new Error("Procenat profita mora biti izmedju 0 i 100.");
@@ -708,9 +1098,12 @@ export const update = mutation({
       nabavnaCena: totals.avgNabavna,
       prodajnaCena: totals.avgProdajna,
       napomena: args.napomena?.trim() || undefined,
+      brojPosiljke,
       povratVracen,
       transportCost,
       transportMode,
+      slanjeMode,
+      slanjeOwner,
       myProfitPercent: resolvedProfitPercent,
       customerName,
       address,

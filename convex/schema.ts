@@ -142,11 +142,21 @@ export default defineSchema({
     nabavnaCena: v.number(),
     prodajnaCena: v.number(),
     napomena: v.optional(v.string()),
+    brojPosiljke: v.optional(v.string()),
     povratVracen: v.optional(v.boolean()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(
-      v.union(v.literal("Kol"), v.literal("Joe"), v.literal("Posta"), v.literal("Bex"), v.literal("Aks")),
+      v.union(
+        v.literal("Kol"),
+        v.literal("Joe"),
+        v.literal("Smg"),
+        v.literal("Posta"),
+        v.literal("Bex"),
+        v.literal("Aks"),
+      ),
     ),
+    slanjeMode: v.optional(v.union(v.literal("Posta"), v.literal("Aks"), v.literal("Bex"))),
+    slanjeOwner: v.optional(v.string()),
     myProfitPercent: v.optional(v.number()),
     customerName: v.string(),
     address: v.string(),
@@ -188,6 +198,17 @@ export default defineSchema({
   })
     .index("by_user_scope_lastUsedAt", ["userId", "scope", "lastUsedAt"])
     .index("by_user_scope_phone", ["userId", "scope", "phoneNormalized"]),
+  shippingAccounts: defineTable({
+    userId: v.optional(v.id("users")),
+    scope: v.union(v.literal("default"), v.literal("kalaba")),
+    value: v.string(),
+    valueNormalized: v.string(),
+    startingAmount: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_scope_updatedAt", ["userId", "scope", "updatedAt"])
+    .index("by_user_scope_value", ["userId", "scope", "valueNormalized"]),
   restockRequests: defineTable({
     userId: v.optional(v.id("users")),
     scope: v.union(v.literal("default"), v.literal("kalaba")),
