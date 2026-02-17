@@ -3827,26 +3827,26 @@ function OrdersContent() {
               Mini obracun za aktivne filtere
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-blue-700/80">Nabavno</p>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Nabavno</p>
                 <p className="text-base font-bold text-blue-700">{formatCurrency(ordersTotals.nabavno, "EUR")}</p>
               </div>
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-red-700/80">Transport</p>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Transport</p>
                 <p className="text-base font-bold text-red-700">{formatCurrency(ordersTotals.transport, "EUR")}</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-slate-500">Prodajno</p>
                 <p className="text-base font-bold text-slate-900">{formatCurrency(ordersTotals.prodajno, "EUR")}</p>
               </div>
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-emerald-700/80">Profit (50%)</p>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Profit (50%)</p>
                 <p className={cn("text-base font-bold", ordersTotals.profit < 0 ? "text-red-700" : "text-emerald-700")}>
                   {formatCurrency(ordersTotals.profit, "EUR")}
                 </p>
               </div>
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-amber-700/80">Povrat</p>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Povrat</p>
                 <p className="text-base font-bold text-amber-700">{formatCurrency(ordersTotals.povrat, "EUR")}</p>
               </div>
             </div>
