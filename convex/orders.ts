@@ -6,6 +6,7 @@ import { normalizeSearchText } from "./search";
 
 const orderStages = ["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"] as const;
 const transportModes = ["Kol", "Joe", "Smg"] as const;
+const pickupTransportModes = ["Kol", "Joe"] as const;
 const legacyTransportModes = ["Posta", "Bex", "Aks"] as const;
 const slanjeModes = ["Posta", "Aks", "Bex"] as const;
 const orderScopes = ["default", "kalaba"] as const;
@@ -52,6 +53,9 @@ const normalizeTransportMode = (mode?: string) => {
   if (!mode) return undefined;
   return (transportModes as readonly string[]).includes(mode) ? (mode as (typeof transportModes)[number]) : undefined;
 };
+
+const isPickupTransportMode = (mode?: string) =>
+  (pickupTransportModes as readonly string[]).includes(mode ?? "");
 
 const normalizeSlanjeMode = (mode?: string) => {
   if (!mode) return undefined;
@@ -773,6 +777,7 @@ export const list = query({
     stages: v.optional(v.array(stageSchema)),
     unreturnedOnly: v.optional(v.boolean()),
     returnedOnly: v.optional(v.boolean()),
+    pickupOnly: v.optional(v.boolean()),
     dateFrom: v.optional(v.number()),
     dateTo: v.optional(v.number()),
     scope: v.optional(orderScopeSchema),
@@ -833,6 +838,10 @@ export const list = query({
       orders = orders.filter((order) => order.povratVracen);
     } else if (args.unreturnedOnly) {
       orders = orders.filter((order) => !order.povratVracen);
+    }
+
+    if (args.pickupOnly) {
+      orders = orders.filter((order) => Boolean(order.pickup));
     }
 
     const totals = orders.reduce(
@@ -932,9 +941,14 @@ export const create = mutation({
     const pickup = Boolean(args.pickup);
     const povratVracen = args.povratVracen ?? false;
     const transportCost = normalizeTransportCost(args.transportCost);
-    const transportMode = normalizeTransportMode(args.transportMode);
-    const slanjeMode = normalizeSlanjeMode(args.slanjeMode);
-    const slanjeOwner = normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
+    const normalizedTransportMode = normalizeTransportMode(args.transportMode);
+    if (pickup && normalizedTransportMode === "Smg") {
+      throw new Error("Za licno preuzimanje izaberi Kol ili Joe.");
+    }
+    const transportMode =
+      pickup && !isPickupTransportMode(normalizedTransportMode) ? undefined : normalizedTransportMode;
+    const slanjeMode = pickup ? undefined : normalizeSlanjeMode(args.slanjeMode);
+    const slanjeOwner = pickup ? undefined : normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
     const brojPosiljke = normalizeShipmentNumber(args.brojPosiljke);
     const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
     if (args.myProfitPercent !== undefined && myProfitPercent === undefined) {
@@ -1055,9 +1069,14 @@ export const update = mutation({
     const pickup = args.pickup ?? existing.pickup ?? false;
     const povratVracen = args.povratVracen ?? existing.povratVracen ?? false;
     const transportCost = normalizeTransportCost(args.transportCost);
-    const transportMode = normalizeTransportMode(args.transportMode);
-    const slanjeMode = normalizeSlanjeMode(args.slanjeMode);
-    const slanjeOwner = normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
+    const normalizedTransportMode = normalizeTransportMode(args.transportMode);
+    if (pickup && normalizedTransportMode === "Smg") {
+      throw new Error("Za licno preuzimanje izaberi Kol ili Joe.");
+    }
+    const transportMode =
+      pickup && !isPickupTransportMode(normalizedTransportMode) ? undefined : normalizedTransportMode;
+    const slanjeMode = pickup ? undefined : normalizeSlanjeMode(args.slanjeMode);
+    const slanjeOwner = pickup ? undefined : normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
     const brojPosiljke =
       args.brojPosiljke === undefined
         ? normalizeShipmentNumber(existing.brojPosiljke)

@@ -47,6 +47,7 @@ const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
 ];
 const transportModes = ["Kol", "Joe", "Smg"] as const;
+const pickupTransportModes = ["Kol", "Joe"] as const;
 const slanjeModes = ["Posta", "Aks", "Bex"] as const;
 const shippingModes = ["Posta", "Aks", "Bex"] as const;
 type ShippingMode = (typeof shippingModes)[number];
@@ -183,6 +184,16 @@ const orderSchema = z
     note: z.string().trim().min(1, "Napomena je obavezna."),
   })
   .superRefine((values, ctx) => {
+    if (values.pickup) {
+      if (values.transportMode === "Smg") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["transportMode"],
+          message: "Za licno preuzimanje izaberi Kol ili Joe.",
+        });
+      }
+      return;
+    }
     if (values.slanjeMode && !values.slanjeOwner) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -456,6 +467,7 @@ function OrdersContent() {
   );
   const unreturnedQuery = useMemo(() => searchParams?.get("unreturned") === "1", [searchParamsString, searchParams]);
   const returnedQuery = useMemo(() => searchParams?.get("returned") === "1", [searchParamsString, searchParams]);
+  const pickupQuery = useMemo(() => searchParams?.get("pickup") === "1", [searchParamsString, searchParams]);
   const effectiveUnreturnedQuery = unreturnedQuery && !returnedQuery;
   const effectiveReturnedQuery = returnedQuery;
   const { token } = useAuth();
@@ -466,6 +478,7 @@ function OrdersContent() {
   const [stageFilters, setStageFilters] = useState<OrderStage[]>(stageQuery);
   const [showUnreturnedOnly, setShowUnreturnedOnly] = useState(effectiveUnreturnedQuery);
   const [showReturnedOnly, setShowReturnedOnly] = useState(effectiveReturnedQuery);
+  const [showPickupOnly, setShowPickupOnly] = useState(pickupQuery);
   const [filterMenuMode, setFilterMenuMode] = useState<"closed" | "hover" | "pinned">("closed");
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -539,6 +552,7 @@ function OrdersContent() {
     stageFilters: OrderStage[];
     showUnreturnedOnly: boolean;
     showReturnedOnly: boolean;
+    showPickupOnly: boolean;
     dateFrom: string;
     dateTo: string;
   }>({
@@ -549,6 +563,7 @@ function OrdersContent() {
     stageFilters: [],
     showUnreturnedOnly: false,
     showReturnedOnly: false,
+    showPickupOnly: false,
     dateFrom: "",
     dateTo: "",
   });
@@ -598,6 +613,7 @@ function OrdersContent() {
     stages: stageFilters,
     unreturnedOnly: showUnreturnedOnly,
     returnedOnly: showReturnedOnly,
+    pickupOnly: showPickupOnly,
     dateFrom: dateFromTimestamp,
     dateTo: dateToTimestamp,
     scope: orderScope,
@@ -702,7 +718,11 @@ function OrdersContent() {
   const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
   const dateFilterActive = Boolean(dateFrom || dateTo);
   const activeFilterCount =
-    stageFilters.length + (showUnreturnedOnly ? 1 : 0) + (showReturnedOnly ? 1 : 0) + (dateFilterActive ? 1 : 0);
+    stageFilters.length +
+    (showUnreturnedOnly ? 1 : 0) +
+    (showReturnedOnly ? 1 : 0) +
+    (showPickupOnly ? 1 : 0) +
+    (dateFilterActive ? 1 : 0);
   const isFilterMenuOpen = filterMenuMode !== "closed";
   const restockEntries = restockRequests ?? [];
   const isRestockLoading = restockRequests === undefined;
@@ -734,10 +754,11 @@ function OrdersContent() {
       stageFilters,
       showUnreturnedOnly,
       showReturnedOnly,
+      showPickupOnly,
       dateFrom,
       dateTo,
     };
-  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, stageFilters, dateFrom, dateTo]);
+  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, showPickupOnly, stageFilters, dateFrom, dateTo]);
 
   useEffect(() => {
     if (didRestoreRef.current) return;
@@ -749,6 +770,7 @@ function OrdersContent() {
     const storedStages = normalizeStageFilters(storedStagesRaw);
     const storedUnreturned = stored.extra?.showUnreturnedOnly === true;
     const storedReturned = stored.extra?.showReturnedOnly === true;
+    const storedPickup = stored.extra?.showPickupOnly === true;
     const storedDateFrom = normalizeDateInput(
       typeof stored.extra?.dateFrom === "string" ? stored.extra.dateFrom : "",
     );
@@ -760,6 +782,7 @@ function OrdersContent() {
       !areArraysEqual(storedStages, stageQuery) ||
       storedUnreturned !== effectiveUnreturnedQuery ||
       storedReturned !== effectiveReturnedQuery ||
+      storedPickup !== pickupQuery ||
       storedDateFrom !== dateFromQuery ||
       storedDateTo !== dateToQuery
     ) {
@@ -778,6 +801,7 @@ function OrdersContent() {
     setStageFilters(stageQuery);
     setShowUnreturnedOnly(effectiveUnreturnedQuery);
     setShowReturnedOnly(effectiveReturnedQuery);
+    setShowPickupOnly(pickupQuery);
     setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
     clearListState(listStateKey);
   }, [
@@ -786,6 +810,7 @@ function OrdersContent() {
     stageQuery,
     effectiveUnreturnedQuery,
     effectiveReturnedQuery,
+    pickupQuery,
     dateFromQuery,
     dateToQuery,
   ]);
@@ -816,6 +841,7 @@ function OrdersContent() {
           stageFilters: snapshot.stageFilters,
           showUnreturnedOnly: snapshot.showUnreturnedOnly,
           showReturnedOnly: snapshot.showReturnedOnly,
+          showPickupOnly: snapshot.showPickupOnly,
           dateFrom: snapshot.dateFrom,
           dateTo: snapshot.dateTo,
         },
@@ -846,7 +872,8 @@ function OrdersContent() {
     const stagesChanged = !areArraysEqual(normalizedStageFilters, stageQuery);
     const unreturnedChanged = current.showUnreturnedOnly !== effectiveUnreturnedQuery;
     const returnedChanged = current.showReturnedOnly !== effectiveReturnedQuery;
-    if (!searchChanged && !dateFromChanged && !dateToChanged && !stagesChanged && !unreturnedChanged && !returnedChanged) {
+    const pickupChanged = current.showPickupOnly !== pickupQuery;
+    if (!searchChanged && !dateFromChanged && !dateToChanged && !stagesChanged && !unreturnedChanged && !returnedChanged && !pickupChanged) {
       skipUrlSyncRef.current = false;
       return;
     }
@@ -868,6 +895,9 @@ function OrdersContent() {
     if (returnedChanged) {
       setShowReturnedOnly(effectiveReturnedQuery);
     }
+    if (pickupChanged) {
+      setShowPickupOnly(pickupQuery);
+    }
     if (!skipUrlSyncRef.current) {
       resetOrdersFeed();
     }
@@ -878,6 +908,7 @@ function OrdersContent() {
     stageQuery,
     effectiveUnreturnedQuery,
     effectiveReturnedQuery,
+    pickupQuery,
     dateFromQuery,
     dateToQuery,
   ]);
@@ -892,7 +923,8 @@ function OrdersContent() {
       dateTo !== dateToQuery ||
       !areArraysEqual(normalizedStages, stageQuery) ||
       showUnreturnedOnly !== effectiveUnreturnedQuery ||
-      showReturnedOnly !== effectiveReturnedQuery;
+      showReturnedOnly !== effectiveReturnedQuery ||
+      showPickupOnly !== pickupQuery;
     if (!needsUpdate) return;
     const params = new URLSearchParams(searchParams.toString());
     if (nextSearch) {
@@ -922,6 +954,11 @@ function OrdersContent() {
     } else {
       params.delete("returned");
     }
+    if (showPickupOnly) {
+      params.set("pickup", "1");
+    } else {
+      params.delete("pickup");
+    }
     const next = params.toString();
     router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
   }, [
@@ -932,10 +969,12 @@ function OrdersContent() {
     searchQuery,
     showUnreturnedOnly,
     showReturnedOnly,
+    showPickupOnly,
     stageFilters,
     stageQuery,
     effectiveUnreturnedQuery,
     effectiveReturnedQuery,
+    pickupQuery,
     dateFrom,
     dateTo,
     dateFromQuery,
@@ -967,6 +1006,14 @@ function OrdersContent() {
       if (checked) {
         setShowUnreturnedOnly(false);
       }
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  const handlePickupToggle = useCallback(
+    (checked: boolean) => {
+      setShowPickupOnly(checked);
       resetOrdersFeed();
     },
     [resetOrdersFeed],
@@ -1081,9 +1128,13 @@ function OrdersContent() {
     defaultValues: defaultFormValues,
     mode: "onBlur",
   });
+  const pickupValue = Boolean(form.watch("pickup"));
+  const transportModeValue = form.watch("transportMode");
   const slanjeModeValue = form.watch("slanjeMode");
   const slanjeOwnerValue = form.watch("slanjeOwner");
   const slanjeOwnerStartingAmountValue = form.watch("slanjeOwnerStartingAmount");
+  const availableTransportModes = pickupValue ? pickupTransportModes : transportModes;
+  const showShippingFields = !pickupValue;
   const slanjeOwnerLabel =
     slanjeModeValue === "Posta"
       ? "Posta - na ime"
@@ -1097,19 +1148,20 @@ function OrdersContent() {
         ? "Unesi na ciji racun"
         : "Izaberi slanje prvo";
   const slanjeOwnerOptions = useMemo<ShippingOwnerOption[]>(() => {
+    if (pickupValue) return [];
     if (!slanjeModeValue) return [];
     if (slanjeModeValue === "Posta") {
       return shippingOwners?.postaNames ?? [];
     }
     return shippingOwners?.aksBexAccounts ?? [];
-  }, [shippingOwners, slanjeModeValue]);
+  }, [pickupValue, shippingOwners, slanjeModeValue]);
   const slanjeOwnerQuickOptions = useMemo(
     () => slanjeOwnerOptions.slice(0, 12),
     [slanjeOwnerOptions],
   );
   const normalizedSlanjeOwnerValue = (slanjeOwnerValue ?? "").trim();
   const normalizedSlanjeOwnerLookupKey = normalizeOwnerLookupKey(slanjeOwnerValue);
-  const isAksBexMode = slanjeModeValue === "Aks" || slanjeModeValue === "Bex";
+  const isAksBexMode = !pickupValue && (slanjeModeValue === "Aks" || slanjeModeValue === "Bex");
   const selectedAksBexAccount = useMemo(() => {
     if (!isAksBexMode) return undefined;
     if (!normalizedSlanjeOwnerLookupKey) return undefined;
@@ -1122,17 +1174,34 @@ function OrdersContent() {
     normalizedSlanjeOwnerLookupKey.length > 0 &&
     !selectedAksBexAccount;
   useEffect(() => {
+    if (!pickupValue) return;
+    if (slanjeModeValue !== undefined) {
+      form.setValue("slanjeMode", undefined, { shouldDirty: true, shouldTouch: true });
+    }
+    if (slanjeOwnerValue !== undefined) {
+      form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+    }
+    if (slanjeOwnerStartingAmountValue !== undefined) {
+      form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
+    }
+    if (transportModeValue && !pickupTransportModes.includes(transportModeValue as (typeof pickupTransportModes)[number])) {
+      form.setValue("transportMode", pickupTransportModes[0], { shouldDirty: true, shouldTouch: true });
+    }
+  }, [form, pickupValue, slanjeModeValue, slanjeOwnerStartingAmountValue, slanjeOwnerValue, transportModeValue]);
+  useEffect(() => {
     const previousMode = previousSlanjeModeRef.current;
     if (!slanjeModeValue) {
       previousSlanjeModeRef.current = undefined;
-      form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+      if (slanjeOwnerValue !== undefined) {
+        form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+      }
       return;
     }
     if (previousMode && previousMode !== slanjeModeValue) {
       form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
     }
     previousSlanjeModeRef.current = slanjeModeValue;
-  }, [form, slanjeModeValue]);
+  }, [form, slanjeModeValue, slanjeOwnerValue]);
   useEffect(() => {
     if (shouldAskForNewAccountStartingAmount) return;
     if (slanjeOwnerStartingAmountValue === undefined) return;
@@ -1649,9 +1718,10 @@ function OrdersContent() {
     try {
       const pickup = Boolean(values.pickup);
       const shouldSendEmail = values.sendEmail ?? true;
-      const ownerInput = values.slanjeOwner?.trim();
+      const slanjeMode = pickup ? undefined : values.slanjeMode;
+      const ownerInput = pickup ? undefined : values.slanjeOwner?.trim();
       const ownerLookupKey = normalizeOwnerLookupKey(ownerInput);
-      const isAksBexAccount = values.slanjeMode === "Aks" || values.slanjeMode === "Bex";
+      const isAksBexAccount = slanjeMode === "Aks" || slanjeMode === "Bex";
       const existingAksBexAccount =
         isAksBexAccount && ownerLookupKey
           ? (shippingOwners?.aksBexAccounts ?? []).find(
@@ -1693,7 +1763,7 @@ function OrdersContent() {
         title: payloadItems[0]?.title ?? "Narudzbina",
         transportCost: values.transportCost,
         transportMode: values.transportMode,
-        slanjeMode: values.slanjeMode,
+        slanjeMode,
         slanjeOwner: ownerInput,
         brojPosiljke: editingOrder?.brojPosiljke,
         myProfitPercent: values.myProfitPercent,
@@ -2640,6 +2710,29 @@ function OrdersContent() {
                   </FormItem>
                 )}
               />
+              <FormField
+                name="pickup"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-2">
+                    <input
+                      id="pickup"
+                      ref={field.ref}
+                      name={field.name}
+                      type="checkbox"
+                      checked={!!field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      onBlur={field.onBlur}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="space-y-0.5 flex flex-col items-center">
+                      <FormLabel htmlFor="pickup" className="m-0 cursor-pointer">
+                        Licno preuzimanje
+                      </FormLabel>
+                      <p className="text-xs text-slate-500">Oznaci ako kupac preuzima bez kurira.</p>
+                    </div>
+                  </FormItem>
+                )}
+              />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
@@ -2687,180 +2780,186 @@ function OrdersContent() {
                   onBlur={field.onBlur}
                 >
                       <option value="">Izaberi</option>
-                      {transportModes.map((mode) => (
+                      {availableTransportModes.map((mode) => (
                         <option key={mode} value={mode}>
                           {mode}
                         </option>
                       ))}
                     </select>
-                    <p className="text-xs text-slate-500">Odaberi kurira ili dostavu.</p>
+                    <p className="text-xs text-slate-500">
+                      {pickupValue ? "Za licno preuzimanje dostupni su Kol i Joe." : "Odaberi kurira ili dostavu."}
+                    </p>
                     <FormMessage>{fieldState.error?.message}</FormMessage>
                   </FormItem>
                 )}
               />
-              <FormField
-                name="slanjeMode"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                    <FormLabel>Slanje</FormLabel>
-                    <div className="space-y-2">
-                      <div className="hidden flex-wrap gap-2 md:flex">
-                        {slanjeModes.map((mode) => {
-                          const isActive = field.value === mode;
-                          return (
+              {showShippingFields ? (
+                <>
+                  <FormField
+                    name="slanjeMode"
+                    render={({ field, fieldState }) => (
+                      <FormItem>
+                        <FormLabel>Slanje</FormLabel>
+                        <div className="space-y-2">
+                          <div className="hidden flex-wrap gap-2 md:flex">
+                            {slanjeModes.map((mode) => {
+                              const isActive = field.value === mode;
+                              return (
+                                <button
+                                  key={mode}
+                                  type="button"
+                                  className={cn(
+                                    "rounded-full border px-3 py-1 text-xs font-semibold transition",
+                                    isActive
+                                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                                      : "border-slate-200 bg-white text-slate-600 hover:border-blue-200",
+                                  )}
+                                  onClick={() => field.onChange(mode)}
+                                >
+                                  {mode}
+                                </button>
+                              );
+                            })}
                             <button
-                              key={mode}
                               type="button"
                               className={cn(
                                 "rounded-full border px-3 py-1 text-xs font-semibold transition",
-                                isActive
-                                  ? "border-blue-500 bg-blue-50 text-blue-700"
-                                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-200",
+                                !field.value
+                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
                               )}
-                              onClick={() => field.onChange(mode)}
+                              onClick={() => field.onChange(undefined)}
                             >
-                              {mode}
+                              Bez slanja
                             </button>
-                          );
-                        })}
-                        <button
-                          type="button"
-                          className={cn(
-                            "rounded-full border px-3 py-1 text-xs font-semibold transition",
-                            !field.value
-                              ? "border-slate-900 bg-slate-900 text-white"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                          )}
-                          onClick={() => field.onChange(undefined)}
-                        >
-                          Bez slanja
-                        </button>
-                      </div>
-                      <div className="md:hidden">
-                        <select
-                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          </div>
+                          <div className="md:hidden">
+                            <select
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                              ref={field.ref}
+                              name={field.name}
+                              value={field.value ?? ""}
+                              onChange={(event) => field.onChange(event.target.value || undefined)}
+                              onBlur={field.onBlur}
+                            >
+                              <option value="">Bez slanja</option>
+                              {slanjeModes.map((mode) => (
+                                <option key={mode} value={mode}>
+                                  {mode}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-500">Odaberi da li ide Posta, Aks ili Bex.</p>
+                        <FormMessage>{fieldState.error?.message}</FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    name="slanjeOwner"
+                    render={({ field, fieldState }) => (
+                      <FormItem>
+                        <FormLabel>{slanjeOwnerLabel}</FormLabel>
+                        <Input
+                          className="disabled:cursor-not-allowed disabled:bg-slate-100"
                           ref={field.ref}
                           name={field.name}
                           value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value || undefined)}
+                          placeholder={slanjeOwnerPlaceholder}
+                          disabled={!slanjeModeValue}
+                          list={slanjeModeValue ? `slanje-owner-list-${slanjeModeValue.toLowerCase()}` : undefined}
+                          onChange={(event) => field.onChange(event.target.value)}
                           onBlur={field.onBlur}
-                        >
-                          <option value="">Bez slanja</option>
-                          {slanjeModes.map((mode) => (
-                            <option key={mode} value={mode}>
-                              {mode}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500">Odaberi da li ide Posta, Aks ili Bex.</p>
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                name="slanjeOwner"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                    <FormLabel>{slanjeOwnerLabel}</FormLabel>
-                    <Input
-                      className="disabled:cursor-not-allowed disabled:bg-slate-100"
-                      ref={field.ref}
-                      name={field.name}
-                      value={field.value ?? ""}
-                      placeholder={slanjeOwnerPlaceholder}
-                      disabled={!slanjeModeValue}
-                      list={slanjeModeValue ? `slanje-owner-list-${slanjeModeValue.toLowerCase()}` : undefined}
-                      onChange={(event) => field.onChange(event.target.value)}
-                      onBlur={field.onBlur}
+                        />
+                        {slanjeModeValue ? (
+                          <datalist id={`slanje-owner-list-${slanjeModeValue.toLowerCase()}`}>
+                            {slanjeOwnerOptions.map((option) => (
+                              <option key={option.value} value={option.value} />
+                            ))}
+                          </datalist>
+                        ) : null}
+                        {slanjeModeValue && slanjeOwnerQuickOptions.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {slanjeOwnerQuickOptions.map((option) => {
+                              const isActive = normalizedSlanjeOwnerValue === option.value;
+                              return (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  className={cn(
+                                    "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                                    isActive
+                                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                                      : "border-slate-200 bg-white text-slate-600 hover:border-blue-200",
+                                  )}
+                                  onClick={() => field.onChange(option.value)}
+                                >
+                                  {option.value}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                        {slanjeModeValue && slanjeOwnerOptions.length > slanjeOwnerQuickOptions.length ? (
+                          <p className="text-[11px] text-slate-500">
+                            Prikazano prvih {slanjeOwnerQuickOptions.length} od {slanjeOwnerOptions.length} sacuvanih.
+                          </p>
+                        ) : null}
+                        <p className="text-xs text-slate-500">
+                          {slanjeModeValue === "Posta"
+                            ? slanjeOwnerOptions.length > 0
+                              ? "Izaberi sacuvano ime ili unesi novo."
+                              : "Unesi na ime kome posta isplacuje."
+                            : slanjeModeValue
+                              ? slanjeOwnerOptions.length > 0
+                                ? "Izaberi sacuvan racun ili unesi novi."
+                                : "Na ciji bankovni racun lezu pare preko Aksa/Bexa."
+                              : "Izaberi slanje da bi odabrao ime."}
+                        </p>
+                        {isAksBexMode && selectedAksBexAccount ? (
+                          <p className="text-xs text-slate-500">
+                            Pocetno stanje ovog racuna: {formatCurrency(selectedAksBexAccount.startingAmount ?? 0, "EUR")}
+                          </p>
+                        ) : null}
+                        <FormMessage>{fieldState.error?.message}</FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                  {shouldAskForNewAccountStartingAmount ? (
+                    <FormField
+                      name="slanjeOwnerStartingAmount"
+                      render={({ field, fieldState }) => (
+                        <FormItem>
+                          <FormLabel>Pocetno stanje novog racuna</FormLabel>
+                          <Input
+                            ref={field.ref}
+                            name={field.name}
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="npr. 1200"
+                            value={field.value ?? ""}
+                            onChange={(event) => {
+                              const normalized = event.target.value.replace(",", ".").trim();
+                              if (normalized === "") {
+                                field.onChange(undefined);
+                                return;
+                              }
+                              const parsed = Number(normalized);
+                              if (Number.isNaN(parsed)) return;
+                              field.onChange(parsed);
+                            }}
+                            onBlur={field.onBlur}
+                          />
+                          <p className="text-xs text-slate-500">
+                            Koliko je vec leglo na ovaj novi racun pre prvih narudzbina u aplikaciji.
+                          </p>
+                          <FormMessage>{fieldState.error?.message}</FormMessage>
+                        </FormItem>
+                      )}
                     />
-                    {slanjeModeValue ? (
-                      <datalist id={`slanje-owner-list-${slanjeModeValue.toLowerCase()}`}>
-                        {slanjeOwnerOptions.map((option) => (
-                          <option key={option.value} value={option.value} />
-                        ))}
-                      </datalist>
-                    ) : null}
-                    {slanjeModeValue && slanjeOwnerQuickOptions.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {slanjeOwnerQuickOptions.map((option) => {
-                          const isActive = normalizedSlanjeOwnerValue === option.value;
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              className={cn(
-                                "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
-                                isActive
-                                  ? "border-blue-500 bg-blue-50 text-blue-700"
-                                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-200",
-                              )}
-                              onClick={() => field.onChange(option.value)}
-                            >
-                              {option.value}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                    {slanjeModeValue && slanjeOwnerOptions.length > slanjeOwnerQuickOptions.length ? (
-                      <p className="text-[11px] text-slate-500">
-                        Prikazano prvih {slanjeOwnerQuickOptions.length} od {slanjeOwnerOptions.length} sacuvanih.
-                      </p>
-                    ) : null}
-                    <p className="text-xs text-slate-500">
-                      {slanjeModeValue === "Posta"
-                        ? slanjeOwnerOptions.length > 0
-                          ? "Izaberi sacuvano ime ili unesi novo."
-                          : "Unesi na ime kome posta isplacuje."
-                        : slanjeModeValue
-                          ? slanjeOwnerOptions.length > 0
-                            ? "Izaberi sacuvan racun ili unesi novi."
-                            : "Na ciji bankovni racun lezu pare preko Aksa/Bexa."
-                          : "Izaberi slanje da bi odabrao ime."}
-                    </p>
-                    {isAksBexMode && selectedAksBexAccount ? (
-                      <p className="text-xs text-slate-500">
-                        Pocetno stanje ovog racuna: {formatCurrency(selectedAksBexAccount.startingAmount ?? 0, "EUR")}
-                      </p>
-                    ) : null}
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
-                  </FormItem>
-                )}
-              />
-              {shouldAskForNewAccountStartingAmount ? (
-                <FormField
-                  name="slanjeOwnerStartingAmount"
-                  render={({ field, fieldState }) => (
-                    <FormItem>
-                      <FormLabel>Pocetno stanje novog racuna</FormLabel>
-                      <Input
-                        ref={field.ref}
-                        name={field.name}
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="npr. 1200"
-                        value={field.value ?? ""}
-                        onChange={(event) => {
-                          const normalized = event.target.value.replace(",", ".").trim();
-                          if (normalized === "") {
-                            field.onChange(undefined);
-                            return;
-                          }
-                          const parsed = Number(normalized);
-                          if (Number.isNaN(parsed)) return;
-                          field.onChange(parsed);
-                        }}
-                        onBlur={field.onBlur}
-                      />
-                      <p className="text-xs text-slate-500">
-                        Koliko je vec leglo na ovaj novi racun pre prvih narudzbina u aplikaciji.
-                      </p>
-                      <FormMessage>{fieldState.error?.message}</FormMessage>
-                    </FormItem>
-                  )}
-                />
+                  ) : null}
+                </>
               ) : null}
               <FormField
                 name="myProfitPercent"
@@ -2889,29 +2988,6 @@ function OrdersContent() {
                     />
                     <p className="text-xs text-slate-500">Procenat profita koji pripada tebi (0-100).</p>
                     <FormMessage>{fieldState.error?.message}</FormMessage>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                name="pickup"
-                render={({ field }) => (
-                  <FormItem className="flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-2">
-                    <input
-                      id="pickup"
-                      ref={field.ref}
-                      name={field.name}
-                      type="checkbox"
-                      checked={!!field.value}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      onBlur={field.onBlur}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="space-y-0.5 flex flex-col items-center">
-                      <FormLabel htmlFor="pickup" className="m-0 cursor-pointer">
-                        Licno preuzimanje
-                      </FormLabel>
-                      <p className=" text-xs text-slate-500">Oznaci ako kupac preuzima bez kurira.</p>
-                    </div>
                   </FormItem>
                 )}
               />
@@ -3669,6 +3745,25 @@ function OrdersContent() {
                           </div>
                         </div>
                         <div className="space-y-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Preuzimanje</p>
+                          <label
+                            className={cn(
+                              "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
+                              showPickupOnly
+                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={showPickupOnly}
+                              onChange={(event) => handlePickupToggle(event.target.checked)}
+                              className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Samo licno preuzimanje
+                          </label>
+                        </div>
+                        <div className="space-y-2">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Datum</p>
                           <div className="grid gap-2">
                             <label className="space-y-1 text-xs text-slate-600">
@@ -3727,32 +3822,32 @@ function OrdersContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 md:hidden">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              Ukupno za prikazane narudzbine
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Mini obracun za aktivne filtere
             </p>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Nabavno</p>
-                <p className="text-sm font-semibold text-slate-900">{formatCurrency(ordersTotals.nabavno, "EUR")}</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-blue-700/80">Nabavno</p>
+                <p className="text-base font-bold text-blue-700">{formatCurrency(ordersTotals.nabavno, "EUR")}</p>
               </div>
-              <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Transport</p>
-                <p className="text-sm font-semibold text-slate-900">{formatCurrency(ordersTotals.transport, "EUR")}</p>
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-red-700/80">Transport</p>
+                <p className="text-base font-bold text-red-700">{formatCurrency(ordersTotals.transport, "EUR")}</p>
               </div>
-              <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Prodajno</p>
-                <p className="text-sm font-semibold text-slate-900">{formatCurrency(ordersTotals.prodajno, "EUR")}</p>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Prodajno</p>
+                <p className="text-base font-bold text-slate-900">{formatCurrency(ordersTotals.prodajno, "EUR")}</p>
               </div>
-              <div className="rounded-md border border-slate-200 bg-white px-2 py-1">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Profit (50%)</p>
-                <p className={cn("text-sm font-semibold", ordersTotals.profit < 0 ? "text-red-600" : "text-slate-900")}>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-emerald-700/80">Profit (50%)</p>
+                <p className={cn("text-base font-bold", ordersTotals.profit < 0 ? "text-red-700" : "text-emerald-700")}>
                   {formatCurrency(ordersTotals.profit, "EUR")}
                 </p>
               </div>
-              <div className="rounded-md border border-slate-200 bg-white px-2 py-1 col-span-2">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Povrat</p>
-                <p className="text-sm font-semibold text-slate-900">{formatCurrency(ordersTotals.povrat, "EUR")}</p>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-amber-700/80">Povrat</p>
+                <p className="text-base font-bold text-amber-700">{formatCurrency(ordersTotals.povrat, "EUR")}</p>
               </div>
             </div>
           </div>
