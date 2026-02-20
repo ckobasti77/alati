@@ -45,6 +45,7 @@ const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poslato", label: "Poslato", tone: "border-blue-200 bg-blue-50 text-blue-800" },
   { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
+  { value: "vraceno", label: "Vraćeno", tone: "border-rose-200 bg-rose-50 text-rose-800" },
 ];
 const transportModes = ["Kol", "Joe", "Smg"] as const;
 const pickupTransportModes = ["Kol", "Joe"] as const;
@@ -52,7 +53,8 @@ const slanjeModes = ["Posta", "Aks", "Bex"] as const;
 const shippingModes = ["Posta", "Aks", "Bex"] as const;
 type ShippingMode = (typeof shippingModes)[number];
 const deleteConfirmPhrase = "potvrdjujem da brisem";
-const requiresDeleteConfirmation = (stage?: OrderStage) => stage === "stiglo" || stage === "legle_pare";
+const requiresDeleteConfirmation = (stage?: OrderStage) =>
+  stage === "stiglo" || stage === "legle_pare" || stage === "vraceno";
 const emptyOrderListTotals: OrderListResponse["totals"] = {
   nabavno: 0,
   transport: 0,
@@ -124,7 +126,7 @@ const normalizeOwnerLookupKey = (value?: string) => normalizeSearchText(value?.t
 
 const orderSchema = z
   .object({
-    stage: z.enum(["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare"]),
+    stage: z.enum(["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"]),
     customerName: z.string().min(3, "Ime i prezime porucioca je obavezno."),
     address: z.string().min(5, "Adresa je obavezna."),
     phone: z.string().min(5, "Broj telefona je obavezan."),

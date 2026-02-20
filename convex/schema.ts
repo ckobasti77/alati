@@ -132,6 +132,7 @@ export default defineSchema({
       v.literal("poslato"),
       v.literal("stiglo"),
       v.literal("legle_pare"),
+      v.literal("vraceno"),
     ),
     productId: v.optional(v.id("products")),
     supplierId: v.optional(v.id("suppliers")),

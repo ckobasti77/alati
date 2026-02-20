@@ -44,6 +44,7 @@ function DashboardContent() {
     poslato: "Poslato",
     stiglo: "Stiglo",
     legle_pare: "Leglo",
+    vraceno: "Vraćeno",
   };
 
   const {

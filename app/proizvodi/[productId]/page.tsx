@@ -123,6 +123,7 @@ const orderStageOptions: { value: OrderStage; label: string; tone: string }[] = 
   { value: "poslato", label: "Poslato", tone: "border-blue-200 bg-blue-50 text-blue-800" },
   { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
+  { value: "vraceno", label: "Vraćeno", tone: "border-rose-200 bg-rose-50 text-rose-800" },
 ];
 
 const orderStageLabels = orderStageOptions.reduce((acc, item) => {

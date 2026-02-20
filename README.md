@@ -5,7 +5,7 @@ Ultralaka evidencija za internu upotrebu. Fokus je na brzom dodavanju proizvoda 
 ## Sta aplikacija radi
 - Cuva listu proizvoda sa nabavnom i prodajnom cenom (EUR).
 - Omogucava brzo dodavanje narudzbine (pretraga proizvoda, biranje varijante, kupac/adresa/telefon).
-- Prati stage narudzbine: poruceno -> na stanju -> poslato -> stiglo -> legle pare.
+- Prati stage narudzbine: poruceno -> na stanju -> poslato -> stiglo -> legle pare -> vraceno.
 - Racuna profit po narudzbini i zbirno (bez dodatnih procenata).
 - Jedan profil (kodmajstora) bez dodavanja novih korisnika.
 
