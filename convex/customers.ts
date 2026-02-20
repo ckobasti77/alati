@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireUser } from "./auth";
-import { normalizeSearchText } from "./search";
+import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "./search";
 
 const orderScopes = ["default", "kalaba"] as const;
 const orderScopeSchema = v.union(v.literal(orderScopes[0]), v.literal(orderScopes[1]));
@@ -24,7 +24,7 @@ export const list = query({
     const { user } = await requireUser(ctx, args.token);
     const scope = normalizeScope(args.scope);
     const limit = Math.min(Math.max(args.limit ?? 10, 1), 50);
-    const needle = normalizeSearchText(args.search?.trim() ?? "");
+    const searchTokens = toSearchTokens(args.search?.trim() ?? "");
     const phoneNeedle = normalizePhone(args.search ?? "");
 
     let customers = await ctx.db
@@ -32,12 +32,13 @@ export const list = query({
       .withIndex("by_user_scope_lastUsedAt", (q) => q.eq("userId", user._id).eq("scope", scope))
       .collect();
 
-    if (needle || phoneNeedle) {
+    if (searchTokens.length > 0 || phoneNeedle) {
       customers = customers.filter((customer) => {
         const nameValue = customer.nameNormalized || normalizeSearchText(customer.name ?? "");
         const addressValue = normalizeSearchText(customer.address ?? "");
+        const textValue = `${nameValue} ${addressValue}`;
         const phoneValue = customer.phoneNormalized || normalizePhone(customer.phone ?? "");
-        const nameMatch = needle ? nameValue.includes(needle) || addressValue.includes(needle) : false;
+        const nameMatch = searchTokens.length > 0 ? matchesAllTokensInNormalizedText(textValue, searchTokens) : false;
         const phoneMatch = phoneNeedle ? phoneValue.includes(phoneNeedle) : false;
         return nameMatch || phoneMatch;
       });

@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { requireUser } from "./auth";
-import { normalizeSearchText } from "./search";
+import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "./search";
 
 const productImageArg = v.object({
   storageId: v.id("_storage"),
@@ -381,26 +381,22 @@ export const listPaginated = query({
     items = items.filter((product) => (archivedFilter === "archived" ? Boolean(product.archivedAt) : !product.archivedAt));
 
     const rawSearch = args.search?.trim();
-    const needle = rawSearch ? normalizeSearchText(rawSearch) : "";
-    if (needle) {
+    const searchTokens = rawSearch ? toSearchTokens(rawSearch) : [];
+    if (searchTokens.length > 0) {
       const categories = await ctx.db.query("categories").collect();
       const categoryMap = new Map(
         categories.map((category) => [String(category._id), normalizeSearchText(category.name)]),
       );
       items = items.filter((product) => {
         const displayName = product.kpName ?? product.name ?? "";
-        const baseText = normalizeSearchText(
-          `${displayName} ${product.opisKp ?? ""} ${product.opisFbInsta ?? ""} ${product.opis ?? ""}`,
+        const variantsText = (product.variants ?? []).map((variant) => variant.label ?? "").join(" ");
+        const categoriesText = (product.categoryIds ?? [])
+          .map((id) => categoryMap.get(String(id)) ?? "")
+          .join(" ");
+        const searchableText = normalizeSearchText(
+          `${displayName} ${product.opisKp ?? ""} ${product.opisFbInsta ?? ""} ${product.opis ?? ""} ${variantsText} ${categoriesText}`,
         );
-        if (baseText.includes(needle)) return true;
-        if ((product.variants ?? []).some((variant) => normalizeSearchText(variant.label).includes(needle))) {
-          return true;
-        }
-        const hasCategoryHit = (product.categoryIds ?? []).some((id) => {
-          const name = categoryMap.get(String(id));
-          return name ? name.includes(needle) : false;
-        });
-        return hasCategoryHit;
+        return matchesAllTokensInNormalizedText(searchableText, searchTokens);
       });
     }
 
@@ -615,11 +611,11 @@ export const listPublic = query({
     const items = await ctx.db.query("products").withIndex("by_createdAt").collect();
     const activeItems = items.filter((item) => !item.archivedAt);
     const rawSearch = args.search?.trim();
-    const needle = rawSearch ? normalizeSearchText(rawSearch) : "";
-    const narrowed = needle
+    const searchTokens = rawSearch ? toSearchTokens(rawSearch) : [];
+    const narrowed = searchTokens.length
       ? activeItems.filter((item) => {
           const name = normalizeSearchText(item.kpName ?? item.name);
-          return name.includes(needle);
+          return matchesAllTokensInNormalizedText(name, searchTokens);
         })
       : activeItems;
     const withUrls = await Promise.all(narrowed.map((item) => toPublicProduct(ctx, item)));

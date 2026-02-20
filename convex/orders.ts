@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
-import { normalizeSearchText } from "./search";
+import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "./search";
 
 const orderStages = ["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"] as const;
 const transportModes = ["Kol", "Joe", "Smg"] as const;
@@ -803,22 +803,55 @@ export const list = query({
       .sort((a, b) => resolveSortIndex(b) - resolveSortIndex(a) || b.kreiranoAt - a.kreiranoAt);
 
     if (args.search) {
-      const needle = normalizeSearchText(args.search.trim());
-      if (needle) {
-        const matchesNeedle = (value?: string) => normalizeSearchText(value ?? "").includes(needle);
-        orders = orders.filter((order) => {
-          const hasBaseMatch =
-            matchesNeedle(order.title) ||
-            matchesNeedle(order.variantLabel) ||
-            matchesNeedle(order.customerName) ||
-            matchesNeedle(order.address) ||
-            matchesNeedle(order.phone);
-          if (hasBaseMatch) return true;
-          return (order.items ?? []).some(
-            (item) =>
-              matchesNeedle(item.title) ||
-              matchesNeedle(item.variantLabel),
+      const searchTokens = toSearchTokens(args.search.trim());
+      if (searchTokens.length > 0) {
+        const productIds = new Set<Id<"products">>();
+        orders.forEach((order) => {
+          if (order.productId) {
+            productIds.add(order.productId);
+          }
+          (order.items ?? []).forEach((item) => {
+            if (item.productId) {
+              productIds.add(item.productId);
+            }
+          });
+        });
+
+        const productTitleById = new Map<string, string>();
+        if (productIds.size > 0) {
+          const loadedProducts = await Promise.all(
+            Array.from(productIds).map(async (productId) => {
+              const product = await ctx.db.get(productId);
+              if (!product || product.userId !== user._id) return null;
+              const title = normalizeSearchText(product.kpName ?? product.name ?? "");
+              return [String(productId), title] as const;
+            }),
           );
+          loadedProducts.forEach((entry) => {
+            if (!entry) return;
+            productTitleById.set(entry[0], entry[1]);
+          });
+        }
+
+        orders = orders.filter((order) => {
+          const currentProductTitles = [
+            order.productId ? productTitleById.get(String(order.productId)) ?? "" : "",
+            ...(order.items ?? []).map((item) =>
+              item.productId ? productTitleById.get(String(item.productId)) ?? "" : "",
+            ),
+          ];
+          const hasCurrentProductTitleMatch = currentProductTitles.some(
+            (title) => title.length > 0 && matchesAllTokensInNormalizedText(title, searchTokens),
+          );
+          if (hasCurrentProductTitleMatch) return true;
+
+          const itemsText = (order.items ?? [])
+            .map((item) => `${item.title ?? ""} ${item.variantLabel ?? ""}`)
+            .join(" ");
+          const searchableText = normalizeSearchText(
+            `${order.title ?? ""} ${order.variantLabel ?? ""} ${order.customerName ?? ""} ${order.address ?? ""} ${order.phone ?? ""} ${itemsText}`,
+          );
+          return matchesAllTokensInNormalizedText(searchableText, searchTokens);
         });
       }
     }
@@ -938,6 +971,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const scope = normalizeScope(args.scope);
+    const stage = normalizeStage(args.stage);
     const now = Date.now();
     const pickup = Boolean(args.pickup);
     const povratVracen = args.povratVracen ?? false;
@@ -950,7 +984,7 @@ export const create = mutation({
       pickup && !isPickupTransportMode(normalizedTransportMode) ? undefined : normalizedTransportMode;
     const slanjeMode = pickup ? undefined : normalizeSlanjeMode(args.slanjeMode);
     const slanjeOwner = pickup ? undefined : normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
-    const brojPosiljke = normalizeShipmentNumber(args.brojPosiljke);
+    const brojPosiljke = stage === "poslato" ? normalizeShipmentNumber(args.brojPosiljke) : undefined;
     const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
     if (args.myProfitPercent !== undefined && myProfitPercent === undefined) {
       throw new Error("Procenat profita mora biti izmedju 0 i 100.");
@@ -989,7 +1023,7 @@ export const create = mutation({
     await ctx.db.insert("orders", {
       userId: user._id,
       scope,
-      stage: normalizeStage(args.stage),
+      stage,
       productId: normalizedItems[0].productId,
       supplierId: normalizedItems[0].supplierId,
       variantId: normalizedItems[0].variantId,
@@ -1056,6 +1090,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const scope = normalizeScope(args.scope);
+    const nextStage = normalizeStage(args.stage);
     const existing = await ctx.db.get(args.id);
     if (!existing) {
       throw new Error("Narudzbina nije pronadjena.");
@@ -1079,9 +1114,11 @@ export const update = mutation({
     const slanjeMode = pickup ? undefined : normalizeSlanjeMode(args.slanjeMode);
     const slanjeOwner = pickup ? undefined : normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
     const brojPosiljke =
-      args.brojPosiljke === undefined
-        ? normalizeShipmentNumber(existing.brojPosiljke)
-        : normalizeShipmentNumber(args.brojPosiljke);
+      nextStage === "poslato"
+        ? args.brojPosiljke === undefined
+          ? normalizeShipmentNumber(existing.brojPosiljke)
+          : normalizeShipmentNumber(args.brojPosiljke)
+        : undefined;
     const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
     if (args.myProfitPercent !== undefined && myProfitPercent === undefined) {
       throw new Error("Procenat profita mora biti izmedju 0 i 100.");
@@ -1108,7 +1145,7 @@ export const update = mutation({
 
     await ctx.db.patch(args.id, {
       scope,
-      stage: normalizeStage(args.stage),
+      stage: nextStage,
       productId: normalizedItems[0].productId,
       supplierId: normalizedItems[0].supplierId,
       variantId: normalizedItems[0].variantId,

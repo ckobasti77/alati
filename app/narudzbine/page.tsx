@@ -19,7 +19,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
-import { normalizeSearchText } from "@/lib/search";
+import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
 import { cn } from "@/lib/utils";
 import type { Customer } from "@/types/customer";
@@ -690,18 +690,16 @@ function OrdersContent() {
   );
   const filteredProducts = useMemo(() => {
     const list = products ?? [];
-    const needle = normalizeSearchText(productSearch.trim());
-    if (!needle) return list;
+    const searchTokens = toSearchTokens(productSearch.trim());
+    if (!searchTokens.length) return list;
     return list.filter((product) => {
-      if (normalizeSearchText(getProductDisplayName(product)).includes(needle)) return true;
-      const opisPrimary = normalizeSearchText(product.opisFbInsta ?? product.opis ?? "");
-      const opisKp = normalizeSearchText(product.opisKp ?? "");
-      if (opisPrimary.includes(needle) || opisKp.includes(needle)) return true;
-      return (product.variants ?? []).some((variant) => {
-        if (normalizeSearchText(variant.label).includes(needle)) return true;
-        const variantOpis = normalizeSearchText(variant.opis ?? "");
-        return variantOpis.includes(needle);
-      });
+      const variantsText = (product.variants ?? [])
+        .map((variant) => `${variant.label ?? ""} ${variant.opis ?? ""}`)
+        .join(" ");
+      const searchableText = normalizeSearchText(
+        `${getProductDisplayName(product)} ${product.opisFbInsta ?? product.opis ?? ""} ${product.opisKp ?? ""} ${variantsText}`,
+      );
+      return matchesAllTokensInNormalizedText(searchableText, searchTokens);
     });
   }, [products, productSearch]);
   const productMap = useMemo(
@@ -730,18 +728,16 @@ function OrdersContent() {
   const isRestockLoading = restockRequests === undefined;
   const restockFilteredProducts = useMemo(() => {
     const list = products ?? [];
-    const needle = normalizeSearchText(restockProductSearch.trim());
-    if (!needle) return list;
+    const searchTokens = toSearchTokens(restockProductSearch.trim());
+    if (!searchTokens.length) return list;
     return list.filter((product) => {
-      if (normalizeSearchText(getProductDisplayName(product)).includes(needle)) return true;
-      const opisPrimary = normalizeSearchText(product.opisFbInsta ?? product.opis ?? "");
-      const opisKp = normalizeSearchText(product.opisKp ?? "");
-      if (opisPrimary.includes(needle) || opisKp.includes(needle)) return true;
-      return (product.variants ?? []).some((variant) => {
-        if (normalizeSearchText(variant.label).includes(needle)) return true;
-        const variantOpis = normalizeSearchText(variant.opis ?? "");
-        return variantOpis.includes(needle);
-      });
+      const variantsText = (product.variants ?? [])
+        .map((variant) => `${variant.label ?? ""} ${variant.opis ?? ""}`)
+        .join(" ");
+      const searchableText = normalizeSearchText(
+        `${getProductDisplayName(product)} ${product.opisFbInsta ?? product.opis ?? ""} ${product.opisKp ?? ""} ${variantsText}`,
+      );
+      return matchesAllTokensInNormalizedText(searchableText, searchTokens);
     });
   }, [products, restockProductSearch]);
   const restockSelectedProduct = restockProductId ? productMap.get(restockProductId) : undefined;
@@ -1767,7 +1763,7 @@ function OrdersContent() {
         transportMode: values.transportMode,
         slanjeMode,
         slanjeOwner: ownerInput,
-        brojPosiljke: editingOrder?.brojPosiljke,
+        brojPosiljke: values.stage === "poslato" ? editingOrder?.brojPosiljke : undefined,
         myProfitPercent: values.myProfitPercent,
         customerName: values.customerName.trim(),
         address: values.address.trim(),
@@ -2074,12 +2070,13 @@ function OrdersContent() {
 
   const persistStageChange = useCallback(
     async (order: Order, nextStage: OrderStage, patch: Partial<Order> = {}) => {
-      await updateOrder({ ...buildOrderUpdatePayload(order), stage: nextStage, ...patch });
+      const nextPatch = nextStage === "poslato" ? patch : { ...patch, brojPosiljke: undefined };
+      await updateOrder({ ...buildOrderUpdatePayload(order), stage: nextStage, ...nextPatch });
       setOrders((prev) =>
         prev.flatMap((item) => {
           if (item._id !== order._id) return [item];
           if (stageFilters.length > 0 && !stageFilters.includes(nextStage)) return [];
-          return [{ ...item, stage: nextStage, ...patch }];
+          return [{ ...item, stage: nextStage, ...nextPatch }];
         }),
       );
       toast.success("Status narudzbine promenjen.");

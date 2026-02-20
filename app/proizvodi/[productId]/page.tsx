@@ -54,7 +54,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { normalizeSearchText } from "@/lib/search";
+import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import type {
   Category,
   Order,
@@ -507,9 +507,11 @@ function ProductDetailsContent() {
   }, [categories]);
   const filteredCategories = useMemo(() => {
     const list = categories ?? [];
-    const needle = normalizeSearchText(categorySearch.trim());
-    if (!needle) return list;
-    return list.filter((category) => normalizeSearchText(category.name).includes(needle));
+    const searchTokens = toSearchTokens(categorySearch.trim());
+    if (!searchTokens.length) return list;
+    return list.filter((category) =>
+      matchesAllTokensInNormalizedText(normalizeSearchText(category.name), searchTokens),
+    );
   }, [categories, categorySearch]);
   const variantMap = useMemo(
     () => new Map((product?.variants ?? []).map((variant) => [variant.id, variant])),

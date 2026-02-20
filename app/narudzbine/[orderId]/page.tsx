@@ -15,7 +15,7 @@ import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
-import { normalizeSearchText } from "@/lib/search";
+import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import type { OrderStage, OrderWithProduct, Product, ProductVariant, Supplier } from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
@@ -439,18 +439,16 @@ function OrderDetails({
   );
   const filteredProducts = useMemo(() => {
     const list = products ?? [];
-    const needle = normalizeSearchText(productSearch.trim());
-    if (!needle) return list;
+    const searchTokens = toSearchTokens(productSearch.trim());
+    if (!searchTokens.length) return list;
     return list.filter((product) => {
-      if (normalizeSearchText(getProductDisplayName(product)).includes(needle)) return true;
-      const opisPrimary = normalizeSearchText(product.opisFbInsta ?? product.opis ?? "");
-      const opisKp = normalizeSearchText(product.opisKp ?? "");
-      if (opisPrimary.includes(needle) || opisKp.includes(needle)) return true;
-      return (product.variants ?? []).some((variant) => {
-        if (normalizeSearchText(variant.label).includes(needle)) return true;
-        const variantOpis = normalizeSearchText(variant.opis ?? "");
-        return variantOpis.includes(needle);
-      });
+      const variantsText = (product.variants ?? [])
+        .map((variant) => `${variant.label ?? ""} ${variant.opis ?? ""}`)
+        .join(" ");
+      const searchableText = normalizeSearchText(
+        `${getProductDisplayName(product)} ${product.opisFbInsta ?? product.opis ?? ""} ${product.opisKp ?? ""} ${variantsText}`,
+      );
+      return matchesAllTokensInNormalizedText(searchableText, searchTokens);
     });
   }, [products, productSearch]);
   const selectedProduct = useMemo(
@@ -865,7 +863,10 @@ function OrderDetails({
     }
     setIsUpdatingStage(true);
     try {
-      await applyOrderUpdate((current) => ({ ...current, stage: nextStage }), "Status narudzbine je azuriran.");
+      await applyOrderUpdate(
+        (current) => ({ ...current, stage: nextStage, brojPosiljke: undefined }),
+        "Status narudzbine je azuriran.",
+      );
     } catch (error) {
       console.error(error);
     } finally {
