@@ -24,7 +24,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(
       resizeToFitContent();
     }, [resizeToFitContent, props.value, props.defaultValue]);
 
-    const handleInput: React.FormEventHandler<HTMLTextAreaElement> = (event) => {
+    const handleInput: NonNullable<Props["onInput"]> = (event) => {
       resizeToFitContent(event.currentTarget);
       onInput?.(event);
     };

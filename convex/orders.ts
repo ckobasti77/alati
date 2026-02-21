@@ -984,7 +984,7 @@ export const create = mutation({
       pickup && !isPickupTransportMode(normalizedTransportMode) ? undefined : normalizedTransportMode;
     const slanjeMode = pickup ? undefined : normalizeSlanjeMode(args.slanjeMode);
     const slanjeOwner = pickup ? undefined : normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
-    const brojPosiljke = stage === "poslato" ? normalizeShipmentNumber(args.brojPosiljke) : undefined;
+    const brojPosiljke = normalizeShipmentNumber(args.brojPosiljke);
     const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
     if (args.myProfitPercent !== undefined && myProfitPercent === undefined) {
       throw new Error("Procenat profita mora biti izmedju 0 i 100.");
@@ -1114,11 +1114,9 @@ export const update = mutation({
     const slanjeMode = pickup ? undefined : normalizeSlanjeMode(args.slanjeMode);
     const slanjeOwner = pickup ? undefined : normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
     const brojPosiljke =
-      nextStage === "poslato"
-        ? args.brojPosiljke === undefined
-          ? normalizeShipmentNumber(existing.brojPosiljke)
-          : normalizeShipmentNumber(args.brojPosiljke)
-        : undefined;
+      args.brojPosiljke === undefined
+        ? normalizeShipmentNumber(existing.brojPosiljke)
+        : normalizeShipmentNumber(args.brojPosiljke);
     const myProfitPercent = normalizeProfitPercent(args.myProfitPercent);
     if (args.myProfitPercent !== undefined && myProfitPercent === undefined) {
       throw new Error("Procenat profita mora biti izmedju 0 i 100.");

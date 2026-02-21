@@ -75,7 +75,7 @@ const parsePrice = (value: string) => {
 
 const priceField = (label: string) =>
   z
-    .string({ required_error: `${label} je obavezna.` })
+    .string({ message: `${label} je obavezna.` })
     .trim()
     .min(1, `${label} je obavezna.`)
     .refine((value) => {
@@ -95,7 +95,7 @@ const variantSchema = z.object({
 
 const supplierOfferSchema = z.object({
   id: z.string().optional(),
-  supplierId: z.string({ required_error: "Dobavljac je obavezan." }).min(1, "Dobavljac je obavezan."),
+  supplierId: z.string({ message: "Dobavljac je obavezan." }).min(1, "Dobavljac je obavezan."),
   price: priceField("Cena dobavljaca"),
   variantId: z.string().optional(),
 });

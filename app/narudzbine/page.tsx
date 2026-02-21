@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type TouchEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useForm, type DeepPartial, type FieldErrors } from "react-hook-form";
+import { useForm, type DeepPartial, type FieldErrors, type Resolver } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -144,7 +144,7 @@ const orderSchema = z
         if (value === "" || value === undefined || value === null) return undefined;
         return typeof value === "string" ? value : undefined;
       },
-      z.enum(transportModes, { errorMap: () => ({ message: "Izaberi nacin transporta." }) }),
+      z.enum(transportModes, { message: "Izaberi nacin transporta." }),
     ),
     slanjeMode: z.preprocess(
       (value) => {
@@ -1122,7 +1122,7 @@ function OrdersContent() {
   }, [handleLoadMoreOrders]);
 
   const form = useForm<OrderFormValues>({
-    resolver: zodResolver(orderSchema),
+    resolver: zodResolver(orderSchema) as Resolver<OrderFormValues>,
     defaultValues: defaultFormValues,
     mode: "onBlur",
   });
@@ -1763,7 +1763,7 @@ function OrdersContent() {
         transportMode: values.transportMode,
         slanjeMode,
         slanjeOwner: ownerInput,
-        brojPosiljke: values.stage === "poslato" ? editingOrder?.brojPosiljke : undefined,
+        brojPosiljke: editingOrder?.brojPosiljke,
         myProfitPercent: values.myProfitPercent,
         customerName: values.customerName.trim(),
         address: values.address.trim(),
@@ -2070,13 +2070,12 @@ function OrdersContent() {
 
   const persistStageChange = useCallback(
     async (order: Order, nextStage: OrderStage, patch: Partial<Order> = {}) => {
-      const nextPatch = nextStage === "poslato" ? patch : { ...patch, brojPosiljke: undefined };
-      await updateOrder({ ...buildOrderUpdatePayload(order), stage: nextStage, ...nextPatch });
+      await updateOrder({ ...buildOrderUpdatePayload(order), stage: nextStage, ...patch });
       setOrders((prev) =>
         prev.flatMap((item) => {
           if (item._id !== order._id) return [item];
           if (stageFilters.length > 0 && !stageFilters.includes(nextStage)) return [];
-          return [{ ...item, stage: nextStage, ...nextPatch }];
+          return [{ ...item, stage: nextStage, ...patch }];
         }),
       );
       toast.success("Status narudzbine promenjen.");
@@ -3872,7 +3871,7 @@ function OrdersContent() {
                   const secondaryNames = itemNames.slice(1, 3);
                   const remainingCount = itemNames.length > 3 ? itemNames.length - 3 : 0;
                   const shipmentNumber = resolveShipmentNumber(order);
-                  const showShipmentNumberInNote = order.stage === "poslato" && shipmentNumber.length > 0;
+                  const showShipmentNumberInNote = shipmentNumber.length > 0;
 
                   return (
                     <div
@@ -4171,7 +4170,7 @@ function OrdersContent() {
                     const secondaryNames = itemNames.slice(1, 3);
                     const remainingCount = itemNames.length > 3 ? itemNames.length - 3 : 0;
                     const shipmentNumber = resolveShipmentNumber(order);
-                    const showShipmentNumberInNote = order.stage === "poslato" && shipmentNumber.length > 0;
+                    const showShipmentNumberInNote = shipmentNumber.length > 0;
 
                     return (
                       <TableRow

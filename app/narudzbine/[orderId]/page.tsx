@@ -863,10 +863,7 @@ function OrderDetails({
     }
     setIsUpdatingStage(true);
     try {
-      await applyOrderUpdate(
-        (current) => ({ ...current, stage: nextStage, brojPosiljke: undefined }),
-        "Status narudzbine je azuriran.",
-      );
+      await applyOrderUpdate((current) => ({ ...current, stage: nextStage }), "Status narudzbine je azuriran.");
     } catch (error) {
       console.error(error);
     } finally {
