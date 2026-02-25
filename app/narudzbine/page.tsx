@@ -4052,7 +4052,7 @@ function OrdersContent() {
                           className="mt-3 flex w-full items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-left text-xs text-blue-700"
                           onClick={(event) => {
                             event.stopPropagation();
-                            void copyText(shipmentNumber, "Broj porudzbine je kopiran.");
+                            void copyText(shipmentNumber, "Broj posiljke je kopiran.");
                           }}
                         >
                           <span className="font-semibold uppercase tracking-wide">Broj porudzbine</span>
@@ -4332,7 +4332,7 @@ function OrdersContent() {
                               className="inline-flex max-w-full items-center gap-1 truncate font-mono text-blue-700 hover:underline"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void copyText(shipmentNumber, "Broj porudzbine je kopiran.");
+                                void copyText(shipmentNumber, "Broj posiljke je kopiran.");
                               }}
                               title={shipmentNumber}
                             >

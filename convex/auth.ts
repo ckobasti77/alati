@@ -41,17 +41,18 @@ async function ensureAdmin(ctx: MutationCtx): Promise<Doc<"users">> {
     .withIndex("by_username", (q: any) => q.eq("username", ADMIN_USERNAME))
     .unique();
   if (existing) {
+    const roleNeedsUpdate = existing.role !== "admin";
     const passwordUpToDate = await passwordsMatch(
       ADMIN_PASSWORD,
       existing.salt,
       existing.passwordHash,
     );
-    if (!passwordUpToDate) {
+    if (!passwordUpToDate || roleNeedsUpdate) {
       const salt = randomHex(16);
       const passwordHash = await hashPassword(ADMIN_PASSWORD, salt);
-      await ctx.db.patch(existing._id, { passwordHash, salt });
+      await ctx.db.patch(existing._id, { passwordHash, salt, role: "admin" });
       const updated = await ctx.db.get(existing._id);
-      return updated ?? { ...existing, passwordHash, salt };
+      return updated ?? { ...existing, passwordHash, salt, role: "admin" };
     }
     return existing;
   }
@@ -105,18 +106,77 @@ export async function getSession(ctx: QueryCtx | MutationCtx, token?: string) {
   return { session, user };
 }
 
+const compareUsersByCreation = (left: Doc<"users">, right: Doc<"users">) => {
+  if (left.createdAt !== right.createdAt) {
+    return left.createdAt - right.createdAt;
+  }
+  return String(left._id).localeCompare(String(right._id));
+};
+
+async function resolveWorkspaceUser(
+  ctx: QueryCtx | MutationCtx,
+  fallback: Doc<"users">,
+): Promise<Doc<"users">> {
+  const users = await ctx.db.query("users").collect();
+  if (users.length === 0) {
+    return fallback;
+  }
+
+  const sortedUsers = users.sort(compareUsersByCreation);
+  const hasUserData = async (userId: Id<"users">) => {
+    const latestOrder = await ctx.db
+      .query("orders")
+      .withIndex("by_user_kreiranoAt", (q: any) => q.eq("userId", userId))
+      .first();
+    if (latestOrder) {
+      return true;
+    }
+    const latestProduct = await ctx.db
+      .query("products")
+      .withIndex("by_user_createdAt", (q: any) => q.eq("userId", userId))
+      .first();
+    return Boolean(latestProduct);
+  };
+
+  const adminUsers = sortedUsers.filter((entry) => entry.role === "admin");
+  for (const admin of adminUsers) {
+    if (await hasUserData(admin._id)) {
+      return admin;
+    }
+  }
+
+  for (const entry of sortedUsers) {
+    if (await hasUserData(entry._id)) {
+      return entry;
+    }
+  }
+
+  return adminUsers[0] ?? sortedUsers[0] ?? fallback;
+}
+
 export async function requireUser(ctx: QueryCtx | MutationCtx, token?: string) {
   const active = await getSession(ctx, token);
   if (!active) throw new Error("Neautorizovan pristup.");
-  return active;
+  const workspaceUser = await resolveWorkspaceUser(ctx, active.user);
+  return {
+    ...active,
+    actor: active.user,
+    user: workspaceUser,
+  };
 }
 
 export async function requireAdmin(ctx: QueryCtx | MutationCtx, token?: string) {
-  const active = await requireUser(ctx, token);
+  const active = await getSession(ctx, token);
+  if (!active) throw new Error("Neautorizovan pristup.");
   if (active.user.role !== "admin") {
     throw new Error("Samo admin moze da izvrsi ovu radnju.");
   }
-  return active;
+  const workspaceUser = await resolveWorkspaceUser(ctx, active.user);
+  return {
+    ...active,
+    actor: active.user,
+    user: workspaceUser,
+  };
 }
 
 export const login = mutation({
@@ -179,7 +239,9 @@ export const createUser = mutation({
 export const listUsers = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
-    const { user } = await requireUser(ctx, args.token);
+    const active = await getSession(ctx, args.token);
+    if (!active) throw new Error("Neautorizovan pristup.");
+    const user = active.user;
     return [
       {
         id: user._id,

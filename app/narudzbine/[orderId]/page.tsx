@@ -382,18 +382,13 @@ function OrderDetails({
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   const resolveShareUrl = () => (typeof window !== "undefined" ? window.location.href : "");
 
-  const handleCopyShareLink = async () => {
-    const shareUrl = resolveShareUrl();
-    if (!shareUrl) {
-      toast.error("Link nije dostupan.");
-      return;
-    }
+  const copyText = useCallback(async (value: string, successMessage: string) => {
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-      } else {
+        await navigator.clipboard.writeText(value);
+      } else if (typeof document !== "undefined") {
         const textarea = document.createElement("textarea");
-        textarea.value = shareUrl;
+        textarea.value = value;
         textarea.style.position = "fixed";
         textarea.style.opacity = "0";
         document.body.appendChild(textarea);
@@ -401,12 +396,27 @@ function OrderDetails({
         textarea.select();
         document.execCommand("copy");
         document.body.removeChild(textarea);
+      } else {
+        throw new Error("Clipboard nije dostupan.");
       }
-      toast.success("Link kopiran.");
-      setShareOpen(false);
+      toast.success(successMessage);
+      return true;
     } catch (error) {
       console.error(error);
       toast.error("Kopiranje nije uspelo.");
+      return false;
+    }
+  }, []);
+
+  const handleCopyShareLink = async () => {
+    const shareUrl = resolveShareUrl();
+    if (!shareUrl) {
+      toast.error("Link nije dostupan.");
+      return;
+    }
+    const copied = await copyText(shareUrl, "Link kopiran.");
+    if (copied) {
+      setShareOpen(false);
     }
   };
 
@@ -823,6 +833,13 @@ function OrderDetails({
   const profitSharePercent = myProfitPercent * 0.5;
   const povrat = nabavnoUkupno + transport + profitShare;
   const telHref = order ? `tel:${order.phone.replace(/[^+\d]/g, "")}` : "";
+  const shipmentNumber = resolveShipmentNumber(order);
+  const hasShipmentNumber = shipmentNumber.length > 0;
+
+  const handleShipmentNumberCopy = useCallback(async () => {
+    if (!hasShipmentNumber) return;
+    await copyText(shipmentNumber, "Broj posiljke je kopiran.");
+  }, [copyText, hasShipmentNumber, shipmentNumber]);
 
   const closeShipmentStageModal = useCallback(() => {
     if (isShipmentStageSaving) return;
@@ -1505,6 +1522,21 @@ function OrderDetails({
                 multiline
                 onSave={(val) => handleOrderFieldSave("address", val)}
               />
+              {hasShipmentNumber ? (
+                <button
+                  type="button"
+                  className="group flex w-full items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-left transition hover:border-blue-200 hover:bg-blue-100/60"
+                  onClick={() => void handleShipmentNumberCopy()}
+                >
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Broj posiljke</p>
+                    <p className="truncate font-mono text-sm font-semibold text-blue-900">{shipmentNumber}</p>
+                  </div>
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-700">
+                    <Copy className="h-4 w-4" />
+                  </span>
+                </button>
+              ) : null}
               <InlineField
                 label="Transport (EUR)"
                 value={transport}
@@ -1627,6 +1659,21 @@ function OrderDetails({
                 onSave={(val) => handleOrderFieldSave("transportCost", val)}
               />
             </div>
+            {hasShipmentNumber ? (
+              <button
+                type="button"
+                className="group flex w-full items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-left transition hover:border-blue-200 hover:bg-blue-100/60"
+                onClick={() => void handleShipmentNumberCopy()}
+              >
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Broj posiljke</p>
+                  <p className="truncate font-mono text-sm font-semibold text-blue-900">{shipmentNumber}</p>
+                </div>
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-700">
+                  <Copy className="h-4 w-4" />
+                </span>
+              </button>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               {transportModes.map((mode) => (
                 <button
