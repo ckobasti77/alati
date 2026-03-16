@@ -4303,7 +4303,19 @@ function OrdersContent() {
                           </div>
                         </TableCell>
                         <TableCell className="text-center">{formatCurrency(nabavnoUkupno, "EUR")}</TableCell>
-                        <TableCell className="text-center">{formatCurrency(transport, "EUR")}</TableCell>
+                        <TableCell className="text-center">
+                          <button
+                            type="button"
+                            className="inline-flex items-center rounded-md border border-transparent px-2 py-1 font-medium text-slate-900 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openQuickEdit(order, "transport");
+                            }}
+                            title="Brza izmena transporta"
+                          >
+                            {formatCurrency(transport, "EUR")}
+                          </button>
+                        </TableCell>
                         <TableCell className="text-center">{formatCurrency(prodajnoUkupno, "EUR")}</TableCell>
                         <TableCell className="text-center font-semibold">
                             <span className={profitShare < 0 ? "text-red-600" : ""}>

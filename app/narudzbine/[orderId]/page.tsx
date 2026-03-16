@@ -16,7 +16,7 @@ import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
-import type { OrderStage, OrderWithProduct, Product, ProductVariant, Supplier } from "@/types/order";
+import type { OrderStage, OrderWithProduct, Product, ProductVariant, ShippingOwnerOptions, Supplier } from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -50,6 +50,7 @@ const resolveOrderShippingMode = (
 };
 
 const resolveShipmentNumber = (order?: Pick<OrderWithProduct, "brojPosiljke"> | null) => order?.brojPosiljke?.trim() ?? "";
+const normalizeOwnerLookupKey = (value?: string) => normalizeSearchText(value?.trim() ?? "");
 
 const stageLabels = stageOptions.reduce((acc, item) => {
   acc[item.value] = { label: item.label, tone: item.tone };
@@ -352,6 +353,10 @@ function OrderDetails({
   });
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
   const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
+  const shippingOwners = useConvexQuery<ShippingOwnerOptions>("orders:shippingOwners", {
+    token: sessionToken,
+    scope: orderScope,
+  });
 
   const [order, setOrder] = useState<OrderWithProduct | null>(null);
   const isLoading = queryResult === undefined;
@@ -827,6 +832,10 @@ function OrderDetails({
       : order?.slanjeMode
         ? "Unesi na ciji racun"
         : "Izaberi slanje prvo";
+  const isAksBexMode = order?.slanjeMode === "Aks" || order?.slanjeMode === "Bex";
+  const aksBexOwnerOptions = shippingOwners?.aksBexAccounts ?? [];
+  const aksBexOwnerQuickOptions = aksBexOwnerOptions.slice(0, 12);
+  const normalizedSlanjeOwnerLookupKey = normalizeOwnerLookupKey(order?.slanjeOwner);
   const myProfitPercent = resolveProfitPercent(order?.myProfitPercent);
   const myProfit = prof * (myProfitPercent / 100);
   const profitShare = myProfit * 0.5;
@@ -1605,6 +1614,33 @@ function OrderDetails({
                   disabled={!order.slanjeMode}
                   onChange={(event) => handleOrderFieldSave("slanjeOwner", event.target.value)}
                 />
+                {isAksBexMode && aksBexOwnerQuickOptions.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {aksBexOwnerQuickOptions.map((option) => {
+                      const isActive =
+                        normalizeOwnerLookupKey(option.value) === normalizedSlanjeOwnerLookupKey;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                            isActive
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-blue-200"
+                          }`}
+                          onClick={() => void handleOrderFieldSave("slanjeOwner", option.value)}
+                        >
+                          {option.value}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {isAksBexMode && aksBexOwnerOptions.length > aksBexOwnerQuickOptions.length ? (
+                  <p className="text-[11px] text-slate-500">
+                    Prikazano prvih {aksBexOwnerQuickOptions.length} od {aksBexOwnerOptions.length} sacuvanih.
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
@@ -1735,6 +1771,33 @@ function OrderDetails({
                   disabled={!order.slanjeMode}
                   onChange={(event) => handleOrderFieldSave("slanjeOwner", event.target.value)}
                 />
+                {isAksBexMode && aksBexOwnerQuickOptions.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {aksBexOwnerQuickOptions.map((option) => {
+                      const isActive =
+                        normalizeOwnerLookupKey(option.value) === normalizedSlanjeOwnerLookupKey;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                            isActive
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-blue-200"
+                          }`}
+                          onClick={() => void handleOrderFieldSave("slanjeOwner", option.value)}
+                        >
+                          {option.value}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {isAksBexMode && aksBexOwnerOptions.length > aksBexOwnerQuickOptions.length ? (
+                  <p className="text-[11px] text-slate-500">
+                    Prikazano prvih {aksBexOwnerQuickOptions.length} od {aksBexOwnerOptions.length} sacuvanih.
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
