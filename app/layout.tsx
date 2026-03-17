@@ -53,7 +53,7 @@ export default function RootLayout({
           <div className="min-h-screen" style={{ backgroundColor: "var(--panel-bg)" }}>
             <AppHeader />
             <ScrollToTopButton />
-            <main className="mx-auto px-6 py-8">{children}</main>
+            <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">{children}</main>
           </div>
         </Providers>
       </body>

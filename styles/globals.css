@@ -20,41 +20,71 @@
   --border-strong: #cbd5e1;
   --border-strong-rgb: 203, 213, 225;
   --text-primary: #0f172a;
-  --text-secondary: #1f2937;
-  --text-muted: #475569;
-  --text-soft: #64748b;
-  --text-faint: #94a3b8;
-  --text-ghost: #e2e8f0;
+  --text-secondary: #1e293b;
+  --text-muted: #334155;
+  --text-soft: #475569;
+  --text-faint: #64748b;
+  --text-ghost: #cbd5e1;
   --accent: #1d4ed8;
   --accent-strong: #1e40af;
   --accent-soft: #e0f2fe;
   --shadow-soft: 0 14px 45px -24px rgba(15, 23, 42, 0.25);
+
+  /* Card / glass system */
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  --row-hover: rgba(0, 0, 0, 0.025);
+  --row-divider: #f1f5f9;
+  --header-bg: rgba(255, 255, 255, 0.92);
+  --header-border: #e2e8f0;
+  --nav-pill-bg: rgba(0, 0, 0, 0.03);
+  --nav-pill-border: #e2e8f0;
+  --nav-active-bg: rgba(0, 0, 0, 0.07);
+  --btn-glass-bg: rgba(0, 0, 0, 0.05);
+  --btn-glass-hover: rgba(0, 0, 0, 0.08);
+  --btn-glass-border: #e2e8f0;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page-bg: #0b1224;
-  --panel-bg: #0f1a33;
-  --surface: #111d3f;
-  --surface-rgb: 17, 29, 63;
-  --muted-surface: #0f1d3a;
-  --muted-surface-rgb: 15, 29, 58;
-  --muted-strong: #1a2b52;
-  --muted-strong-rgb: 26, 43, 82;
-  --border-soft: #24355a;
-  --border-soft-rgb: 36, 53, 90;
-  --border-strong: #2f4476;
-  --border-strong-rgb: 47, 68, 118;
-  --text-primary: #e6edff;
-  --text-secondary: #d1dbf6;
-  --text-muted: #a8bce3;
-  --text-soft: #8fa6d3;
-  --text-faint: #6e85b5;
-  --text-ghost: #c7d6f2;
-  --accent: #63a4ff;
-  --accent-strong: #7ab6ff;
-  --accent-soft: #172c55;
-  --shadow-soft: 0 20px 60px -30px rgba(5, 11, 26, 0.75);
+  --page-bg: #0a0a0a;
+  --panel-bg: #0a0a0a;
+  --surface: #141414;
+  --surface-rgb: 20, 20, 20;
+  --muted-surface: #1a1a1a;
+  --muted-surface-rgb: 26, 26, 26;
+  --muted-strong: #262626;
+  --muted-strong-rgb: 38, 38, 38;
+  --border-soft: #262626;
+  --border-soft-rgb: 38, 38, 38;
+  --border-strong: #333333;
+  --border-strong-rgb: 51, 51, 51;
+  --text-primary: #fafafa;
+  --text-secondary: #e4e4e7;
+  --text-muted: #b4b4bd;
+  --text-soft: #8b8b94;
+  --text-faint: #71717a;
+  --text-ghost: #52525b;
+  --accent: #8b5cf6;
+  --accent-strong: #7c3aed;
+  --accent-soft: #1e1530;
+  --shadow-soft: 0 20px 60px -30px rgba(0, 0, 0, 0.75);
+
+  /* Card / glass system */
+  --card-bg: rgba(255, 255, 255, 0.02);
+  --card-border: rgba(255, 255, 255, 0.06);
+  --card-shadow: none;
+  --row-hover: rgba(255, 255, 255, 0.03);
+  --row-divider: rgba(255, 255, 255, 0.03);
+  --header-bg: rgba(10, 10, 10, 0.8);
+  --header-border: rgba(255, 255, 255, 0.06);
+  --nav-pill-bg: rgba(255, 255, 255, 0.03);
+  --nav-pill-border: rgba(255, 255, 255, 0.08);
+  --nav-active-bg: rgba(255, 255, 255, 0.1);
+  --btn-glass-bg: rgba(255, 255, 255, 0.08);
+  --btn-glass-hover: rgba(255, 255, 255, 0.12);
+  --btn-glass-border: rgba(255, 255, 255, 0.08);
 }
 
 body {
@@ -78,6 +108,7 @@ h6 {
   color: var(--text-primary);
 }
 
+/* ─── Background overrides ─── */
 .bg-white {
   background-color: var(--surface);
 }
@@ -150,6 +181,7 @@ h6 {
   background-color: var(--surface);
 }
 
+/* ─── Text overrides ─── */
 .text-slate-900,
 .text-slate-800 {
   color: var(--text-primary);
@@ -184,6 +216,7 @@ h6 {
   color: var(--text-secondary);
 }
 
+/* ─── Border overrides ─── */
 .border-slate-200 {
   border-color: var(--border-soft);
 }
@@ -214,4 +247,16 @@ h6 {
 
 .shadow-soft {
   box-shadow: var(--shadow-soft);
+}
+
+/* ─── Animations ─── */
+@keyframes shimmer {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
 }
