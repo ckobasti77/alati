@@ -4092,7 +4092,14 @@ function OrdersContent() {
             )}
           </div>
 
-          <div className="hidden md:block overflow-x-auto">
+          <div
+            className="hidden md:block md:relative md:left-1/2 md:right-1/2 md:ml-[-50vw] md:mr-[-50vw] md:w-screen md:overflow-x-auto"
+            style={{
+              background: "var(--surface)",
+              borderTop: "1px solid var(--card-border)",
+              borderBottom: "1px solid var(--card-border)",
+            }}
+          >
             <Table>
               <TableHeader>
               <TableRow>
