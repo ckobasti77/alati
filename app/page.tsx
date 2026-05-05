@@ -43,6 +43,7 @@ function DashboardContent() {
 
   const stageLabels: Record<string, string> = {
     poruceno: "Poruceno",
+    aks: "Aks",
     na_stanju: "Na stanju",
     poslato: "Poslato",
     stiglo: "Stiglo",

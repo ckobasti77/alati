@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type TouchEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useConvex } from "convex/react";
 import { useForm, type DeepPartial, type FieldErrors, type Resolver } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, Bell, Copy, GripVertical, PhoneCall, Plus, Trash2, UserRound } from "lucide-react";
+import { ArrowUpRight, Bell, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
+import { api } from "@/convex/_generated/api";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +23,13 @@ import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
+import {
+  createOrdersTablePdfFile,
+  downloadPdfFile,
+  sanitizePdfFileName,
+  sharePdfFile,
+  type OrdersTablePdfRow,
+} from "@/lib/pdfExport";
 import { cn } from "@/lib/utils";
 import type { Customer } from "@/types/customer";
 import type {
@@ -37,10 +46,10 @@ import type { RestockRequest } from "@/types/restockRequest";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { Badge } from "@/components/ui/badge";
-import { sendOrderEmailWithTo } from "./actions";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
+  { value: "aks", label: "Aks", tone: "border-orange-200 bg-orange-50 text-orange-800" },
   { value: "na_stanju", label: "Na stanju", tone: "border-indigo-200 bg-indigo-50 text-indigo-800" },
   { value: "poslato", label: "Poslato", tone: "border-blue-200 bg-blue-50 text-blue-800" },
   { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
@@ -126,7 +135,7 @@ const normalizeOwnerLookupKey = (value?: string) => normalizeSearchText(value?.t
 
 const orderSchema = z
   .object({
-    stage: z.enum(["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"]),
+    stage: z.enum(["poruceno", "aks", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"]),
     customerName: z.string().min(3, "Ime i prezime porucioca je obavezno."),
     address: z.string().min(5, "Adresa je obavezna."),
     phone: z.string().min(5, "Broj telefona je obavezan."),
@@ -182,8 +191,7 @@ const orderSchema = z
         .max(100, "Procenat profita mora biti izmedju 0 i 100."),
     ),
     pickup: z.boolean().optional(),
-    sendEmail: z.boolean().optional(),
-    note: z.string().trim().min(1, "Napomena je obavezna."),
+    note: z.string().trim().optional(),
   })
   .superRefine((values, ctx) => {
     if (values.pickup) {
@@ -238,14 +246,13 @@ const defaultFormValues: DeepPartial<OrderFormValues> = {
   customerName: "",
   address: "",
   phone: "",
-  transportCost: undefined,
-  transportMode: undefined,
-  slanjeMode: undefined,
+  transportCost: 0,
+  transportMode: "Smg",
+  slanjeMode: "Aks",
   slanjeOwner: undefined,
   slanjeOwnerStartingAmount: undefined,
   myProfitPercent: 100,
   pickup: false,
-  sendEmail: true,
   note: "",
 };
 
@@ -439,6 +446,54 @@ const formatPercent = (value: number) =>
 
 const resolveOrderSortValue = (order: Order) => order.sortIndex ?? order.kreiranoAt;
 
+const buildOrderExportTitle = (order: Order, productMap: Map<string, Product>) => {
+  const itemNames = (order.items ?? [])
+    .map((item) => {
+      const product = item.productId ? productMap.get(item.productId) : undefined;
+      return product ? getProductDisplayName(product) : item.title;
+    })
+    .filter((name) => Boolean(name && name.trim().length > 0));
+  const primaryTitle = itemNames[0] ?? order.title;
+  const secondaryNames = itemNames.slice(1, 3);
+  const remainingCount = itemNames.length > 3 ? itemNames.length - 3 : 0;
+  const parts = [primaryTitle];
+  if (secondaryNames.length > 0) {
+    parts.push(secondaryNames.join(" / "));
+  }
+  if (remainingCount > 0) {
+    parts.push(`+${remainingCount}`);
+  }
+  if (order.items && order.items.length > 1) {
+    parts.push(`${order.items.length} proizvoda`);
+  }
+  return parts.filter(Boolean).join("\n");
+};
+
+const buildOrdersPdfRows = (exportOrders: Order[], productMap: Map<string, Product>): OrdersTablePdfRow[] =>
+  exportOrders.map((order) => {
+    const totals = orderTotals(order);
+    const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
+    const myProfit = totals.profit * (myProfitPercent / 100);
+    const profitShare = myProfit * 0.5;
+    const povrat = totals.totalNabavno + totals.transport + profitShare;
+    const shipmentNumber = resolveShipmentNumber(order);
+    const contactParts = [order.customerName, order.phone];
+    if (order.pickup) contactParts.push("Licno");
+
+    return {
+      date: formatDate(order.kreiranoAt),
+      stage: stageLabels[order.stage]?.label ?? order.stage,
+      title: buildOrderExportTitle(order, productMap),
+      contact: contactParts.filter(Boolean).join("\n"),
+      nabavno: formatCurrency(totals.totalNabavno, "EUR"),
+      transport: formatCurrency(totals.transport, "EUR"),
+      prodajno: formatCurrency(totals.totalProdajno, "EUR"),
+      profit: formatCurrency(profitShare, "EUR"),
+      povrat: formatCurrency(povrat, "EUR"),
+      shipmentNumber: shipmentNumber || order.napomena || "-",
+    };
+  });
+
 export default function OrdersPage() {
   return (
     <RequireAuth>
@@ -449,9 +504,9 @@ export default function OrdersPage() {
 
 function OrdersContent() {
   const basePath = "/narudzbine";
-  const emailToEnvKey = "CONTACT_EMAIL_TO";
-  const orderScope = "default";
+  const orderScope: "default" | "kalaba" = "default";
   const router = useRouter();
+  const convex = useConvex();
   const searchParams = useSearchParams();
   const searchParamsString = useMemo(() => searchParams?.toString() ?? "", [searchParams]);
   const searchQuery = useMemo(() => searchParams?.get("q") ?? "", [searchParamsString, searchParams]);
@@ -494,6 +549,7 @@ function OrdersContent() {
   });
   const [ordersTotals, setOrdersTotals] = useState<OrderListResponse["totals"]>(emptyOrderListTotals);
   const [isLoadingMoreOrders, setIsLoadingMoreOrders] = useState(false);
+  const [ordersPdfMode, setOrdersPdfMode] = useState<"download" | "share" | null>(null);
   const [productInput, setProductInput] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [productMenuOpen, setProductMenuOpen] = useState(false);
@@ -534,6 +590,8 @@ function OrdersContent() {
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const restockProductInputRef = useRef<HTMLInputElement | null>(null);
   const previousSlanjeModeRef = useRef<(typeof slanjeModes)[number] | undefined>(undefined);
+  const previousPickupValueRef = useRef<boolean | null>(null);
+  const lastAutoSelectedOwnerRef = useRef<string | null>(null);
   const ordersLoaderRef = useRef<HTMLDivElement | null>(null);
   const loadMoreOrdersTimerRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
@@ -607,18 +665,45 @@ function OrdersContent() {
     return undefined;
   }, [dateFrom, dateTo]);
 
+  const orderListQueryArgs = useMemo<{
+    token: string;
+    search: string | undefined;
+    stages: OrderStage[];
+    unreturnedOnly: boolean;
+    returnedOnly: boolean;
+    pickupOnly: boolean;
+    dateFrom: number | undefined;
+    dateTo: number | undefined;
+    scope: "default" | "kalaba";
+  }>(
+    () => ({
+      token: sessionToken,
+      search: search.trim() ? search.trim() : undefined,
+      stages: stageFilters,
+      unreturnedOnly: showUnreturnedOnly,
+      returnedOnly: showReturnedOnly,
+      pickupOnly: showPickupOnly,
+      dateFrom: dateFromTimestamp,
+      dateTo: dateToTimestamp,
+      scope: orderScope,
+    }),
+    [
+      dateFromTimestamp,
+      dateToTimestamp,
+      orderScope,
+      search,
+      sessionToken,
+      showPickupOnly,
+      showReturnedOnly,
+      showUnreturnedOnly,
+      stageFilters,
+    ],
+  );
+
   const list = useConvexQuery<OrderListResponse>("orders:list", {
-    token: sessionToken,
-    search: search.trim() ? search.trim() : undefined,
+    ...orderListQueryArgs,
     page,
     pageSize: 10,
-    stages: stageFilters,
-    unreturnedOnly: showUnreturnedOnly,
-    returnedOnly: showReturnedOnly,
-    pickupOnly: showPickupOnly,
-    dateFrom: dateFromTimestamp,
-    dateTo: dateToTimestamp,
-    scope: orderScope,
   });
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const createOrder = useConvexMutation("orders:create");
@@ -713,6 +798,7 @@ function OrdersContent() {
   const isProductsLoading = products === undefined;
   const isOrdersLoading = list === undefined && orders.length === 0;
   const hasMoreOrders = ordersPagination.totalPages > page;
+  const isOrdersPdfBusy = ordersPdfMode !== null;
   const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
   const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
   const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
@@ -742,6 +828,92 @@ function OrdersContent() {
   }, [products, restockProductSearch]);
   const restockSelectedProduct = restockProductId ? productMap.get(restockProductId) : undefined;
   const restockSelectedVariants = restockSelectedProduct?.variants ?? [];
+
+  const buildOrdersPdfSubtitle = useCallback(
+    (count: number, total: number) => {
+      const filters: string[] = [];
+      const trimmedSearch = search.trim();
+      if (trimmedSearch) filters.push(`Pretraga: ${trimmedSearch}`);
+      if (stageFilters.length > 0) {
+        filters.push(`Stage: ${stageFilters.map((stage) => stageLabels[stage]?.label ?? stage).join(", ")}`);
+      }
+      if (showUnreturnedOnly) filters.push("Povrat: nepovraceni");
+      if (showReturnedOnly) filters.push("Povrat: povraceno");
+      if (showPickupOnly) filters.push("Preuzimanje: licno");
+      if (dateFilterActive) {
+        filters.push(`Datum: ${dateFrom || "pocetak"} - ${dateTo || "danas"}`);
+      }
+      const filterText = filters.length > 0 ? filters.join(" | ") : "Bez aktivnih filtera";
+      return `Izvezeno ${count} od ${total} narudzbina. ${filterText}.`;
+    },
+    [dateFilterActive, dateFrom, dateTo, search, showPickupOnly, showReturnedOnly, showUnreturnedOnly, stageFilters],
+  );
+
+  const fetchOrdersForPdf = useCallback(async () => {
+    const collected: Order[] = [];
+    let totals = emptyOrderListTotals;
+    let total = 0;
+    let totalPages = 1;
+    let nextPage = 1;
+
+    do {
+      const response = (await convex.query(api.orders.list, {
+        ...orderListQueryArgs,
+        page: nextPage,
+        pageSize: 100,
+      })) as OrderListResponse;
+      collected.push(...response.items);
+      totals = response.totals;
+      total = response.pagination.total;
+      totalPages = response.pagination.totalPages;
+      nextPage += 1;
+    } while (nextPage <= totalPages);
+
+    return { orders: collected, totals, total };
+  }, [convex, orderListQueryArgs]);
+
+  const handleOrdersPdf = useCallback(
+    async (mode: "download" | "share") => {
+      if (isOrdersPdfBusy) return;
+      setOrdersPdfMode(mode);
+      try {
+        const exportData = await fetchOrdersForPdf();
+        if (exportData.orders.length === 0) {
+          toast.info("Nema narudzbina za izvoz.");
+          return;
+        }
+
+        const rows = buildOrdersPdfRows(exportData.orders, productMap);
+        const today = new Date().toISOString().slice(0, 10);
+        const file = await createOrdersTablePdfFile({
+          rows,
+          totals: exportData.totals,
+          fileName: `${sanitizePdfFileName(`narudzbine-${today}`)}.pdf`,
+          title: "Narudzbine",
+          subtitle: buildOrdersPdfSubtitle(rows.length, exportData.total),
+        });
+
+        if (mode === "share") {
+          const result = await sharePdfFile(file, {
+            title: "Narudzbine PDF",
+            text: "Izvoz narudzbina iz tabele.",
+          });
+          if (result === "shared") toast.success("PDF je poslat u share.");
+          if (result === "downloaded") toast.info("Uredjaj ne podrzava deljenje PDF fajla, PDF je preuzet.");
+          return;
+        }
+
+        downloadPdfFile(file);
+        toast.success("PDF je preuzet.");
+      } catch (error) {
+        console.error(error);
+        toast.error("Izvoz PDF-a nije uspeo.");
+      } finally {
+        setOrdersPdfMode(null);
+      }
+    },
+    [buildOrdersPdfSubtitle, fetchOrdersForPdf, isOrdersPdfBusy, productMap],
+  );
 
   useEffect(() => {
     listStateRef.current = {
@@ -1127,7 +1299,6 @@ function OrdersContent() {
     mode: "onBlur",
   });
   const pickupValue = Boolean(form.watch("pickup"));
-  const transportModeValue = form.watch("transportMode");
   const slanjeModeValue = form.watch("slanjeMode");
   const slanjeOwnerValue = form.watch("slanjeOwner");
   const slanjeOwnerStartingAmountValue = form.watch("slanjeOwnerStartingAmount");
@@ -1171,35 +1342,67 @@ function OrdersContent() {
     shippingOwners !== undefined &&
     normalizedSlanjeOwnerLookupKey.length > 0 &&
     !selectedAksBexAccount;
+  const lastAksBexOwnerValue = shippingOwners?.aksBexAccounts?.[0]?.value;
   useEffect(() => {
-    if (!pickupValue) return;
-    if (slanjeModeValue !== undefined) {
-      form.setValue("slanjeMode", undefined, { shouldDirty: true, shouldTouch: true });
-    }
-    if (slanjeOwnerValue !== undefined) {
-      form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
-    }
-    if (slanjeOwnerStartingAmountValue !== undefined) {
-      form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
-    }
-    if (transportModeValue && !pickupTransportModes.includes(transportModeValue as (typeof pickupTransportModes)[number])) {
-      form.setValue("transportMode", pickupTransportModes[0], { shouldDirty: true, shouldTouch: true });
-    }
-  }, [form, pickupValue, slanjeModeValue, slanjeOwnerStartingAmountValue, slanjeOwnerValue, transportModeValue]);
-  useEffect(() => {
-    const previousMode = previousSlanjeModeRef.current;
-    if (!slanjeModeValue) {
-      previousSlanjeModeRef.current = undefined;
-      if (slanjeOwnerValue !== undefined) {
-        form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
-      }
+    if (!isModalOpen) {
+      previousPickupValueRef.current = null;
       return;
     }
-    if (previousMode && previousMode !== slanjeModeValue) {
+    const previousPickup = previousPickupValueRef.current;
+    previousPickupValueRef.current = pickupValue;
+    if (previousPickup === null || previousPickup === pickupValue) return;
+
+    if (pickupValue) {
+      form.setValue("transportMode", "Joe", { shouldDirty: true, shouldTouch: true });
+      form.setValue("slanjeMode", undefined, { shouldDirty: true, shouldTouch: true });
       form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+      form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
+    } else {
+      form.setValue("transportMode", "Smg", { shouldDirty: true, shouldTouch: true });
+      form.setValue("slanjeMode", "Aks", { shouldDirty: true, shouldTouch: true });
+      form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+      form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
     }
+    previousSlanjeModeRef.current = undefined;
+    lastAutoSelectedOwnerRef.current = null;
+  }, [form, isModalOpen, pickupValue]);
+  useEffect(() => {
+    const previousMode = previousSlanjeModeRef.current;
+    const modeChanged = previousMode !== slanjeModeValue;
     previousSlanjeModeRef.current = slanjeModeValue;
-  }, [form, slanjeModeValue, slanjeOwnerValue]);
+    if (!slanjeModeValue || pickupValue) {
+      previousSlanjeModeRef.current = undefined;
+      if (form.getValues("slanjeOwner") !== undefined) {
+        form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+      }
+      lastAutoSelectedOwnerRef.current = null;
+      return;
+    }
+
+    const isAccountMode = slanjeModeValue === "Aks" || slanjeModeValue === "Bex";
+    if (!isAccountMode) {
+      if (modeChanged && form.getValues("slanjeOwner") !== undefined) {
+        form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+      }
+      lastAutoSelectedOwnerRef.current = null;
+      return;
+    }
+
+    if (!lastAksBexOwnerValue) {
+      if (modeChanged && form.getValues("slanjeOwner") !== undefined) {
+        form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
+      }
+      lastAutoSelectedOwnerRef.current = null;
+      return;
+    }
+
+    const currentOwner = form.getValues("slanjeOwner")?.trim();
+    const autoSelectionKey = `${slanjeModeValue}:${lastAksBexOwnerValue}`;
+    if ((modeChanged || !currentOwner) && lastAutoSelectedOwnerRef.current !== autoSelectionKey) {
+      lastAutoSelectedOwnerRef.current = autoSelectionKey;
+      form.setValue("slanjeOwner", lastAksBexOwnerValue, { shouldDirty: true, shouldTouch: true });
+    }
+  }, [form, lastAksBexOwnerValue, pickupValue, slanjeModeValue]);
   useEffect(() => {
     if (shouldAskForNewAccountStartingAmount) return;
     if (slanjeOwnerStartingAmountValue === undefined) return;
@@ -1412,7 +1615,6 @@ function OrdersContent() {
           typeof values.slanjeOwnerStartingAmount === "number" ? values.slanjeOwnerStartingAmount : null,
         myProfitPercent: typeof values.myProfitPercent === "number" ? values.myProfitPercent : 100,
         pickup: Boolean(values.pickup),
-        sendEmail: values.sendEmail ?? true,
         note: values.note?.trim() ?? "",
       },
       draftItems: draftItems.map((item) => ({
@@ -1542,6 +1744,9 @@ function OrdersContent() {
     setCustomerQuery("");
     setCustomerMenuOpen(false);
     setExitConfirmOpen(false);
+    previousSlanjeModeRef.current = undefined;
+    previousPickupValueRef.current = null;
+    lastAutoSelectedOwnerRef.current = null;
     if (options?.closeModal) {
       modalSnapshotRef.current = "";
       setIsModalOpen(false);
@@ -1715,7 +1920,6 @@ function OrdersContent() {
 
     try {
       const pickup = Boolean(values.pickup);
-      const shouldSendEmail = values.sendEmail ?? true;
       const slanjeMode = pickup ? undefined : values.slanjeMode;
       const ownerInput = pickup ? undefined : values.slanjeOwner?.trim();
       const ownerLookupKey = normalizeOwnerLookupKey(ownerInput);
@@ -1781,37 +1985,7 @@ function OrdersContent() {
         resetOrdersFeed();
       } else {
         await createOrder(payload);
-        let emailError: string | null = null;
-        if (shouldSendEmail) {
-          try {
-            const emailPayload = {
-              customerName: payload.customerName,
-              phone: payload.phone,
-              address: payload.address,
-              pickup: payload.pickup,
-              note: payload.napomena,
-              items: draftItems.map((item) => ({
-                productName: getProductDisplayName(item.product),
-                variantName: item.variant?.label,
-                quantity: item.kolicina,
-                nabavnaCena: item.nabavnaCena,
-                prodajnaCena: item.prodajnaCena,
-                supplierName: item.supplierId ? supplierMap.get(item.supplierId)?.name : undefined,
-              })),
-            };
-            const emailResult = await sendOrderEmailWithTo(emailPayload, { toEnvKey: emailToEnvKey });
-            if (!emailResult.ok) {
-              emailError = emailResult.error;
-            }
-          } catch (error) {
-            emailError = error instanceof Error ? error.message : "Email slanje nije uspelo.";
-          }
-        }
         toast.success("Narudzbina je dodata.");
-        if (emailError) {
-          console.warn("Email slanje nije uspelo:", emailError);
-          toast.error("Narudzbina je sacuvana, ali email nije poslat.");
-        }
       }
       resetOrderForm({ closeModal: true });
     } catch (error) {
@@ -2990,33 +3164,10 @@ function OrdersContent() {
                 )}
               />
               <FormField
-                name="sendEmail"
-                render={({ field }) => (
-                  <FormItem className="flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-2">
-                    <input
-                      id="sendEmail"
-                      ref={field.ref}
-                      name={field.name}
-                      type="checkbox"
-                      checked={field.value ?? true}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      onBlur={field.onBlur}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="space-y-0.5 flex flex-col items-center">
-                      <FormLabel htmlFor="sendEmail" className="m-0 cursor-pointer">
-                        Posalji narudzbinu na email
-                      </FormLabel>
-                      <p className="text-xs text-slate-500">Odstikliraj ako ne zelis slanje mejla.</p>
-                    </div>
-                  </FormItem>
-                )}
-              />
-              <FormField
                 name="note"
                 render={({ field }) => (
                   <FormItem className="md:col-span-2">
-                    <FormLabel>Napomena</FormLabel>
+                    <FormLabel>Napomena (neobavezno)</FormLabel>
                     <Textarea rows={3} placeholder="Dodatne napomene" {...field} />
                     <FormMessage />
                   </FormItem>
@@ -3794,6 +3945,26 @@ function OrdersContent() {
                     </div>
                   </div>
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => void handleOrdersPdf("download")}
+                  disabled={isOrdersPdfBusy || isOrdersLoading}
+                >
+                  <Download className="h-4 w-4" />
+                  {ordersPdfMode === "download" ? "Izvoz..." : "PDF"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => void handleOrdersPdf("share")}
+                  disabled={isOrdersPdfBusy || isOrdersLoading}
+                >
+                  <Share2 className="h-4 w-4" />
+                  {ordersPdfMode === "share" ? "Deljenje..." : "Podeli PDF"}
+                </Button>
                 <Button type="button" variant="outline" className="gap-2" onClick={() => setRestockModalOpen(true)}>
                   <Bell className="h-4 w-4" />
                   Zahtevi

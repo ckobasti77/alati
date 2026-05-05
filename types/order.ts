@@ -106,7 +106,7 @@ export interface ProductStats {
   profit: number;
 }
 
-export type OrderStage = "poruceno" | "na_stanju" | "poslato" | "stiglo" | "legle_pare" | "vraceno";
+export type OrderStage = "poruceno" | "aks" | "na_stanju" | "poslato" | "stiglo" | "legle_pare" | "vraceno";
 export type OrderScope = "default" | "kalaba";
 export type TransportMode = "Kol" | "Joe" | "Smg" | "Posta" | "Bex" | "Aks";
 export type SlanjeMode = "Posta" | "Aks" | "Bex";

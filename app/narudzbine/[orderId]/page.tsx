@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Check, Copy, Loader2, PenLine, PhoneCall, Plus, Share2, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Download, Loader2, PenLine, PhoneCall, Plus, Share2, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,11 +15,19 @@ import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
+import {
+  createOrderDetailPdfFile,
+  downloadPdfFile,
+  sanitizePdfFileName,
+  sharePdfFile,
+  type OrderDetailPdfItem,
+} from "@/lib/pdfExport";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import type { OrderStage, OrderWithProduct, Product, ProductVariant, ShippingOwnerOptions, Supplier } from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
+  { value: "aks", label: "Aks", tone: "border-orange-200 bg-orange-50 text-orange-800" },
   { value: "na_stanju", label: "Na stanju", tone: "border-indigo-200 bg-indigo-50 text-indigo-800" },
   { value: "poslato", label: "Poslato", tone: "border-blue-200 bg-blue-50 text-blue-800" },
   { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
@@ -92,6 +100,65 @@ const composeVariantLabel = (product: Product, variant?: ProductVariant) => {
   const displayName = getProductDisplayName(product);
   if (!variant) return displayName;
   return `${displayName} - ${variant.label}`;
+};
+
+const splitComposedVariantLabel = (value?: string) => {
+  const text = value?.trim() ?? "";
+  const separator = " - ";
+  const index = text.lastIndexOf(separator);
+  if (index <= 0) return null;
+  return {
+    productName: text.slice(0, index).trim(),
+    variantName: text.slice(index + separator.length).trim(),
+  };
+};
+
+const resolveOrderDetailPdfItems = (order: OrderWithProduct): OrderDetailPdfItem[] => {
+  const items = orderTotals(order).items;
+  if (items.length === 0) {
+    const split = splitComposedVariantLabel(order.variantLabel || order.title);
+    return [
+      {
+        productName: split?.productName || order.title,
+        variantName: split?.variantName,
+        quantity: order.kolicina,
+      },
+    ];
+  }
+
+  return items.map((item) => {
+    const itemProduct = (item as any).product as Product | undefined;
+    const product =
+      itemProduct ??
+      (item.productId && order.product && String(order.product._id) === String(item.productId) ? order.product : undefined) ??
+      (items.length === 1 ? order.product : undefined);
+    const productNameFromProduct = product ? getProductDisplayName(product) : "";
+    const variantFromProduct = product?.variants?.find((variant) => variant.id === item.variantId)?.label;
+    const splitTitle = splitComposedVariantLabel(item.title);
+    const splitVariant = splitComposedVariantLabel(item.variantLabel);
+
+    let productName = productNameFromProduct || splitTitle?.productName || item.title;
+    let variantName = variantFromProduct || splitVariant?.variantName || "";
+
+    if (!variantName && item.variantLabel) {
+      const variantLabel = item.variantLabel.trim();
+      if (productNameFromProduct && variantLabel.startsWith(`${productNameFromProduct} - `)) {
+        variantName = variantLabel.slice(productNameFromProduct.length + 3).trim();
+      } else if (variantLabel !== item.title) {
+        variantName = variantLabel;
+      }
+    }
+
+    if (!productNameFromProduct && variantName && item.title.endsWith(` - ${variantName}`)) {
+      productName = item.title.slice(0, -variantName.length - 3).trim();
+    }
+
+    return {
+      productName,
+      variantName: variantName || undefined,
+      quantity: item.kolicina,
+    };
+  });
 };
 
 const resolveSupplierOptions = (product?: Product, variantId?: string) => {
@@ -373,6 +440,7 @@ function OrderDetails({
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [orderPdfMode, setOrderPdfMode] = useState<"download" | "share" | null>(null);
   const [shipmentStageModalOpen, setShipmentStageModalOpen] = useState(false);
   const [shipmentNumberDraft, setShipmentNumberDraft] = useState("");
   const [isShipmentStageSaving, setIsShipmentStageSaving] = useState(false);
@@ -844,6 +912,46 @@ function OrderDetails({
   const telHref = order ? `tel:${order.phone.replace(/[^+\d]/g, "")}` : "";
   const shipmentNumber = resolveShipmentNumber(order);
   const hasShipmentNumber = shipmentNumber.length > 0;
+  const isOrderPdfBusy = orderPdfMode !== null;
+
+  const handleOrderPdf = useCallback(
+    async (mode: "download" | "share") => {
+      if (!order || isOrderPdfBusy) return;
+      setOrderPdfMode(mode);
+      try {
+        const file = await createOrderDetailPdfFile({
+          fileName: `${sanitizePdfFileName(`narudzbina-${order._id}`)}.pdf`,
+          orderTitle: order.title,
+          createdAt: `Kreirano ${formatDate(order.kreiranoAt)}`,
+          items: resolveOrderDetailPdfItems(order),
+          customerName: order.customerName,
+          nabavno: formatCurrency(nabavnoUkupno, "EUR"),
+          transport: formatCurrency(transport, "EUR"),
+          prodajno: formatCurrency(prodajnoUkupno, "EUR"),
+          cleanProfit: formatCurrency(prof, "EUR"),
+        });
+
+        if (mode === "share") {
+          const result = await sharePdfFile(file, {
+            title: "Narudzbina PDF",
+            text: `Narudzbina: ${order.title}`,
+          });
+          if (result === "shared") toast.success("PDF je poslat u share.");
+          if (result === "downloaded") toast.info("Uredjaj ne podrzava deljenje PDF fajla, PDF je preuzet.");
+        } else {
+          downloadPdfFile(file);
+          toast.success("PDF je preuzet.");
+        }
+        setShareOpen(false);
+      } catch (error) {
+        console.error(error);
+        toast.error("Izvoz PDF-a nije uspeo.");
+      } finally {
+        setOrderPdfMode(null);
+      }
+    },
+    [isOrderPdfBusy, nabavnoUkupno, order, prodajnoUkupno, prof, transport],
+  );
 
   const handleShipmentNumberCopy = useCallback(async () => {
     if (!hasShipmentNumber) return;
@@ -976,9 +1084,28 @@ function OrderDetails({
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Podeli narudzbinu</DialogTitle>
-            <DialogDescription>Prvo kopiraj link, pa podeli preko aplikacije.</DialogDescription>
+            <DialogDescription>Podeli PDF kroz sistemski share ili preuzmi fajl.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
+            <Button
+              type="button"
+              className="w-full justify-start gap-2"
+              onClick={() => void handleOrderPdf("share")}
+              disabled={isOrderPdfBusy}
+            >
+              <Share2 className="h-4 w-4" />
+              {orderPdfMode === "share" ? "Deljenje..." : "Podeli PDF"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start gap-2"
+              onClick={() => void handleOrderPdf("download")}
+              disabled={isOrderPdfBusy}
+            >
+              <Download className="h-4 w-4" />
+              {orderPdfMode === "download" ? "Izvoz..." : "Preuzmi PDF"}
+            </Button>
             <Button type="button" className="w-full justify-start gap-2" onClick={handleCopyShareLink}>
               <Copy className="h-4 w-4" />
               Kopiraj link
@@ -993,7 +1120,11 @@ function OrderDetails({
               <Share2 className="h-4 w-4" />
               Podeli link
             </Button>
-            {!canShare ? <p className="text-xs text-slate-500">Share nije podrzan na ovom uredjaju.</p> : null}
+            <p className="text-xs text-slate-500">
+              Na telefonu izaberi WhatsApp, Viber ili drugu aplikaciju iz share prozora. Ako deljenje fajlova nije
+              podrzano, PDF ce biti preuzet.
+            </p>
+            {!canShare ? <p className="text-xs text-slate-500">Deljenje linka nije podrzano na ovom uredjaju.</p> : null}
           </div>
         </DialogContent>
       </Dialog>

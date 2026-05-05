@@ -128,6 +128,7 @@ export default defineSchema({
     scope: v.optional(v.union(v.literal("default"), v.literal("kalaba"))),
     stage: v.union(
       v.literal("poruceno"),
+      v.literal("aks"),
       v.literal("na_stanju"),
       v.literal("poslato"),
       v.literal("stiglo"),

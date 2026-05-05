@@ -4,7 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "./search";
 
-const orderStages = ["poruceno", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"] as const;
+const orderStages = ["poruceno", "aks", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"] as const;
 const transportModes = ["Kol", "Joe", "Smg"] as const;
 const pickupTransportModes = ["Kol", "Joe"] as const;
 const legacyTransportModes = ["Posta", "Bex", "Aks"] as const;
@@ -18,6 +18,7 @@ const stageSchema = v.union(
   v.literal(orderStages[3]),
   v.literal(orderStages[4]),
   v.literal(orderStages[5]),
+  v.literal(orderStages[6]),
 );
 const transportModeSchema = v.union(
   v.literal(transportModes[0]),
