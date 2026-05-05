@@ -3825,13 +3825,13 @@ function OrdersContent() {
                   </Button>
                   <div
                     className={cn(
-                      "fixed inset-0 z-40 flex items-center justify-center bg-slate-900/30 p-3 transition md:absolute md:inset-auto md:right-0 md:top-full md:z-30 md:block md:w-72 md:bg-transparent md:p-0 md:pt-2",
+                      "fixed inset-0 z-40 flex items-start justify-center bg-slate-900/30 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+5rem)] transition md:absolute md:inset-auto md:right-0 md:top-full md:z-30 md:block md:w-72 md:bg-transparent md:p-0 md:pt-2",
                       isFilterMenuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
                     )}
                     onClick={() => setFilterMenuMode("closed")}
                   >
                     <div
-                      className="max-h-[90vh] w-[min(96vw,40rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-lg md:max-h-none md:w-72"
+                      className="max-h-[calc(100dvh-6rem)] w-[min(96vw,40rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-lg md:max-h-none md:w-72"
                       onClick={(event) => event.stopPropagation()}
                     >
                       <div className="space-y-3">
