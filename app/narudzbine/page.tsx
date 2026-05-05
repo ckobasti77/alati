@@ -7,7 +7,7 @@ import { useForm, type DeepPartial, type FieldErrors, type Resolver } from "reac
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, Bell, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
+import { ArrowUpRight, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
@@ -3807,9 +3807,15 @@ function OrdersContent() {
                 }}
                 className="sm:w-72"
               />
-              <div className="flex items-center gap-2 sm:ml-auto">
+              <div className="grid w-full grid-cols-2 gap-2 sm:ml-auto sm:flex sm:w-auto sm:items-center">
                 <div className="relative" onMouseEnter={handleFilterMenuEnter} onMouseLeave={handleFilterMenuLeave}>
-                  <Button type="button" variant="outline" className="gap-2" onClick={handleFilterMenuToggle} aria-expanded={isFilterMenuOpen}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full gap-2 sm:w-auto"
+                    onClick={handleFilterMenuToggle}
+                    aria-expanded={isFilterMenuOpen}
+                  >
                     Filteri
                     {activeFilterCount > 0 ? (
                       <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
@@ -3948,7 +3954,7 @@ function OrdersContent() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="gap-2"
+                  className="w-full gap-2 sm:w-auto"
                   onClick={() => void handleOrdersPdf("download")}
                   disabled={isOrdersPdfBusy || isOrdersLoading}
                 >
@@ -3958,21 +3964,12 @@ function OrdersContent() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="gap-2"
+                  className="col-span-2 w-full gap-2 sm:w-auto"
                   onClick={() => void handleOrdersPdf("share")}
                   disabled={isOrdersPdfBusy || isOrdersLoading}
                 >
                   <Share2 className="h-4 w-4" />
                   {ordersPdfMode === "share" ? "Deljenje..." : "Podeli PDF"}
-                </Button>
-                <Button type="button" variant="outline" className="gap-2" onClick={() => setRestockModalOpen(true)}>
-                  <Bell className="h-4 w-4" />
-                  Zahtevi
-                  {restockEntries.length > 0 ? (
-                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
-                      {restockEntries.length}
-                    </span>
-                  ) : null}
                 </Button>
               </div>
             </div>
