@@ -34,7 +34,6 @@ const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
   { value: "vraceno", label: "Vraćeno", tone: "border-rose-200 bg-rose-50 text-rose-800" },
 ];
-const transportModes = ["Kol", "Joe", "Smg"] as const;
 const slanjeModes = ["Posta", "Aks", "Bex"] as const;
 const shippingModes = ["Posta", "Aks", "Bex"] as const;
 type ShippingMode = (typeof shippingModes)[number];
@@ -611,7 +610,6 @@ function OrderDetails({
     napomena: current.napomena,
     brojPosiljke: current.brojPosiljke,
     transportCost: current.transportCost,
-    transportMode: current.transportMode,
     slanjeMode: current.slanjeMode,
     slanjeOwner: current.slanjeOwner,
     myProfitPercent: current.myProfitPercent,
@@ -655,7 +653,6 @@ function OrderDetails({
       | "nabavnaCena"
       | "prodajnaCena"
       | "transportCost"
-      | "transportMode"
       | "slanjeMode"
       | "slanjeOwner"
       | "myProfitPercent"
@@ -715,12 +712,6 @@ function OrderDetails({
         throw new Error("Invalid percent");
       }
       await applyOrderUpdate((current) => ({ ...current, myProfitPercent: percent }), "Sacuvano.");
-      return;
-    }
-
-    if (field === "transportMode") {
-      const normalized = transportModes.find((mode) => mode.toLowerCase() === trimmed.toLowerCase());
-      await applyOrderUpdate((current) => ({ ...current, transportMode: normalized }), "Sacuvano.");
       return;
     }
 
@@ -1684,29 +1675,6 @@ function OrderDetails({
                 onSave={(val) => handleOrderFieldSave("transportCost", val)}
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {transportModes.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`rounded-full border px-3 py-1 text-sm font-semibold transition ${
-                    order.transportMode === mode
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                  }`}
-                  onClick={() => handleOrderFieldSave("transportMode", mode)}
-                >
-                  {mode}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:border-slate-300"
-                onClick={() => handleOrderFieldSave("transportMode", "")}
-              >
-                Bez kurira
-              </button>
-            </div>
             <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Slanje</p>
               <div className="flex flex-wrap items-center gap-2">
@@ -1841,29 +1809,6 @@ function OrderDetails({
                 </span>
               </button>
             ) : null}
-            <div className="flex flex-wrap items-center gap-2">
-              {transportModes.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={`rounded-full border px-3 py-1 text-sm font-semibold transition ${
-                    order.transportMode === mode
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                  }`}
-                  onClick={() => handleOrderFieldSave("transportMode", mode)}
-                >
-                  {mode}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:border-slate-300"
-                onClick={() => handleOrderFieldSave("transportMode", "")}
-              >
-                Bez kurira
-              </button>
-            </div>
             <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Slanje</p>
               <div className="flex flex-wrap items-center gap-2">

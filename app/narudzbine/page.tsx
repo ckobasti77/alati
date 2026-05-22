@@ -56,9 +56,8 @@ const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
   { value: "vraceno", label: "Vraćeno", tone: "border-rose-200 bg-rose-50 text-rose-800" },
 ];
-const transportModes = ["Kol", "Joe", "Smg"] as const;
-const pickupTransportModes = ["Kol", "Joe"] as const;
 const slanjeModes = ["Posta", "Aks", "Bex"] as const;
+const slanjeSwitchModes = ["Aks", "Posta"] as const;
 const shippingModes = ["Posta", "Aks", "Bex"] as const;
 type ShippingMode = (typeof shippingModes)[number];
 const deleteConfirmPhrase = "potvrdjujem da brisem";
@@ -136,8 +135,8 @@ const normalizeOwnerLookupKey = (value?: string) => normalizeSearchText(value?.t
 const orderSchema = z
   .object({
     stage: z.enum(["poruceno", "aks", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"]),
-    customerName: z.string().min(3, "Ime i prezime porucioca je obavezno."),
-    address: z.string().min(5, "Adresa je obavezna."),
+    customerName: z.string().trim().optional(),
+    address: z.string().trim().optional(),
     phone: z.string().min(5, "Broj telefona je obavezan."),
     transportCost: z.preprocess(
       (value) => {
@@ -147,13 +146,6 @@ const orderSchema = z
         return Number.isFinite(parsed) ? parsed : undefined;
       },
       z.number().min(0, "Transport je obavezan i mora biti 0 ili vise."),
-    ),
-    transportMode: z.preprocess(
-      (value) => {
-        if (value === "" || value === undefined || value === null) return undefined;
-        return typeof value === "string" ? value : undefined;
-      },
-      z.enum(transportModes, { message: "Izaberi nacin transporta." }),
     ),
     slanjeMode: z.preprocess(
       (value) => {
@@ -188,20 +180,42 @@ const orderSchema = z
       z
         .number()
         .min(0, "Procenat profita mora biti izmedju 0 i 100.")
-        .max(100, "Procenat profita mora biti izmedju 0 i 100."),
+        .max(100, "Procenat profita mora biti izmedju 0 i 100.")
+        .optional(),
     ),
     pickup: z.boolean().optional(),
     note: z.string().trim().optional(),
   })
   .superRefine((values, ctx) => {
-    if (values.pickup) {
-      if (values.transportMode === "Smg") {
+    const customerName = values.customerName?.trim() ?? "";
+    const address = values.address?.trim() ?? "";
+
+    if (!values.pickup) {
+      if (customerName.length < 3) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["transportMode"],
-          message: "Za licno preuzimanje izaberi Kol ili Joe.",
+          path: ["customerName"],
+          message: "Ime i prezime porucioca je obavezno.",
         });
       }
+      if (address.length < 5) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["address"],
+          message: "Adresa je obavezna.",
+        });
+      }
+    }
+
+    if (values.pickup) {
+      return;
+    }
+    if (!values.slanjeMode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slanjeMode"],
+        message: "Izaberi nacin slanja.",
+      });
       return;
     }
     if (values.slanjeMode && !values.slanjeOwner) {
@@ -247,7 +261,6 @@ const defaultFormValues: DeepPartial<OrderFormValues> = {
   address: "",
   phone: "",
   transportCost: 0,
-  transportMode: "Smg",
   slanjeMode: "Aks",
   slanjeOwner: undefined,
   slanjeOwnerStartingAmount: undefined,
@@ -261,11 +274,9 @@ const orderFocusOrder: (keyof OrderFormValues)[] = [
   "address",
   "phone",
   "transportCost",
-  "transportMode",
   "slanjeMode",
   "slanjeOwner",
   "slanjeOwnerStartingAmount",
-  "myProfitPercent",
   "note",
 ];
 
@@ -340,7 +351,6 @@ type QuickEditState =
       field: "transport";
       order: Order;
       transportCost: string;
-      transportMode: string;
     };
 
 type ShipmentStageModalState = {
@@ -1302,13 +1312,12 @@ function OrdersContent() {
   const slanjeModeValue = form.watch("slanjeMode");
   const slanjeOwnerValue = form.watch("slanjeOwner");
   const slanjeOwnerStartingAmountValue = form.watch("slanjeOwnerStartingAmount");
-  const availableTransportModes = pickupValue ? pickupTransportModes : transportModes;
   const showShippingFields = !pickupValue;
   const slanjeOwnerLabel =
     slanjeModeValue === "Posta"
       ? "Posta - na ime"
       : slanjeModeValue
-        ? "Aks/Bex - na ciji racun"
+        ? "Aks - na ciji racun"
         : "Slanje - na ciji racun";
   const slanjeOwnerPlaceholder =
     slanjeModeValue === "Posta"
@@ -1353,12 +1362,13 @@ function OrdersContent() {
     if (previousPickup === null || previousPickup === pickupValue) return;
 
     if (pickupValue) {
-      form.setValue("transportMode", "Joe", { shouldDirty: true, shouldTouch: true });
+      if (form.getValues("address")) {
+        form.setValue("address", "", { shouldDirty: true, shouldTouch: true });
+      }
       form.setValue("slanjeMode", undefined, { shouldDirty: true, shouldTouch: true });
       form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
       form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
     } else {
-      form.setValue("transportMode", "Smg", { shouldDirty: true, shouldTouch: true });
       form.setValue("slanjeMode", "Aks", { shouldDirty: true, shouldTouch: true });
       form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
       form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
@@ -1557,7 +1567,6 @@ function OrdersContent() {
         field,
         order,
         transportCost: order.transportCost !== undefined && order.transportCost !== null ? String(order.transportCost) : "",
-        transportMode: order.transportMode ?? "",
       });
       return;
     }
@@ -1608,7 +1617,6 @@ function OrdersContent() {
         address: values.address?.trim() ?? "",
         phone: values.phone?.trim() ?? "",
         transportCost: values.transportCost ?? null,
-        transportMode: values.transportMode ?? null,
         slanjeMode: values.slanjeMode ?? null,
         slanjeOwner: values.slanjeOwner ?? null,
         slanjeOwnerStartingAmount:
@@ -1876,11 +1884,12 @@ function OrdersContent() {
 
   const handleCustomerSelect = useCallback(
     (customer: Customer) => {
+      const nextPickup = typeof customer.pickup === "boolean" ? customer.pickup : Boolean(form.getValues("pickup"));
       form.setValue("customerName", customer.name, { shouldDirty: true, shouldTouch: true });
       form.setValue("phone", customer.phone, { shouldDirty: true, shouldTouch: true });
-      form.setValue("address", customer.address, { shouldDirty: true, shouldTouch: true });
+      form.setValue("address", nextPickup ? "" : customer.address, { shouldDirty: true, shouldTouch: true });
       if (typeof customer.pickup === "boolean") {
-        form.setValue("pickup", customer.pickup, { shouldDirty: true, shouldTouch: true });
+        form.setValue("pickup", nextPickup, { shouldDirty: true, shouldTouch: true });
       }
       setCustomerQuery(customer.name);
       setCustomerMenuOpen(false);
@@ -1920,6 +1929,8 @@ function OrdersContent() {
 
     try {
       const pickup = Boolean(values.pickup);
+      const customerName = values.customerName?.trim() ?? "";
+      const address = pickup ? "" : values.address?.trim() ?? "";
       const slanjeMode = pickup ? undefined : values.slanjeMode;
       const ownerInput = pickup ? undefined : values.slanjeOwner?.trim();
       const ownerLookupKey = normalizeOwnerLookupKey(ownerInput);
@@ -1964,13 +1975,12 @@ function OrdersContent() {
         stage: values.stage,
         title: payloadItems[0]?.title ?? "Narudzbina",
         transportCost: values.transportCost,
-        transportMode: values.transportMode,
         slanjeMode,
         slanjeOwner: ownerInput,
         brojPosiljke: editingOrder?.brojPosiljke,
-        myProfitPercent: values.myProfitPercent,
-        customerName: values.customerName.trim(),
-        address: values.address.trim(),
+        myProfitPercent: values.myProfitPercent ?? 100,
+        customerName,
+        address,
         phone: values.phone.trim(),
         pickup,
         napomena: values.note?.trim() || undefined,
@@ -2139,7 +2149,6 @@ function OrdersContent() {
       address: order.address,
       phone: order.phone,
       transportCost: order.transportCost,
-      transportMode: order.transportMode,
       slanjeMode: order.slanjeMode,
       slanjeOwner: order.slanjeOwner,
       myProfitPercent: order.myProfitPercent,
@@ -2189,15 +2198,7 @@ function OrdersContent() {
           }
           nextCost = parsed;
         }
-        const modeInput = quickEdit.transportMode.trim();
-        const normalizedMode = modeInput
-          ? transportModes.find((mode) => mode.toLowerCase() === modeInput.toLowerCase())
-          : undefined;
-        await applyQuickUpdate(
-          quickEdit.order,
-          { transportCost: nextCost, transportMode: normalizedMode },
-          "Sacuvano.",
-        );
+        await applyQuickUpdate(quickEdit.order, { transportCost: nextCost }, "Sacuvano.");
         return;
       }
 
@@ -2431,6 +2432,29 @@ function OrdersContent() {
             )}
           </DialogHeader>
           <Form form={form} onSubmit={handleSubmitOrder} className="space-y-4">
+            <FormField
+              name="pickup"
+              render={({ field }) => (
+                <FormItem className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="space-y-0.5">
+                    <FormLabel htmlFor="pickup" className="m-0 cursor-pointer">
+                      Licno preuzimanje
+                    </FormLabel>
+                    <p className="text-xs text-slate-500">Bez adrese i bez slanja.</p>
+                  </div>
+                  <input
+                    id="pickup"
+                    ref={field.ref}
+                    name={field.name}
+                    type="checkbox"
+                    checked={!!field.value}
+                    onChange={(event) => field.onChange(event.target.checked)}
+                    onBlur={field.onBlur}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </FormItem>
+              )}
+            />
             <FormField
               name="stage"
               render={({ field }) => (
@@ -2819,11 +2843,11 @@ function OrdersContent() {
                 name="customerName"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Ime i prezime porucioca</FormLabel>
+                    <FormLabel>Ime i prezime porucioca{pickupValue ? " (neobavezno)" : ""}</FormLabel>
                     <div className="relative">
                       <Input
                         placeholder="npr. Marko Markovic"
-                        required
+                        required={!pickupValue}
                         {...field}
                         onChange={(event) => {
                           field.onChange(event);
@@ -2872,39 +2896,18 @@ function OrdersContent() {
                   </FormItem>
                 )}
               />
-              <FormField
-                name="address"
-                render={({ field, fieldState }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Adresa</FormLabel>
-                    <Input placeholder="Ulica, broj, mesto" required {...field} />
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                name="pickup"
-                render={({ field }) => (
-                  <FormItem className="flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 md:col-span-2">
-                    <input
-                      id="pickup"
-                      ref={field.ref}
-                      name={field.name}
-                      type="checkbox"
-                      checked={!!field.value}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      onBlur={field.onBlur}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="space-y-0.5 flex flex-col items-center">
-                      <FormLabel htmlFor="pickup" className="m-0 cursor-pointer">
-                        Licno preuzimanje
-                      </FormLabel>
-                      <p className="text-xs text-slate-500">Oznaci ako kupac preuzima bez kurira.</p>
-                    </div>
-                  </FormItem>
-                )}
-              />
+              {!pickupValue ? (
+                <FormField
+                  name="address"
+                  render={({ field, fieldState }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel>Adresa</FormLabel>
+                      <Input placeholder="Ulica, broj, mesto" required {...field} />
+                      <FormMessage>{fieldState.error?.message}</FormMessage>
+                    </FormItem>
+                  )}
+                />
+              ) : null}
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
@@ -2937,34 +2940,6 @@ function OrdersContent() {
                   </FormItem>
                 )}
               />
-              <FormField
-                name="transportMode"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                <FormLabel>Nacin transporta</FormLabel>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                  ref={field.ref}
-                  name={field.name}
-                  required
-                  value={field.value ?? ""}
-                  onChange={(event) => field.onChange(event.target.value || undefined)}
-                  onBlur={field.onBlur}
-                >
-                      <option value="">Izaberi</option>
-                      {availableTransportModes.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-slate-500">
-                      {pickupValue ? "Za licno preuzimanje dostupni su Kol i Joe." : "Odaberi kurira ili dostavu."}
-                    </p>
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
-                  </FormItem>
-                )}
-              />
               {showShippingFields ? (
                 <>
                   <FormField
@@ -2972,58 +2947,30 @@ function OrdersContent() {
                     render={({ field, fieldState }) => (
                       <FormItem>
                         <FormLabel>Slanje</FormLabel>
-                        <div className="space-y-2">
-                          <div className="hidden flex-wrap gap-2 md:flex">
-                            {slanjeModes.map((mode) => {
-                              const isActive = field.value === mode;
-                              return (
-                                <button
-                                  key={mode}
-                                  type="button"
-                                  className={cn(
-                                    "rounded-full border px-3 py-1 text-xs font-semibold transition",
-                                    isActive
-                                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                                      : "border-slate-200 bg-white text-slate-600 hover:border-blue-200",
-                                  )}
-                                  onClick={() => field.onChange(mode)}
-                                >
-                                  {mode}
-                                </button>
-                              );
-                            })}
-                            <button
-                              type="button"
-                              className={cn(
-                                "rounded-full border px-3 py-1 text-xs font-semibold transition",
-                                !field.value
-                                  ? "border-slate-900 bg-slate-900 text-white"
-                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                              )}
-                              onClick={() => field.onChange(undefined)}
-                            >
-                              Bez slanja
-                            </button>
-                          </div>
-                          <div className="md:hidden">
-                            <select
-                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                              ref={field.ref}
-                              name={field.name}
-                              value={field.value ?? ""}
-                              onChange={(event) => field.onChange(event.target.value || undefined)}
-                              onBlur={field.onBlur}
-                            >
-                              <option value="">Bez slanja</option>
-                              {slanjeModes.map((mode) => (
-                                <option key={mode} value={mode}>
-                                  {mode}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                        <div
+                          className="grid grid-cols-2 overflow-hidden rounded-full border border-slate-200 bg-slate-100 p-1"
+                          role="group"
+                          aria-label="Slanje"
+                        >
+                          {slanjeSwitchModes.map((mode) => {
+                            const isActive = field.value === mode;
+                            return (
+                              <button
+                                key={mode}
+                                type="button"
+                                className={cn(
+                                  "rounded-full px-3 py-1.5 text-sm font-semibold transition",
+                                  isActive
+                                    ? "bg-white text-blue-700 shadow-sm"
+                                    : "text-slate-600 hover:text-slate-900",
+                                )}
+                                onClick={() => field.onChange(mode)}
+                              >
+                                {mode}
+                              </button>
+                            );
+                          })}
                         </div>
-                        <p className="text-xs text-slate-500">Odaberi da li ide Posta, Aks ili Bex.</p>
                         <FormMessage>{fieldState.error?.message}</FormMessage>
                       </FormItem>
                     )}
@@ -3086,7 +3033,7 @@ function OrdersContent() {
                             : slanjeModeValue
                               ? slanjeOwnerOptions.length > 0
                                 ? "Izaberi sacuvan racun ili unesi novi."
-                                : "Na ciji bankovni racun lezu pare preko Aksa/Bexa."
+                                : "Na ciji bankovni racun lezu pare preko Aksa."
                               : "Izaberi slanje da bi odabrao ime."}
                         </p>
                         {isAksBexMode && selectedAksBexAccount ? (
@@ -3133,36 +3080,6 @@ function OrdersContent() {
                   ) : null}
                 </>
               ) : null}
-              <FormField
-                name="myProfitPercent"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                    <FormLabel>Moj procenat profita (%)</FormLabel>
-                    <Input
-                      ref={field.ref}
-                      name={field.name}
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="npr. 50"
-                      required
-                      value={field.value ?? ""}
-                      onChange={(event) => {
-                        const normalized = event.target.value.replace(",", ".").trim();
-                        if (normalized === "") {
-                          field.onChange(undefined);
-                          return;
-                        }
-                        const parsed = Number(normalized);
-                        if (Number.isNaN(parsed)) return;
-                        field.onChange(parsed);
-                      }}
-                      onBlur={field.onBlur}
-                    />
-                    <p className="text-xs text-slate-500">Procenat profita koji pripada tebi (0-100).</p>
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
-                  </FormItem>
-                )}
-              />
               <FormField
                 name="note"
                 render={({ field }) => (
@@ -3333,40 +3250,19 @@ function OrdersContent() {
             </div>
           ) : null}
           {quickEdit?.field === "transport" ? (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <FormLabel>Trosak transporta</FormLabel>
-                <Input
-                  autoFocus
-                  inputMode="decimal"
-                  placeholder="npr. 15 ili 15.5"
-                  value={quickEdit.transportCost}
-                  onChange={(event) =>
-                    setQuickEdit((current) =>
-                      current?.field === "transport" ? { ...current, transportCost: event.target.value } : current,
-                    )
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <FormLabel>Nacin transporta</FormLabel>
-                <select
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-                  value={quickEdit.transportMode}
-                  onChange={(event) =>
-                    setQuickEdit((current) =>
-                      current?.field === "transport" ? { ...current, transportMode: event.target.value } : current,
-                    )
-                  }
-                >
-                  <option value="">Izaberi</option>
-                  {transportModes.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {mode}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="space-y-2">
+              <FormLabel>Trosak transporta</FormLabel>
+              <Input
+                autoFocus
+                inputMode="decimal"
+                placeholder="npr. 15 ili 15.5"
+                value={quickEdit.transportCost}
+                onChange={(event) =>
+                  setQuickEdit((current) =>
+                    current?.field === "transport" ? { ...current, transportCost: event.target.value } : current,
+                  )
+                }
+              />
             </div>
           ) : null}
           {quickEdit?.field === "profit" ? (

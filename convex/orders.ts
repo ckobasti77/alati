@@ -6,7 +6,6 @@ import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens }
 
 const orderStages = ["poruceno", "aks", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"] as const;
 const transportModes = ["Kol", "Joe", "Smg"] as const;
-const pickupTransportModes = ["Kol", "Joe"] as const;
 const legacyTransportModes = ["Posta", "Bex", "Aks"] as const;
 const slanjeModes = ["Posta", "Aks", "Bex"] as const;
 const orderScopes = ["default", "kalaba"] as const;
@@ -50,14 +49,6 @@ const normalizeTransportCost = (value?: number) => {
   if (value === undefined || value === null || Number.isNaN(value)) return undefined;
   return Math.max(value, 0);
 };
-
-const normalizeTransportMode = (mode?: string) => {
-  if (!mode) return undefined;
-  return (transportModes as readonly string[]).includes(mode) ? (mode as (typeof transportModes)[number]) : undefined;
-};
-
-const isPickupTransportMode = (mode?: string) =>
-  (pickupTransportModes as readonly string[]).includes(mode ?? "");
 
 const normalizeSlanjeMode = (mode?: string) => {
   if (!mode) return undefined;
@@ -977,12 +968,7 @@ export const create = mutation({
     const pickup = Boolean(args.pickup);
     const povratVracen = args.povratVracen ?? false;
     const transportCost = normalizeTransportCost(args.transportCost);
-    const normalizedTransportMode = normalizeTransportMode(args.transportMode);
-    if (pickup && normalizedTransportMode === "Smg") {
-      throw new Error("Za licno preuzimanje izaberi Kol ili Joe.");
-    }
-    const transportMode =
-      pickup && !isPickupTransportMode(normalizedTransportMode) ? undefined : normalizedTransportMode;
+    const transportMode = undefined;
     const slanjeMode = pickup ? undefined : normalizeSlanjeMode(args.slanjeMode);
     const slanjeOwner = pickup ? undefined : normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
     const brojPosiljke = normalizeShipmentNumber(args.brojPosiljke);
@@ -1018,7 +1004,7 @@ export const create = mutation({
     const totals = summarizeItems(normalizedItems);
     const title = args.title.trim() || normalizedItems[0].title || "Narudzbina";
     const customerName = args.customerName.trim();
-    const address = args.address.trim();
+    const address = pickup ? "" : args.address.trim();
     const phone = args.phone.trim();
 
     await ctx.db.insert("orders", {
@@ -1106,12 +1092,7 @@ export const update = mutation({
     const pickup = args.pickup ?? existing.pickup ?? false;
     const povratVracen = args.povratVracen ?? existing.povratVracen ?? false;
     const transportCost = normalizeTransportCost(args.transportCost);
-    const normalizedTransportMode = normalizeTransportMode(args.transportMode);
-    if (pickup && normalizedTransportMode === "Smg") {
-      throw new Error("Za licno preuzimanje izaberi Kol ili Joe.");
-    }
-    const transportMode =
-      pickup && !isPickupTransportMode(normalizedTransportMode) ? undefined : normalizedTransportMode;
+    const transportMode = undefined;
     const slanjeMode = pickup ? undefined : normalizeSlanjeMode(args.slanjeMode);
     const slanjeOwner = pickup ? undefined : normalizeSlanjeOwner(slanjeMode, args.slanjeOwner);
     const brojPosiljke =
@@ -1138,7 +1119,7 @@ export const update = mutation({
     const totals = summarizeItems(normalizedItems);
     const title = args.title.trim() || normalizedItems[0].title || existing.title;
     const customerName = args.customerName.trim();
-    const address = args.address.trim();
+    const address = pickup ? "" : args.address.trim();
     const phone = args.phone.trim();
     const usedAt = Date.now();
 
