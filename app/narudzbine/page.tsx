@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
+import { calculateOrderRefund } from "@/lib/refund-policy";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
@@ -482,10 +483,13 @@ const buildOrderExportTitle = (order: Order, productMap: Map<string, Product>) =
 const buildOrdersPdfRows = (exportOrders: Order[], productMap: Map<string, Product>): OrdersTablePdfRow[] =>
   exportOrders.map((order) => {
     const totals = orderTotals(order);
-    const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
-    const myProfit = totals.profit * (myProfitPercent / 100);
-    const profitShare = myProfit * 0.5;
-    const povrat = totals.totalNabavno + totals.transport + profitShare;
+    const refund = calculateOrderRefund({
+      orderCreatedAt: order.kreiranoAt,
+      totalNabavno: totals.totalNabavno,
+      profit: totals.profit,
+      transport: totals.transport,
+      myProfitPercent: order.myProfitPercent,
+    });
     const shipmentNumber = resolveShipmentNumber(order);
     const contactParts = [order.customerName, order.phone];
     if (order.pickup) contactParts.push("Licno");
@@ -498,8 +502,8 @@ const buildOrdersPdfRows = (exportOrders: Order[], productMap: Map<string, Produ
       nabavno: formatCurrency(totals.totalNabavno, "EUR"),
       transport: formatCurrency(totals.transport, "EUR"),
       prodajno: formatCurrency(totals.totalProdajno, "EUR"),
-      profit: formatCurrency(profitShare, "EUR"),
-      povrat: formatCurrency(povrat, "EUR"),
+      profit: formatCurrency(refund.profitForRefund, "EUR"),
+      povrat: formatCurrency(refund.refundAmount, "EUR"),
       shipmentNumber: shipmentNumber || order.napomena || "-",
     };
   });
@@ -764,11 +768,15 @@ function OrdersContent() {
     () =>
       orders.map((order) => {
         const totals = orderTotals(order);
+        const refund = calculateOrderRefund({
+          orderCreatedAt: order.kreiranoAt,
+          totalNabavno: totals.totalNabavno,
+          profit: totals.profit,
+          transport: totals.transport,
+          myProfitPercent: order.myProfitPercent,
+        });
         const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
         const myProfit = totals.profit * (myProfitPercent / 100);
-        const profitShare = myProfit * 0.5;
-        const profitSharePercent = myProfitPercent * 0.5;
-        const povrat = totals.totalNabavno + totals.transport + profitShare;
         return {
           order,
           prodajnoUkupno: totals.totalProdajno,
@@ -776,9 +784,10 @@ function OrdersContent() {
           transport: totals.transport,
           myProfit,
           myProfitPercent,
-          profitShare,
-          profitSharePercent,
-          povrat,
+          profitShare: refund.profitForRefund,
+          profitSharePercent: refund.profitForRefundPercent,
+          povrat: refund.refundAmount,
+          isFullRefundWeek: refund.isFullRefundWeek,
         };
       }),
     [orders],
@@ -3902,7 +3911,7 @@ function OrdersContent() {
                 <p className="text-base font-bold text-slate-900">{formatCurrency(ordersTotals.prodajno, "EUR")}</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-slate-500">Profit (50%)</p>
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Profit za povrat</p>
                 <p className={cn("text-base font-bold", ordersTotals.profit < 0 ? "text-red-700" : "text-emerald-700")}>
                   {formatCurrency(ordersTotals.profit, "EUR")}
                 </p>
@@ -3923,7 +3932,7 @@ function OrdersContent() {
                 Jos nema narudzbina.
               </div>
             ) : (
-              orderEntries.map(({ order, prodajnoUkupno, nabavnoUkupno, transport, profitShare, povrat }) => {
+              orderEntries.map(({ order, prodajnoUkupno, nabavnoUkupno, transport, profitShare, povrat, isFullRefundWeek }) => {
                   const previewImages = getOrderPreviewImages(order);
                   const itemNames = (order.items ?? [])
                     .map((item) => {
@@ -3943,12 +3952,23 @@ function OrdersContent() {
                       className={cn(
                         "rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition",
                         draggingOrderId === order._id ? "opacity-60" : "hover:border-blue-200",
+                        isFullRefundWeek ? "border-emerald-200 bg-emerald-50/70 shadow-emerald-950/5 hover:border-emerald-300" : "",
                       )}
                       onClick={() => handleRowClick(order._id)}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-xs text-slate-500">{formatDate(order.kreiranoAt)}</span>
-                        <StageBadge stage={order.stage} />
+                        <div className="flex flex-col items-end gap-1">
+                          <StageBadge stage={order.stage} />
+                          <p className="text-[10px] text-slate-500">
+                            {order.stageChangedAt ? `Status: ${formatDate(order.stageChangedAt)}` : "Datum nije zabelezen"}
+                          </p>
+                          {isFullRefundWeek ? (
+                            <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
+                              Povrat 100%
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="mt-3 flex items-start gap-3">
                         <div className="flex flex-wrap gap-1">
@@ -4078,7 +4098,7 @@ function OrdersContent() {
                           className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1"
                           {...createLongPressHandlers(() => openQuickEdit(order, "profit"))}
                         >
-                          <p className="text-[10px] uppercase tracking-wide text-slate-500">Profit (50%)</p>
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500">Profit za povrat</p>
                           <p className={`text-sm font-semibold ${profitShare < 0 ? "text-red-600" : "text-slate-900"}`}>
                             {formatCurrency(profitShare, "EUR")}
                           </p>
@@ -4089,19 +4109,26 @@ function OrdersContent() {
                           <p className="text-[10px] uppercase tracking-wide text-slate-500">Povrat</p>
                           <p className="text-sm font-semibold text-slate-900">{formatCurrency(povrat, "EUR")}</p>
                         </div>
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(order.povratVracen)}
-                            onChange={(event) => {
-                              event.stopPropagation();
-                              void handlePovratToggle(order, event.target.checked);
-                            }}
-                            onClick={(event) => event.stopPropagation()}
-                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          Vracen
-                        </label>
+                        <div className="text-right">
+                          <label className="flex items-center justify-end gap-2 text-xs font-semibold text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(order.povratVracen)}
+                              onChange={(event) => {
+                                event.stopPropagation();
+                                void handlePovratToggle(order, event.target.checked);
+                              }}
+                              onClick={(event) => event.stopPropagation()}
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            Vracen
+                          </label>
+                          {order.povratVracen ? (
+                            <p className="mt-1 text-[10px] text-slate-500">
+                              {order.povratVracenAt ? `Vracen: ${formatDate(order.povratVracenAt)}` : "Datum nije zabelezen"}
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
                       <div
                         className="mt-3 rounded-lg border border-slate-100 bg-white px-3 py-2 text-xs text-slate-500"
@@ -4191,7 +4218,7 @@ function OrdersContent() {
                 </TableHead>
                 <TableHead className="text-center text-nowrap">
                   <div className="flex flex-col items-center gap-0.5">
-                    <span>Profit (50%)</span>
+                    <span>Profit za povrat</span>
                     <span className={cn("text-[11px]", ordersTotals.profit < 0 ? "text-red-600" : "text-slate-500")}>
                       ({formatCurrency(ordersTotals.profit, "EUR")})
                     </span>
@@ -4229,6 +4256,7 @@ function OrdersContent() {
                     transport,
                     profitShare,
                     povrat,
+                    isFullRefundWeek,
                   }) => {
                     const previewImages = getOrderPreviewImages(order);
                     const itemNames = (order.items ?? [])
@@ -4250,6 +4278,7 @@ function OrdersContent() {
                           "cursor-pointer transition",
                           draggingOrderId === order._id ? "opacity-60" : "hover:bg-slate-50",
                           dragOverOrderId === order._id && draggingOrderId !== order._id ? "bg-blue-50" : "",
+                          isFullRefundWeek ? "border-l-4 border-l-emerald-300 bg-emerald-50/70 hover:bg-emerald-100/70" : "",
                         )}
                         onClick={() => handleRowClick(order._id)}
                         onDragOver={handleOrderDragOver(order._id)}
@@ -4269,7 +4298,17 @@ function OrdersContent() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <StageBadge stage={order.stage} />
+                          <div className="flex flex-col items-center gap-1">
+                            <StageBadge stage={order.stage} />
+                            <p className="text-[10px] text-slate-500">
+                              {order.stageChangedAt ? formatDate(order.stageChangedAt) : "Datum nije zabelezen"}
+                            </p>
+                            {isFullRefundWeek ? (
+                              <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
+                                Povrat 100%
+                              </span>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell className="font-medium text-slate-700">
                           <div className="flex flex-col gap-2">
@@ -4394,18 +4433,25 @@ function OrdersContent() {
                             </span>
                         </TableCell>
                         <TableCell className="text-center">
-                          <div className="flex items-center justify-end gap-2">
-                            <span>{formatCurrency(povrat, "EUR")}</span>
-                            <input
-                              type="checkbox"
-                              checked={Boolean(order.povratVracen)}
-                              onChange={(event) => {
-                                event.stopPropagation();
-                                void handlePovratToggle(order, event.target.checked);
-                              }}
-                              onClick={(event) => event.stopPropagation()}
-                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-center justify-end gap-2">
+                              <span>{formatCurrency(povrat, "EUR")}</span>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(order.povratVracen)}
+                                onChange={(event) => {
+                                  event.stopPropagation();
+                                  void handlePovratToggle(order, event.target.checked);
+                                }}
+                                onClick={(event) => event.stopPropagation()}
+                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            </div>
+                            {order.povratVracen ? (
+                              <p className="text-[10px] text-slate-500">
+                                {order.povratVracenAt ? formatDate(order.povratVracenAt) : "Datum nije zabelezen"}
+                              </p>
+                            ) : null}
                           </div>
                         </TableCell>
                         <TableCell className="max-w-[180px] truncate text-sm text-slate-500">

@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "./search";
+import { calculateOrderRefund } from "../lib/refund-policy";
 
 const orderStages = ["poruceno", "aks", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"] as const;
 const transportModes = ["Kol", "Joe", "Smg"] as const;
@@ -756,8 +757,12 @@ export const get = query({
       }),
     );
     const primaryProduct = itemsWithProducts.find((item) => item.product)?.product;
+    const history = await ctx.db
+      .query("orderEvents")
+      .withIndex("by_order_createdAt", (q) => q.eq("orderId", order._id))
+      .collect();
 
-    return { ...order, items: itemsWithProducts, product: primaryProduct };
+    return { ...order, items: itemsWithProducts, product: primaryProduct, history };
   },
 });
 
@@ -873,15 +878,18 @@ export const list = query({
     const totals = orders.reduce(
       (acc, order) => {
         const summary = orderTotals(order);
-        const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
-        const myProfit = summary.profit * (myProfitPercent / 100);
-        const profitShare = myProfit * 0.5;
-        const povrat = summary.totals.totalNabavno + summary.transport + profitShare;
+        const refund = calculateOrderRefund({
+          orderCreatedAt: order.kreiranoAt,
+          totalNabavno: summary.totals.totalNabavno,
+          profit: summary.profit,
+          transport: summary.transport,
+          myProfitPercent: order.myProfitPercent,
+        });
         acc.nabavno += summary.totals.totalNabavno;
         acc.transport += summary.transport;
         acc.prodajno += summary.totals.totalProdajno;
-        acc.profit += profitShare;
-        acc.povrat += povrat;
+        acc.profit += refund.profitForRefund;
+        acc.povrat += refund.refundAmount;
         return acc;
       },
       { nabavno: 0, transport: 0, prodajno: 0, profit: 0, povrat: 0 },
@@ -1007,7 +1015,7 @@ export const create = mutation({
     const address = pickup ? "" : args.address.trim();
     const phone = args.phone.trim();
 
-    await ctx.db.insert("orders", {
+    const orderId = await ctx.db.insert("orders", {
       userId: user._id,
       scope,
       stage,
@@ -1022,6 +1030,8 @@ export const create = mutation({
       napomena: args.napomena?.trim() || undefined,
       brojPosiljke,
       povratVracen,
+      povratVracenAt: povratVracen ? now : undefined,
+      stageChangedAt: now,
       transportCost,
       transportMode,
       slanjeMode,
@@ -1035,6 +1045,26 @@ export const create = mutation({
       sortIndex: now,
       kreiranoAt: now,
     });
+
+    await ctx.db.insert("orderEvents", {
+      orderId,
+      userId: user._id,
+      scope,
+      type: "stage",
+      stage,
+      brojPosiljke: stage === "poslato" ? brojPosiljke : undefined,
+      createdAt: now,
+    });
+    if (povratVracen) {
+      await ctx.db.insert("orderEvents", {
+        orderId,
+        userId: user._id,
+        scope,
+        type: "povrat",
+        povratVracen: true,
+        createdAt: now,
+      });
+    }
 
     await upsertCustomer(
       ctx,
@@ -1122,6 +1152,8 @@ export const update = mutation({
     const address = pickup ? "" : args.address.trim();
     const phone = args.phone.trim();
     const usedAt = Date.now();
+    const stageChanged = existing.stage !== nextStage;
+    const povratChanged = Boolean(existing.povratVracen) !== povratVracen;
 
     await ctx.db.patch(args.id, {
       scope,
@@ -1137,6 +1169,8 @@ export const update = mutation({
       napomena: args.napomena?.trim() || undefined,
       brojPosiljke,
       povratVracen,
+      povratVracenAt: povratChanged ? (povratVracen ? usedAt : undefined) : existing.povratVracenAt,
+      stageChangedAt: stageChanged ? usedAt : existing.stageChangedAt,
       transportCost,
       transportMode,
       slanjeMode,
@@ -1148,6 +1182,29 @@ export const update = mutation({
       pickup,
       items: normalizedItems,
     });
+
+    if (stageChanged) {
+      await ctx.db.insert("orderEvents", {
+        orderId: existing._id,
+        userId: user._id,
+        scope,
+        type: "stage",
+        previousStage: existing.stage,
+        stage: nextStage,
+        brojPosiljke: nextStage === "poslato" ? brojPosiljke : undefined,
+        createdAt: usedAt,
+      });
+    }
+    if (povratChanged) {
+      await ctx.db.insert("orderEvents", {
+        orderId: existing._id,
+        userId: user._id,
+        scope,
+        type: "povrat",
+        povratVracen,
+        createdAt: usedAt,
+      });
+    }
 
     await upsertCustomer(
       ctx,
@@ -1207,6 +1264,13 @@ export const remove = mutation({
     }
     if (normalizeScope(order.scope) !== scope) {
       throw new Error("Neautorizovan pristup narudzbini.");
+    }
+    const history = await ctx.db
+      .query("orderEvents")
+      .withIndex("by_order_createdAt", (q) => q.eq("orderId", order._id))
+      .collect();
+    for (const event of history) {
+      await ctx.db.delete(event._id);
     }
     await ctx.db.delete(args.id);
   },

@@ -13,8 +13,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
+import { calculateOrderRefund } from "@/lib/refund-policy";
 import {
   createOrderDetailPdfFile,
   downloadPdfFile,
@@ -23,7 +24,7 @@ import {
   type OrderDetailPdfItem,
 } from "@/lib/pdfExport";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
-import type { OrderStage, OrderWithProduct, Product, ProductVariant, ShippingOwnerOptions, Supplier } from "@/types/order";
+import type { OrderEvent, OrderStage, OrderWithProduct, Product, ProductVariant, ShippingOwnerOptions, Supplier } from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -76,6 +77,22 @@ const StageBadge = ({ stage }: { stage: OrderStage }) => {
     </span>
   );
 };
+
+const getOrderEventTitle = (event: OrderEvent) => {
+  if (event.type === "povrat") {
+    return event.povratVracen ? "Povrat je oznacen kao vracen" : "Oznaka povrata je uklonjena";
+  }
+
+  const stageLabel = event.stage ? (stageLabels[event.stage]?.label ?? event.stage) : "Nepoznato stanje";
+  if (!event.previousStage) return `Narudzbina je kreirana kao: ${stageLabel}`;
+  const previousLabel = stageLabels[event.previousStage]?.label ?? event.previousStage;
+  return `Status: ${previousLabel} → ${stageLabel}`;
+};
+
+const getOrderEventDetail = (event: OrderEvent) =>
+  event.type === "stage" && event.stage === "poslato" && event.brojPosiljke
+    ? `Broj porudzbine: ${event.brojPosiljke}`
+    : null;
 
 const resolveProfitPercent = (value?: number) =>
   typeof value === "number" && Number.isFinite(value) ? value : 100;
@@ -897,9 +914,19 @@ function OrderDetails({
   const normalizedSlanjeOwnerLookupKey = normalizeOwnerLookupKey(order?.slanjeOwner);
   const myProfitPercent = resolveProfitPercent(order?.myProfitPercent);
   const myProfit = prof * (myProfitPercent / 100);
-  const profitShare = myProfit * 0.5;
-  const profitSharePercent = myProfitPercent * 0.5;
-  const povrat = nabavnoUkupno + transport + profitShare;
+  const refund = order
+    ? calculateOrderRefund({
+        orderCreatedAt: order.kreiranoAt,
+        totalNabavno: nabavnoUkupno,
+        profit: prof,
+        transport,
+        myProfitPercent: order.myProfitPercent,
+      })
+    : null;
+  const profitShare = refund?.profitForRefund ?? 0;
+  const profitSharePercent = refund?.profitForRefundPercent ?? 0;
+  const povrat = refund?.refundAmount ?? 0;
+  const isFullRefundWeek = refund?.isFullRefundWeek ?? false;
   const telHref = order ? `tel:${order.phone.replace(/[^+\d]/g, "")}` : "";
   const shipmentNumber = resolveShipmentNumber(order);
   const hasShipmentNumber = shipmentNumber.length > 0;
@@ -1227,9 +1254,17 @@ function OrderDetails({
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold text-slate-900">{order.title}</h1>
               <StageBadge stage={order.stage} />
+              {isFullRefundWeek ? (
+                <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800">
+                  Povrat 100%
+                </span>
+              ) : null}
             </div>
             {order.variantLabel ? <p className="text-sm text-slate-500">{order.variantLabel}</p> : null}
             <p className="text-xs text-slate-500">Kreirano {formatDate(order.kreiranoAt)}</p>
+            <p className="text-xs text-slate-500">
+              {order.stageChangedAt ? `Trenutni status od ${formatDate(order.stageChangedAt)}` : "Datum trenutnog statusa nije zabelezen"}
+            </p>
           </div>
         </div>
         <div className="w-full -mx-2 overflow-x-auto pb-2 sm:mx-0 sm:pb-0">
@@ -1260,6 +1295,36 @@ function OrderDetails({
             </div>
           </div>
         </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Tok narudzbine</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {(order.history ?? []).length > 0 ? (
+            <ol className="space-y-4">
+              {order.history?.map((event, index) => {
+                const detail = getOrderEventDetail(event);
+                return (
+                  <li key={event._id} className="relative flex gap-3 pl-1">
+                    {index < (order.history?.length ?? 0) - 1 ? (
+                      <span className="absolute left-[7px] top-4 h-[calc(100%+12px)] w-px bg-slate-200" />
+                    ) : null}
+                    <span className={`relative mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 border-white shadow-sm ${event.type === "povrat" ? "bg-emerald-500" : "bg-blue-500"}`} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-800">{getOrderEventTitle(event)}</p>
+                      {detail ? <p className="mt-0.5 font-mono text-xs text-blue-700">{detail}</p> : null}
+                      <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(event.createdAt)}</p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <p className="text-sm text-slate-500">Istorija pocinje sa narednom stvarnom promenom.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -1896,6 +1961,12 @@ function OrderDetails({
             <CardTitle>Finansije</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {isFullRefundWeek ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-emerald-950">
+                <p className="text-sm font-semibold">Prva puna nedelja u mesecu</p>
+                <p className="mt-0.5 text-xs text-emerald-800">Povrat: nabavna cena + 100% ukupnog profita − transport.</p>
+              </div>
+            ) : null}
             <div className="grid gap-3 md:grid-cols-4">
               <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Ukupna kolicina</p>
@@ -1934,18 +2005,27 @@ function OrderDetails({
                 <p className="text-xs uppercase tracking-wide text-slate-500">Povrat</p>
                 <p className="text-base font-semibold text-slate-900">{formatCurrency(povrat, "EUR")}</p>
                 <p className="text-xs text-slate-500">
-                  Profit (50%): {formatCurrency(profitShare, "EUR")} ({formatPercent(profitSharePercent)})
+                  {isFullRefundWeek
+                    ? `Ukupan profit (100%): ${formatCurrency(profitShare, "EUR")}`
+                    : `Profit (50%): ${formatCurrency(profitShare, "EUR")} (${formatPercent(profitSharePercent)})`}
                 </p>
               </div>
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={Boolean(order.povratVracen)}
-                  onChange={(event) => handlePovratToggle(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                Povrat vracen
-              </label>
+              <div className="text-right">
+                <label className="flex items-center justify-end gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(order.povratVracen)}
+                    onChange={(event) => handlePovratToggle(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Povrat vracen
+                </label>
+                {order.povratVracen ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {order.povratVracenAt ? `Vracen ${formatDate(order.povratVracenAt)}` : "Datum nije zabelezen"}
+                  </p>
+                ) : null}
+              </div>
             </div>
           </CardContent>
         </Card>

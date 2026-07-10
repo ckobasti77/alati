@@ -110,6 +110,18 @@ export type OrderStage = "poruceno" | "aks" | "na_stanju" | "poslato" | "stiglo"
 export type OrderScope = "default" | "kalaba";
 export type TransportMode = "Kol" | "Joe" | "Smg" | "Posta" | "Bex" | "Aks";
 export type SlanjeMode = "Posta" | "Aks" | "Bex";
+export type OrderEventType = "stage" | "povrat";
+
+export interface OrderEvent {
+  _id: string;
+  orderId: string;
+  type: OrderEventType;
+  previousStage?: OrderStage;
+  stage?: OrderStage;
+  povratVracen?: boolean;
+  brojPosiljke?: string;
+  createdAt: number;
+}
 
 export interface OrderItem {
   id: string;
@@ -145,6 +157,8 @@ export interface Order {
   slanjeOwner?: string;
   myProfitPercent?: number;
   povratVracen?: boolean;
+  povratVracenAt?: number;
+  stageChangedAt?: number;
   customerName: string;
   address: string;
   phone: string;
@@ -243,4 +257,5 @@ export interface OrderItemWithProduct extends OrderItem {
 export interface OrderWithProduct extends Order {
   product?: Product;
   items?: OrderItemWithProduct[];
+  history?: OrderEvent[];
 }

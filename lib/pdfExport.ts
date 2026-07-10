@@ -397,7 +397,7 @@ export const createOrdersTablePdfFile = async ({
     { header: "Nabavno", subheader: `${moneyNumber(totals.nabavno)} EUR`, width: 68, align: "right", getValue: (row) => row.nabavno },
     { header: "Transport", subheader: `${moneyNumber(totals.transport)} EUR`, width: 68, align: "right", getValue: (row) => row.transport },
     { header: "Prodajno", subheader: `${moneyNumber(totals.prodajno)} EUR`, width: 68, align: "right", getValue: (row) => row.prodajno },
-    { header: "Profit (50%)", subheader: `${moneyNumber(totals.profit)} EUR`, width: 72, align: "right", getValue: (row) => row.profit },
+    { header: "Profit za povrat", subheader: `${moneyNumber(totals.profit)} EUR`, width: 72, align: "right", getValue: (row) => row.profit },
     { header: "Povrat", subheader: `${moneyNumber(totals.povrat)} EUR`, width: 68, align: "right", getValue: (row) => row.povrat },
     { header: "Broj porudzbine", width: 80, getValue: (row) => row.shipmentNumber },
   ];
@@ -423,7 +423,7 @@ export const createOrdersTablePdfFile = async ({
         drawText(ctx, column.subheader, x + column.width - 4, y + 18, {
           size: 6.8,
           weight: "600",
-          color: totals.profit < 0 && column.header === "Profit (50%)" ? "#dc2626" : "#64748b",
+          color: totals.profit < 0 && column.header === "Profit za povrat" ? "#dc2626" : "#64748b",
           align: "right",
         });
       }
@@ -489,7 +489,7 @@ export const createOrdersTablePdfFile = async ({
         drawWrappedText(ctx!, cellLines[columnIndex], x + 4, y + 5, column.width - 8, {
           size: fontSize,
           lineHeight,
-          color: column.header === "Profit (50%)" && row.profit.trim().startsWith("-") ? "#dc2626" : "#0f172a",
+          color: column.header === "Profit za povrat" && row.profit.trim().startsWith("-") ? "#dc2626" : "#0f172a",
           align: column.align ?? "left",
         });
         x += column.width;

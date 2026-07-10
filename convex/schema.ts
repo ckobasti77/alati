@@ -146,6 +146,8 @@ export default defineSchema({
     napomena: v.optional(v.string()),
     brojPosiljke: v.optional(v.string()),
     povratVracen: v.optional(v.boolean()),
+    povratVracenAt: v.optional(v.number()),
+    stageChangedAt: v.optional(v.number()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(
       v.union(
@@ -185,6 +187,37 @@ export default defineSchema({
   })
     .index("by_kreiranoAt", ["kreiranoAt"])
     .index("by_user_kreiranoAt", ["userId", "kreiranoAt"]),
+  orderEvents: defineTable({
+    orderId: v.id("orders"),
+    userId: v.id("users"),
+    scope: v.union(v.literal("default"), v.literal("kalaba")),
+    type: v.union(v.literal("stage"), v.literal("povrat")),
+    previousStage: v.optional(
+      v.union(
+        v.literal("poruceno"),
+        v.literal("aks"),
+        v.literal("na_stanju"),
+        v.literal("poslato"),
+        v.literal("stiglo"),
+        v.literal("legle_pare"),
+        v.literal("vraceno"),
+      ),
+    ),
+    stage: v.optional(
+      v.union(
+        v.literal("poruceno"),
+        v.literal("aks"),
+        v.literal("na_stanju"),
+        v.literal("poslato"),
+        v.literal("stiglo"),
+        v.literal("legle_pare"),
+        v.literal("vraceno"),
+      ),
+    ),
+    povratVracen: v.optional(v.boolean()),
+    brojPosiljke: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_order_createdAt", ["orderId", "createdAt"]),
   customers: defineTable({
     userId: v.optional(v.id("users")),
     scope: v.union(v.literal("default"), v.literal("kalaba")),

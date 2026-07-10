@@ -22,3 +22,12 @@ export const formatDate = (timestamp?: number) => {
   const date = new Date(timestamp);
   return date.toLocaleDateString("sr-RS");
 };
+
+export const formatDateTime = (timestamp?: number) => {
+  if (!timestamp) return "-";
+  return new Intl.DateTimeFormat("sr-RS", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Belgrade",
+  }).format(new Date(timestamp));
+};
