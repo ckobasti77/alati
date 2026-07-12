@@ -553,6 +553,8 @@ function OrdersContent() {
   const [filterMenuMode, setFilterMenuMode] = useState<"closed" | "hover" | "pinned">("closed");
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<"stage" | "povrat" | null>(null);
   const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
   const [dragOverOrderId, setDragOverOrderId] = useState<string | null>(null);
   const [ordersPagination, setOrdersPagination] = useState<OrderListResponse["pagination"]>({
@@ -722,6 +724,13 @@ function OrdersContent() {
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const createOrder = useConvexMutation("orders:create");
   const updateOrder = useConvexMutation("orders:update");
+  const bulkUpdateOrders = useConvexMutation<{
+    token: string;
+    scope: "default" | "kalaba";
+    orderIds: string[];
+    stage?: OrderStage;
+    povratVracen?: boolean;
+  }>("orders:bulkUpdate");
   const upsertShippingAccount = useConvexMutation<{
     token: string;
     scope: "default" | "kalaba";
@@ -792,6 +801,9 @@ function OrdersContent() {
       }),
     [orders],
   );
+  const visibleOrderIds = useMemo(() => orderEntries.map(({ order }) => order._id), [orderEntries]);
+  const selectedVisibleCount = visibleOrderIds.filter((id) => selectedOrderIds.has(id)).length;
+  const allVisibleSelected = visibleOrderIds.length > 0 && selectedVisibleCount === visibleOrderIds.length;
   const filteredProducts = useMemo(() => {
     const list = products ?? [];
     const searchTokens = toSearchTokens(productSearch.trim());
@@ -2327,6 +2339,79 @@ function OrdersContent() {
       toast.error("Nije moguce sacuvati povrat.");
     }
   };
+
+  const toggleOrderSelection = useCallback((orderId: string, checked: boolean) => {
+    setSelectedOrderIds((previous) => {
+      const next = new Set(previous);
+      if (checked) next.add(orderId);
+      else next.delete(orderId);
+      return next;
+    });
+  }, []);
+
+  const toggleAllVisibleOrders = useCallback(() => {
+    setSelectedOrderIds((previous) => {
+      const next = new Set(previous);
+      if (allVisibleSelected) visibleOrderIds.forEach((id) => next.delete(id));
+      else visibleOrderIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [allVisibleSelected, visibleOrderIds]);
+
+  const handleBulkAction = useCallback(
+    async (action: { stage?: OrderStage; povratVracen?: boolean; message: string }) => {
+      const orderIds = visibleOrderIds.filter((id) => selectedOrderIds.has(id));
+      if (orderIds.length === 0 || bulkAction) return;
+      setBulkAction(action.stage ? "stage" : "povrat");
+      try {
+        await bulkUpdateOrders({
+          token: sessionToken,
+          scope: orderScope,
+          orderIds,
+          stage: action.stage,
+          povratVracen: action.povratVracen,
+        });
+        setOrders((previous) =>
+          previous.flatMap((order) => {
+            if (!orderIds.includes(order._id)) return [order];
+            const next = {
+              ...order,
+              ...(action.stage ? { stage: action.stage, stageChangedAt: Date.now() } : {}),
+              ...(action.povratVracen !== undefined
+                ? { povratVracen: action.povratVracen, povratVracenAt: action.povratVracen ? Date.now() : undefined }
+                : {}),
+            };
+            if (stageFilters.length > 0 && action.stage && !stageFilters.includes(action.stage)) return [];
+            if (showUnreturnedOnly && action.povratVracen) return [];
+            if (showReturnedOnly && action.povratVracen === false) return [];
+            return [next];
+          }),
+        );
+        setSelectedOrderIds((previous) => {
+          const next = new Set(previous);
+          orderIds.forEach((id) => next.delete(id));
+          return next;
+        });
+        toast.success(`${action.message} (${orderIds.length}).`);
+      } catch (error) {
+        console.error(error);
+        toast.error("Grupna akcija nije uspela.");
+      } finally {
+        setBulkAction(null);
+      }
+    },
+    [
+      bulkAction,
+      bulkUpdateOrders,
+      orderScope,
+      sessionToken,
+      selectedOrderIds,
+      showReturnedOnly,
+      showUnreturnedOnly,
+      stageFilters,
+      visibleOrderIds,
+    ],
+  );
 
   const reorderOrdersList = useCallback((list: Order[], sourceId: string, targetId: string) => {
     const sourceIndex = list.findIndex((entry) => entry._id === sourceId);
@@ -3893,6 +3978,60 @@ function OrdersContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleAllVisibleOrders}
+                  disabled={visibleOrderIds.length === 0 || bulkAction !== null}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Označi sve prikazane
+              </label>
+              <span className="text-sm text-slate-600">Izabrano: {selectedVisibleCount}</span>
+              {hasMoreOrders ? (
+                <span className="text-xs text-slate-500">Učitane su samo trenutno prikazane porudžbine.</span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                value=""
+                disabled={selectedVisibleCount === 0 || bulkAction !== null}
+                onChange={(event) => {
+                  const stage = event.target.value as OrderStage;
+                  if (stage) void handleBulkAction({ stage, message: `Status promenjen u ${stageLabels[stage].label}` });
+                }}
+              >
+                <option value="">Promeni status za izabrane...</option>
+                {stageOptions
+                  .filter((option) => option.value !== "poslato")
+                  .map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={selectedVisibleCount === 0 || bulkAction !== null}
+                onClick={() => void handleBulkAction({ povratVracen: true, message: "Povrat označen" })}
+              >
+                Povrati sve
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={selectedVisibleCount === 0 || bulkAction !== null}
+                onClick={() => void handleBulkAction({ povratVracen: false, message: "Povrat poništen" })}
+              >
+                Poništi povrat
+              </Button>
+            </div>
+          </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
               Mini obracun za aktivne filtere
@@ -3957,7 +4096,20 @@ function OrdersContent() {
                       onClick={() => handleRowClick(order._id)}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <span className="text-xs text-slate-500">{formatDate(order.kreiranoAt)}</span>
+                        <label
+                          className="flex items-center gap-2 text-xs text-slate-500"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedOrderIds.has(order._id)}
+                            onChange={(event) => toggleOrderSelection(order._id, event.target.checked)}
+                            disabled={bulkAction !== null}
+                            aria-label={`Označi porudžbinu ${order._id}`}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          {formatDate(order.kreiranoAt)}
+                        </label>
                         <div className="flex flex-col items-end gap-1">
                           <StageBadge stage={order.stage} />
                           <p className="text-[10px] text-slate-500">
@@ -4194,6 +4346,16 @@ function OrdersContent() {
             <Table>
               <TableHeader>
               <TableRow>
+                <TableHead className="text-center">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisibleOrders}
+                    disabled={visibleOrderIds.length === 0 || bulkAction !== null}
+                    aria-label="Označi sve prikazane porudžbine"
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </TableHead>
                 <TableHead className="text-center">Datum</TableHead>
                 <TableHead className="text-center">Stage</TableHead>
                 <TableHead className="text-center">Naslov</TableHead>
@@ -4237,13 +4399,13 @@ function OrdersContent() {
               <TableBody>
               {isOrdersLoading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-sm text-slate-500">
+                  <TableCell colSpan={12} className="text-center text-sm text-slate-500">
                     Ucitavanje...
                   </TableCell>
                 </TableRow>
               ) : orderEntries.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-sm text-slate-500">
+                  <TableCell colSpan={12} className="text-center text-sm text-slate-500">
                     Jos nema narudzbina.
                   </TableCell>
                 </TableRow>
@@ -4285,6 +4447,16 @@ function OrdersContent() {
                         onDragLeave={handleOrderDragLeave(order._id)}
                         onDrop={handleOrderDrop(order._id)}
                       >
+                        <TableCell className="text-center" onClick={(event) => event.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedOrderIds.has(order._id)}
+                            onChange={(event) => toggleOrderSelection(order._id, event.target.checked)}
+                            disabled={bulkAction !== null}
+                            aria-label={`Označi porudžbinu ${order._id}`}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </TableCell>
                         <TableCell>
                           <div
                             className="flex items-center gap-2 text-sm text-slate-600 cursor-grab active:cursor-grabbing"

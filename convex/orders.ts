@@ -1216,6 +1216,74 @@ export const update = mutation({
   },
 });
 
+export const bulkUpdate = mutation({
+  args: {
+    token: v.string(),
+    scope: v.optional(orderScopeSchema),
+    orderIds: v.array(v.id("orders")),
+    stage: v.optional(stageSchema),
+    povratVracen: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const nextStage = args.stage === undefined ? undefined : normalizeStage(args.stage);
+
+    if (args.orderIds.length === 0) {
+      throw new Error("Izaberi bar jednu narudzbinu.");
+    }
+    if (nextStage === "poslato") {
+      throw new Error("Status Poslato zahteva broj porudzbine i ne moze grupno.");
+    }
+
+    const uniqueIds = [...new Set(args.orderIds.map((id) => String(id)))];
+    const now = Date.now();
+    for (const rawId of uniqueIds) {
+      const order = await ctx.db.get(rawId as Id<"orders">);
+      if (!order || order.userId !== user._id || normalizeScope(order.scope) !== scope) {
+        throw new Error("Neautorizovan pristup narudzbini.");
+      }
+
+      const stageChanged = nextStage !== undefined && order.stage !== nextStage;
+      const povratChanged =
+        args.povratVracen !== undefined && Boolean(order.povratVracen) !== args.povratVracen;
+      if (!stageChanged && !povratChanged) continue;
+
+      await ctx.db.patch(order._id, {
+        ...(stageChanged ? { stage: nextStage, stageChangedAt: now } : {}),
+        ...(povratChanged
+          ? {
+              povratVracen: args.povratVracen,
+              povratVracenAt: args.povratVracen ? now : undefined,
+            }
+          : {}),
+      });
+
+      if (stageChanged) {
+        await ctx.db.insert("orderEvents", {
+          orderId: order._id,
+          userId: user._id,
+          scope,
+          type: "stage",
+          previousStage: order.stage,
+          stage: nextStage,
+          createdAt: now,
+        });
+      }
+      if (povratChanged) {
+        await ctx.db.insert("orderEvents", {
+          orderId: order._id,
+          userId: user._id,
+          scope,
+          type: "povrat",
+          povratVracen: args.povratVracen,
+          createdAt: now,
+        });
+      }
+    }
+  },
+});
+
 export const reorder = mutation({
   args: {
     token: v.string(),
