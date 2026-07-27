@@ -122,6 +122,7 @@ export interface OrderRefundPeriodOverview {
   period: OrderRefundPeriod | null;
   pendingCount: number;
   returnedCount: number;
+  manualCount: number;
   pendingAmount: number;
 }
 
@@ -171,6 +172,8 @@ export interface Order {
   myProfitPercent?: number;
   povratVracen?: boolean;
   povratVracenAt?: number;
+  manualRefund100?: boolean;
+  manualRefund100At?: number;
   stageChangedAt?: number;
   customerName: string;
   address: string;

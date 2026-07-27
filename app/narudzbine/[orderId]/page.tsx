@@ -443,7 +443,17 @@ function OrderDetails({
   const sessionToken = token as string;
   const [isUpdatingStage, setIsUpdatingStage] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
+  const [isManualRefundSaving, setIsManualRefundSaving] = useState(false);
   const updateOrder = useConvexMutation("orders:update");
+  const setManualRefund100 = useConvexMutation<{
+    token: string;
+    id: string;
+    scope: "default" | "kalaba";
+    enabled: boolean;
+  }, {
+    enabled: boolean;
+    changedAt: number | null;
+  }>("orders:setManualRefund100");
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const queryResult = useConvexQuery<OrderWithProduct | null>("orders:get", {
     token: sessionToken,
@@ -943,6 +953,7 @@ function OrderDetails({
         myProfitPercent: order.myProfitPercent,
         refundPeriod: refundPeriodOverview?.period,
         povratVracen: order.povratVracen,
+        manualRefund100: order.manualRefund100,
       })
     : null;
   const profitShare = refund?.outstandingProfitForRefund ?? 0;
@@ -951,6 +962,8 @@ function OrderDetails({
   const povrat = refund?.outstandingRefundAmount ?? 0;
   const calculatedPovrat = refund?.refundAmount ?? 0;
   const isInRefundPeriod = refund?.isInRefundPeriod ?? false;
+  const isManualRefund100 = refund?.isManualRefund100 ?? false;
+  const isFullRefund100 = refund?.isFullRefund100 ?? false;
   const isExcludedBecauseReturned = refund?.isExcludedBecauseReturned ?? false;
   const telHref = order ? `tel:${order.phone.replace(/[^+\d]/g, "")}` : "";
   const shipmentNumber = resolveShipmentNumber(order);
@@ -974,10 +987,10 @@ function OrderDetails({
           cleanProfit: formatCurrency(prof, "EUR"),
           refund: formatCurrency(povrat, "EUR"),
           refundProfit: formatCurrency(profitShare, "EUR"),
-          refundNote: isInRefundPeriod
+          refundNote: isFullRefund100
             ? isExcludedBecauseReturned
-              ? `Period 100% - vec vraceno (obracunato ${formatCurrency(calculatedPovrat, "EUR")})`
-              : "Period 100%: nabavna + ceo profit - transport"
+              ? `Povrat 100% - vec vraceno (obracunato ${formatCurrency(calculatedPovrat, "EUR")})`
+              : `${isManualRefund100 ? "Rucno dodat 100%" : "Period 100%"}: nabavna + ceo profit - transport`
             : `Standardni obracun (${formatPercent(profitSharePercent)})`,
         });
 
@@ -1003,7 +1016,8 @@ function OrderDetails({
     [
       calculatedPovrat,
       isExcludedBecauseReturned,
-      isInRefundPeriod,
+      isFullRefund100,
+      isManualRefund100,
       isOrderPdfBusy,
       nabavnoUkupno,
       order,
@@ -1108,6 +1122,41 @@ function OrderDetails({
       await applyOrderUpdate((current) => ({ ...current, povratVracen: nextValue }), "Povrat je sacuvan.");
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleManualRefund100Toggle = async (enabled: boolean) => {
+    if (!order || isManualRefundSaving) return;
+    const previous = order;
+    setIsManualRefundSaving(true);
+    setOrder({
+      ...order,
+      manualRefund100: enabled,
+      manualRefund100At: enabled ? Date.now() : undefined,
+    });
+    try {
+      const result = await setManualRefund100({
+        token: sessionToken,
+        id: order._id,
+        scope: orderScope,
+        enabled,
+      });
+      setOrder((current) =>
+        current
+          ? {
+              ...current,
+              manualRefund100: result.enabled,
+              manualRefund100At: result.changedAt ?? undefined,
+            }
+          : current,
+      );
+      toast.success(enabled ? "Porudžbina je ručno dodata u povrat 100%." : "Ručna oznaka 100% je uklonjena.");
+    } catch (error) {
+      console.error(error);
+      setOrder(previous);
+      toast.error("Nije moguće sačuvati ručni povrat 100%.");
+    } finally {
+      setIsManualRefundSaving(false);
     }
   };
 
@@ -1299,7 +1348,7 @@ function OrderDetails({
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold text-slate-900">{order.title}</h1>
               <StageBadge stage={order.stage} />
-              {isInRefundPeriod ? (
+              {isFullRefund100 ? (
                 <span
                   className={`rounded-full border px-2 py-1 text-xs font-bold uppercase tracking-wide ${
                     isExcludedBecauseReturned
@@ -1307,7 +1356,11 @@ function OrderDetails({
                       : "border-emerald-300 bg-emerald-100 text-emerald-800"
                   }`}
                 >
-                  {isExcludedBecauseReturned ? "Već vraćeno — ne računa se" : "Povrat 100%"}
+                  {isExcludedBecauseReturned
+                    ? "Već vraćeno — ne računa se"
+                    : isManualRefund100
+                      ? "Povrat 100% · ručno"
+                      : "Povrat 100%"}
                 </span>
               ) : null}
             </div>
@@ -2012,7 +2065,26 @@ function OrderDetails({
             <CardTitle>Finansije</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {isInRefundPeriod ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-3 py-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Ručno uključi povrat 100%</p>
+                <p className="text-xs text-slate-500">
+                  Porudžbina koristi ceo profit bez obzira na datum kreiranja.
+                  {isInRefundPeriod ? " Trenutno već ulazi i po izabranom periodu." : ""}
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium text-emerald-900">
+                <input
+                  type="checkbox"
+                  checked={Boolean(order.manualRefund100)}
+                  disabled={isManualRefundSaving}
+                  onChange={(event) => void handleManualRefund100Toggle(event.target.checked)}
+                  className="h-4 w-4 rounded border-emerald-300 text-emerald-700 focus:ring-emerald-600"
+                />
+                {isManualRefundSaving ? "Čuvanje..." : order.manualRefund100 ? "Ručno uključeno" : "Uključi"}
+              </label>
+            </div>
+            {isFullRefund100 ? (
               <div
                 className={`rounded-lg border px-3 py-2 ${
                   isExcludedBecauseReturned
@@ -2023,9 +2095,11 @@ function OrderDetails({
                 <p className="text-sm font-semibold">
                   {isExcludedBecauseReturned
                     ? "Povrat je već vraćen i ne ulazi u zbir"
-                    : "Porudžbina je u periodu 100% povrata"}
+                    : isManualRefund100
+                      ? "Porudžbina je ručno uključena u 100% povrat"
+                      : "Porudžbina je u periodu 100% povrata"}
                 </p>
-                {refundPeriodOverview?.period ? (
+                {isInRefundPeriod && refundPeriodOverview?.period ? (
                   <p className="mt-0.5 text-xs">
                     Period: {formatRefundPeriodDate(refundPeriodOverview.period.startDate)} –{" "}
                     {formatRefundPeriodDate(refundPeriodOverview.period.endDate)}
@@ -2077,7 +2151,7 @@ function OrderDetails({
                 <p className="text-xs uppercase tracking-wide text-slate-500">Povrat</p>
                 <p className="text-base font-semibold text-slate-900">{formatCurrency(povrat, "EUR")}</p>
                 <p className="text-xs text-slate-500">
-                  {isInRefundPeriod
+                  {isFullRefund100
                     ? isExcludedBecauseReturned
                       ? `Obračunati profit (100%): ${formatCurrency(calculatedProfitShare, "EUR")} — već vraćeno`
                       : `Ukupan profit (100%): ${formatCurrency(profitShare, "EUR")}`

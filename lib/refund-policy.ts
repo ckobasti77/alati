@@ -19,6 +19,7 @@ export type RefundCalculationInput = {
   myProfitPercent?: number;
   refundPeriod?: OrderRefundPeriod | null;
   povratVracen?: boolean;
+  manualRefund100?: boolean;
 };
 
 const businessDateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -93,14 +94,19 @@ export const calculateOrderRefund = ({
   myProfitPercent,
   refundPeriod,
   povratVracen,
+  manualRefund100,
 }: RefundCalculationInput) => {
   const isInRefundPeriod = isOrderInRefundPeriod(orderCreatedAt, refundPeriod);
+  const isManualRefund100 = Boolean(manualRefund100);
+  const isFullRefund100 = isInRefundPeriod || isManualRefund100;
 
-  if (isInRefundPeriod) {
+  if (isFullRefund100) {
     const refundAmount = totalNabavno + profit - transport;
     const isExcludedBecauseReturned = Boolean(povratVracen);
     return {
-      isInRefundPeriod: true,
+      isInRefundPeriod,
+      isManualRefund100,
+      isFullRefund100: true,
       isExcludedBecauseReturned,
       profitForRefund: profit,
       outstandingProfitForRefund: isExcludedBecauseReturned ? 0 : profit,
@@ -114,6 +120,8 @@ export const calculateOrderRefund = ({
   const refundAmount = totalNabavno + transport + profitForRefund;
   return {
     isInRefundPeriod: false,
+    isManualRefund100: false,
+    isFullRefund100: false,
     isExcludedBecauseReturned: false,
     profitForRefund,
     outstandingProfitForRefund: profitForRefund,

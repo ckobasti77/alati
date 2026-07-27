@@ -40,6 +40,8 @@ describe("refund policy", () => {
       }),
     ).toEqual({
       isInRefundPeriod: true,
+      isManualRefund100: false,
+      isFullRefund100: true,
       isExcludedBecauseReturned: false,
       profitForRefund: 30,
       outstandingProfitForRefund: 30,
@@ -61,10 +63,33 @@ describe("refund policy", () => {
       }),
     ).toMatchObject({
       isInRefundPeriod: true,
+      isManualRefund100: false,
+      isFullRefund100: true,
       isExcludedBecauseReturned: true,
       refundAmount: 100,
       outstandingRefundAmount: 0,
       outstandingProfitForRefund: 0,
+    });
+  });
+
+  it("rucno ukljucuje porudzbinu u 100% povrat i bez aktivnog perioda", () => {
+    expect(
+      calculateOrderRefund({
+        orderCreatedAt: atBelgradeNoon(2026, 7, 15),
+        totalNabavno: 80,
+        profit: 30,
+        transport: 10,
+        myProfitPercent: 40,
+        refundPeriod: null,
+        manualRefund100: true,
+      }),
+    ).toMatchObject({
+      isInRefundPeriod: false,
+      isManualRefund100: true,
+      isFullRefund100: true,
+      profitForRefund: 30,
+      refundAmount: 100,
+      outstandingRefundAmount: 100,
     });
   });
 
@@ -80,6 +105,8 @@ describe("refund policy", () => {
       }),
     ).toEqual({
       isInRefundPeriod: false,
+      isManualRefund100: false,
+      isFullRefund100: false,
       isExcludedBecauseReturned: false,
       profitForRefund: 6,
       outstandingProfitForRefund: 6,

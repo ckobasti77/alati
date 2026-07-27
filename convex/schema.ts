@@ -147,6 +147,8 @@ export default defineSchema({
     brojPosiljke: v.optional(v.string()),
     povratVracen: v.optional(v.boolean()),
     povratVracenAt: v.optional(v.number()),
+    manualRefund100: v.optional(v.boolean()),
+    manualRefund100At: v.optional(v.number()),
     stageChangedAt: v.optional(v.number()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(

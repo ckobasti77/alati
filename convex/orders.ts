@@ -35,6 +35,20 @@ const slanjeModeSchema = v.union(
 );
 const slanjeOwnerSchema = v.string();
 const orderScopeSchema = v.union(v.literal(orderScopes[0]), v.literal(orderScopes[1]));
+const refundPeriodOverviewSchema = v.object({
+  period: v.union(
+    v.null(),
+    v.object({
+      startDate: v.string(),
+      endDate: v.string(),
+      updatedAt: v.number(),
+    }),
+  ),
+  pendingCount: v.number(),
+  returnedCount: v.number(),
+  manualCount: v.number(),
+  pendingAmount: v.number(),
+});
 
 const normalizeStage = (stage?: (typeof orderStages)[number]) => {
   if (!stage) return orderStages[0];
@@ -754,25 +768,17 @@ export const upsertShippingAccount = mutation({
 
 export const refundPeriod = query({
   args: { token: v.string(), scope: v.optional(orderScopeSchema) },
+  returns: refundPeriodOverviewSchema,
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const scope = normalizeScope(args.scope);
     const storedPeriod = await loadRefundPeriod(ctx, user._id, scope);
     const period = toRefundPeriod(storedPeriod);
 
-    if (!period) {
-      return {
-        period: null,
-        pendingCount: 0,
-        returnedCount: 0,
-        pendingAmount: 0,
-      };
-    }
-
     const orders = await ctx.db
       .query("orders")
       .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
-      .collect();
+      .take(15000);
 
     return orders
       .filter((order) => normalizeScope(order.scope) === scope)
@@ -787,9 +793,11 @@ export const refundPeriod = query({
             myProfitPercent: order.myProfitPercent,
             refundPeriod: period,
             povratVracen: order.povratVracen,
+            manualRefund100: order.manualRefund100,
           });
-          if (!refund.isInRefundPeriod) return overview;
+          if (!refund.isFullRefund100) return overview;
 
+          if (refund.isManualRefund100) overview.manualCount += 1;
           if (refund.isExcludedBecauseReturned) {
             overview.returnedCount += 1;
           } else {
@@ -802,6 +810,7 @@ export const refundPeriod = query({
           period,
           pendingCount: 0,
           returnedCount: 0,
+          manualCount: 0,
           pendingAmount: 0,
         },
       );
@@ -815,6 +824,11 @@ export const setRefundPeriod = mutation({
     startDate: v.string(),
     endDate: v.string(),
   },
+  returns: v.object({
+    startDate: v.string(),
+    endDate: v.string(),
+    updatedAt: v.number(),
+  }),
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const scope = normalizeScope(args.scope);
@@ -849,6 +863,7 @@ export const setRefundPeriod = mutation({
 
 export const clearRefundPeriod = mutation({
   args: { token: v.string(), scope: v.optional(orderScopeSchema) },
+  returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const scope = normalizeScope(args.scope);
@@ -857,6 +872,34 @@ export const clearRefundPeriod = mutation({
       await ctx.db.delete(existing._id);
     }
     return { success: true };
+  },
+});
+
+export const setManualRefund100 = mutation({
+  args: {
+    token: v.string(),
+    id: v.id("orders"),
+    scope: v.optional(orderScopeSchema),
+    enabled: v.boolean(),
+  },
+  returns: v.object({
+    enabled: v.boolean(),
+    changedAt: v.union(v.number(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const order = await ctx.db.get(args.id);
+    if (!order || order.userId !== user._id || normalizeScope(order.scope) !== scope) {
+      throw new Error("Neautorizovan pristup narudzbini.");
+    }
+
+    const changedAt = args.enabled ? Date.now() : null;
+    await ctx.db.patch(order._id, {
+      manualRefund100: args.enabled,
+      manualRefund100At: changedAt ?? undefined,
+    });
+    return { enabled: args.enabled, changedAt };
   },
 });
 
@@ -1018,6 +1061,7 @@ export const list = query({
           myProfitPercent: order.myProfitPercent,
           refundPeriod: activeRefundPeriod,
           povratVracen: order.povratVracen,
+          manualRefund100: order.manualRefund100,
         });
         acc.nabavno += summary.totals.totalNabavno;
         acc.transport += summary.transport;

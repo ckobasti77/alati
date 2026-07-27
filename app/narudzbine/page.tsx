@@ -504,6 +504,7 @@ const buildOrdersPdfRows = (
       myProfitPercent: order.myProfitPercent,
       refundPeriod,
       povratVracen: order.povratVracen,
+      manualRefund100: order.manualRefund100,
     });
     const shipmentNumber = resolveShipmentNumber(order);
     const contactParts = [order.customerName, order.phone];
@@ -622,6 +623,7 @@ function OrdersContent() {
   const [refundPeriodStart, setRefundPeriodStart] = useState("");
   const [refundPeriodEnd, setRefundPeriodEnd] = useState("");
   const [isRefundPeriodSaving, setIsRefundPeriodSaving] = useState(false);
+  const [manualRefundSavingId, setManualRefundSavingId] = useState<string | null>(null);
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const restockProductInputRef = useRef<HTMLInputElement | null>(null);
   const previousSlanjeModeRef = useRef<(typeof slanjeModes)[number] | undefined>(undefined);
@@ -757,6 +759,15 @@ function OrdersContent() {
     token: string;
     scope: "default" | "kalaba";
   }>("orders:clearRefundPeriod");
+  const setManualRefund100 = useConvexMutation<{
+    token: string;
+    id: string;
+    scope: "default" | "kalaba";
+    enabled: boolean;
+  }, {
+    enabled: boolean;
+    changedAt: number | null;
+  }>("orders:setManualRefund100");
   const bulkUpdateOrders = useConvexMutation<{
     token: string;
     scope: "default" | "kalaba";
@@ -818,6 +829,7 @@ function OrdersContent() {
           myProfitPercent: order.myProfitPercent,
           refundPeriod: refundPeriodOverview?.period,
           povratVracen: order.povratVracen,
+          manualRefund100: order.manualRefund100,
         });
         const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
         const myProfit = totals.profit * (myProfitPercent / 100);
@@ -834,6 +846,8 @@ function OrdersContent() {
           povrat: refund.outstandingRefundAmount,
           calculatedPovrat: refund.refundAmount,
           isInRefundPeriod: refund.isInRefundPeriod,
+          isManualRefund100: refund.isManualRefund100,
+          isFullRefund100: refund.isFullRefund100,
           isExcludedBecauseReturned: refund.isExcludedBecauseReturned,
         };
       }),
@@ -2434,6 +2448,36 @@ function OrdersContent() {
     } catch (error) {
       console.error(error);
       toast.error("Nije moguce sacuvati povrat.");
+    }
+  };
+
+  const handleManualRefund100Toggle = async (order: Order, enabled: boolean) => {
+    if (manualRefundSavingId) return;
+    setManualRefundSavingId(order._id);
+    try {
+      const result = await setManualRefund100({
+        token: sessionToken,
+        id: order._id,
+        scope: orderScope,
+        enabled,
+      });
+      setOrders((previous) =>
+        previous.map((item) =>
+          item._id === order._id
+            ? {
+                ...item,
+                manualRefund100: result.enabled,
+                manualRefund100At: result.changedAt ?? undefined,
+              }
+            : item,
+        ),
+      );
+      toast.success(enabled ? "Porudžbina je ručno dodata u povrat 100%." : "Ručna oznaka 100% je uklonjena.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Nije moguće sačuvati ručni povrat 100%.");
+    } finally {
+      setManualRefundSavingId(null);
     }
   };
 
@@ -4161,14 +4205,27 @@ function OrdersContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {refundPeriodOverview?.period ? (
+          {refundPeriodOverview &&
+          (refundPeriodOverview.period || refundPeriodOverview.manualCount > 0) ? (
             <div className="grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 sm:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))] sm:items-center">
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">Aktivan period 100% povrata</p>
-                <p className="mt-1 text-sm font-semibold text-emerald-950">
-                  {formatRefundPeriodDate(refundPeriodOverview.period.startDate)} –{" "}
-                  {formatRefundPeriodDate(refundPeriodOverview.period.endDate)}
+                <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+                  {refundPeriodOverview.period ? "Aktivan period 100% povrata" : "Ručno izabrani 100% povrati"}
                 </p>
+                <p className="mt-1 text-sm font-semibold text-emerald-950">
+                  {refundPeriodOverview.period
+                    ? `${formatRefundPeriodDate(refundPeriodOverview.period.startDate)} – ${formatRefundPeriodDate(
+                        refundPeriodOverview.period.endDate,
+                      )}`
+                    : `${refundPeriodOverview.manualCount} ručno ${
+                        refundPeriodOverview.manualCount === 1 ? "dodata porudžbina" : "dodatih porudžbina"
+                      }`}
+                </p>
+                {refundPeriodOverview.period && refundPeriodOverview.manualCount > 0 ? (
+                  <p className="mt-1 text-xs text-emerald-700">
+                    + {refundPeriodOverview.manualCount} ručno dodatih
+                  </p>
+                ) : null}
               </div>
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-emerald-700">Za povrat</p>
@@ -4288,6 +4345,8 @@ function OrdersContent() {
                 povrat,
                 calculatedPovrat,
                 isInRefundPeriod,
+                isManualRefund100,
+                isFullRefund100,
                 isExcludedBecauseReturned,
               }) => {
                   const previewImages = getOrderPreviewImages(order);
@@ -4309,7 +4368,7 @@ function OrdersContent() {
                       className={cn(
                         "rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition",
                         draggingOrderId === order._id ? "opacity-60" : "hover:border-blue-200",
-                        isInRefundPeriod && !isExcludedBecauseReturned
+                        isFullRefund100 && !isExcludedBecauseReturned
                           ? "refund-card refund-card--active"
                           : "",
                         isExcludedBecauseReturned
@@ -4318,7 +4377,7 @@ function OrdersContent() {
                       )}
                       onClick={() => handleRowClick(order._id)}
                       aria-label={
-                        isInRefundPeriod
+                        isFullRefund100
                           ? `${primaryTitle}, ${isExcludedBecauseReturned ? "povrat je već vraćen" : "obračun sa 100% profita"}`
                           : undefined
                       }
@@ -4343,7 +4402,7 @@ function OrdersContent() {
                           <p className="text-[10px] text-slate-500">
                             {order.stageChangedAt ? `Status: ${formatDate(order.stageChangedAt)}` : "Datum nije zabelezen"}
                           </p>
-                          {isInRefundPeriod ? (
+                          {isFullRefund100 ? (
                             <span
                               className={cn(
                                 "refund-status-badge",
@@ -4353,8 +4412,34 @@ function OrdersContent() {
                               )}
                             >
                               <BadgePercent aria-hidden="true" />
-                              {isExcludedBecauseReturned ? "Već vraćeno — ne računa se" : "Povrat 100%"}
+                              {isExcludedBecauseReturned
+                                ? "Već vraćeno — ne računa se"
+                                : isManualRefund100
+                                  ? "Povrat 100% · ručno"
+                                  : "Povrat 100%"}
                             </span>
+                          ) : null}
+                          {!isInRefundPeriod || isManualRefund100 ? (
+                            <button
+                              type="button"
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 text-[10px] font-semibold transition",
+                                isManualRefund100
+                                  ? "border-slate-200 bg-white/80 text-slate-600 hover:border-red-200 hover:text-red-700"
+                                  : "border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-100",
+                              )}
+                              disabled={manualRefundSavingId === order._id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleManualRefund100Toggle(order, !isManualRefund100);
+                              }}
+                            >
+                              {manualRefundSavingId === order._id
+                                ? "Čuvanje..."
+                                : isManualRefund100
+                                  ? "Ukloni ručno"
+                                  : "+ Dodaj u 100%"}
+                            </button>
                           ) : null}
                         </div>
                       </div>
@@ -4495,7 +4580,7 @@ function OrdersContent() {
                       <div
                         className={cn(
                           "mt-3 flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2",
-                          isInRefundPeriod && !isExcludedBecauseReturned ? "refund-amount-card" : "",
+                          isFullRefund100 && !isExcludedBecauseReturned ? "refund-amount-card" : "",
                         )}
                       >
                         <div>
@@ -4503,7 +4588,7 @@ function OrdersContent() {
                           <p
                             className={cn(
                               "text-sm font-semibold text-slate-900",
-                              isInRefundPeriod && !isExcludedBecauseReturned ? "refund-amount-value" : "",
+                              isFullRefund100 && !isExcludedBecauseReturned ? "refund-amount-value" : "",
                             )}
                           >
                             {formatCurrency(povrat, "EUR")}
@@ -4673,6 +4758,8 @@ function OrdersContent() {
                     povrat,
                     calculatedPovrat,
                     isInRefundPeriod,
+                    isManualRefund100,
+                    isFullRefund100,
                     isExcludedBecauseReturned,
                   }) => {
                     const previewImages = getOrderPreviewImages(order);
@@ -4695,7 +4782,7 @@ function OrdersContent() {
                           "cursor-pointer transition",
                           draggingOrderId === order._id ? "opacity-60" : "hover:bg-slate-50",
                           dragOverOrderId === order._id && draggingOrderId !== order._id ? "bg-blue-50" : "",
-                          isInRefundPeriod && !isExcludedBecauseReturned
+                          isFullRefund100 && !isExcludedBecauseReturned
                             ? "refund-row refund-row--active"
                             : "",
                           isExcludedBecauseReturned
@@ -4703,7 +4790,7 @@ function OrdersContent() {
                             : "",
                         )}
                         aria-label={
-                          isInRefundPeriod
+                          isFullRefund100
                             ? `${primaryTitle}, ${isExcludedBecauseReturned ? "povrat je već vraćen" : "obračun sa 100% profita"}`
                             : undefined
                         }
@@ -4740,7 +4827,7 @@ function OrdersContent() {
                             <p className="text-[10px] text-slate-500">
                               {order.stageChangedAt ? formatDate(order.stageChangedAt) : "Datum nije zabelezen"}
                             </p>
-                            {isInRefundPeriod ? (
+                            {isFullRefund100 ? (
                               <span
                                 className={cn(
                                   "refund-status-badge",
@@ -4750,8 +4837,34 @@ function OrdersContent() {
                                 )}
                               >
                                 <BadgePercent aria-hidden="true" />
-                                {isExcludedBecauseReturned ? "Već vraćeno — ne računa se" : "Povrat 100%"}
+                                {isExcludedBecauseReturned
+                                  ? "Već vraćeno — ne računa se"
+                                  : isManualRefund100
+                                    ? "Povrat 100% · ručno"
+                                    : "Povrat 100%"}
                               </span>
+                            ) : null}
+                            {!isInRefundPeriod || isManualRefund100 ? (
+                              <button
+                                type="button"
+                                className={cn(
+                                  "rounded-full border px-2 py-0.5 text-[10px] font-semibold transition",
+                                  isManualRefund100
+                                    ? "border-slate-200 bg-white/80 text-slate-600 hover:border-red-200 hover:text-red-700"
+                                    : "border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-100",
+                                )}
+                                disabled={manualRefundSavingId === order._id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleManualRefund100Toggle(order, !isManualRefund100);
+                                }}
+                              >
+                                {manualRefundSavingId === order._id
+                                  ? "Čuvanje..."
+                                  : isManualRefund100
+                                    ? "Ukloni ručno"
+                                    : "+ Dodaj u 100%"}
+                              </button>
                             ) : null}
                           </div>
                         </TableCell>
@@ -4881,13 +4994,13 @@ function OrdersContent() {
                           <div
                             className={cn(
                               "flex flex-col items-end gap-1",
-                              isInRefundPeriod && !isExcludedBecauseReturned ? "refund-amount-card" : "",
+                              isFullRefund100 && !isExcludedBecauseReturned ? "refund-amount-card" : "",
                             )}
                           >
                             <div className="flex items-center justify-end gap-2">
                               <span
                                 className={cn(
-                                  isInRefundPeriod && !isExcludedBecauseReturned ? "refund-amount-value" : "",
+                                  isFullRefund100 && !isExcludedBecauseReturned ? "refund-amount-value" : "",
                                 )}
                               >
                                 {formatCurrency(povrat, "EUR")}
