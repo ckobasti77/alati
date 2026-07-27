@@ -512,6 +512,9 @@ export const createOrderDetailPdfFile = async ({
   transport,
   prodajno,
   cleanProfit,
+  refund,
+  refundProfit,
+  refundNote,
 }: {
   fileName: string;
   orderTitle: string;
@@ -522,6 +525,9 @@ export const createOrderDetailPdfFile = async ({
   transport: string;
   prodajno: string;
   cleanProfit: string;
+  refund: string;
+  refundProfit: string;
+  refundNote?: string;
 }) => {
   const page = A4.portrait;
   const margin = 42;
@@ -580,6 +586,10 @@ export const createOrderDetailPdfFile = async ({
   drawRow("Finansije", [
     { text: `Nabavna: ${nabavno} - Transport: ${transport} - Prodajna: ${prodajno} - ` },
     { text: `Cista zarada (100%): ${cleanProfit}`, bold: true, color: cleanProfit.trim().startsWith("-") ? "#dc2626" : "#0f172a" },
+  ]);
+  drawRow("Povrat", [
+    { text: `${refund} - Profit za povrat: ${refundProfit}`, bold: true },
+    ...(refundNote ? [{ text: ` - ${refundNote}`, color: "#64748b" }] : []),
   ]);
 
   return canvasesToPdfFile(canvases, fileName);

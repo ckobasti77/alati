@@ -112,6 +112,19 @@ export type TransportMode = "Kol" | "Joe" | "Smg" | "Posta" | "Bex" | "Aks";
 export type SlanjeMode = "Posta" | "Aks" | "Bex";
 export type OrderEventType = "stage" | "povrat";
 
+export interface OrderRefundPeriod {
+  startDate: string;
+  endDate: string;
+  updatedAt: number;
+}
+
+export interface OrderRefundPeriodOverview {
+  period: OrderRefundPeriod | null;
+  pendingCount: number;
+  returnedCount: number;
+  pendingAmount: number;
+}
+
 export interface OrderEvent {
   _id: string;
   orderId: string;

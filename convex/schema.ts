@@ -218,6 +218,14 @@ export default defineSchema({
     brojPosiljke: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_order_createdAt", ["orderId", "createdAt"]),
+  orderRefundPeriods: defineTable({
+    userId: v.id("users"),
+    scope: v.union(v.literal("default"), v.literal("kalaba")),
+    startDate: v.string(),
+    endDate: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_scope", ["userId", "scope"]),
   customers: defineTable({
     userId: v.optional(v.id("users")),
     scope: v.union(v.literal("default"), v.literal("kalaba")),

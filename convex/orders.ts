@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "./search";
-import { calculateOrderRefund } from "../lib/refund-policy";
+import { calculateOrderRefund, isValidRefundDateKey } from "../lib/refund-policy";
 
 const orderStages = ["poruceno", "aks", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"] as const;
 const transportModes = ["Kol", "Joe", "Smg"] as const;
@@ -337,6 +337,27 @@ const orderTotals = (order: Doc<"orders">) => {
   const profit = totals.totalProdajno - totals.totalNabavno - transport;
   return { items, totals, transport, profit };
 };
+
+const loadRefundPeriod = async (
+  ctx: any,
+  userId: Id<"users">,
+  scope: (typeof orderScopes)[number],
+) =>
+  ctx.db
+    .query("orderRefundPeriods")
+    .withIndex("by_user_scope", (q: any) => q.eq("userId", userId).eq("scope", scope))
+    .first();
+
+const toRefundPeriod = (
+  period?: { startDate: string; endDate: string; updatedAt: number } | null,
+) =>
+  period
+    ? {
+        startDate: period.startDate,
+        endDate: period.endDate,
+        updatedAt: period.updatedAt,
+      }
+    : null;
 
 const resolveSlanjeModeFromOrder = (order: Doc<"orders">) => {
   const direct = normalizeSlanjeMode(order.slanjeMode as any);
@@ -731,6 +752,114 @@ export const upsertShippingAccount = mutation({
   },
 });
 
+export const refundPeriod = query({
+  args: { token: v.string(), scope: v.optional(orderScopeSchema) },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const storedPeriod = await loadRefundPeriod(ctx, user._id, scope);
+    const period = toRefundPeriod(storedPeriod);
+
+    if (!period) {
+      return {
+        period: null,
+        pendingCount: 0,
+        returnedCount: 0,
+        pendingAmount: 0,
+      };
+    }
+
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
+      .collect();
+
+    return orders
+      .filter((order) => normalizeScope(order.scope) === scope)
+      .reduce(
+        (overview, order) => {
+          const summary = orderTotals(order);
+          const refund = calculateOrderRefund({
+            orderCreatedAt: order.kreiranoAt,
+            totalNabavno: summary.totals.totalNabavno,
+            profit: summary.profit,
+            transport: summary.transport,
+            myProfitPercent: order.myProfitPercent,
+            refundPeriod: period,
+            povratVracen: order.povratVracen,
+          });
+          if (!refund.isInRefundPeriod) return overview;
+
+          if (refund.isExcludedBecauseReturned) {
+            overview.returnedCount += 1;
+          } else {
+            overview.pendingCount += 1;
+            overview.pendingAmount += refund.outstandingRefundAmount;
+          }
+          return overview;
+        },
+        {
+          period,
+          pendingCount: 0,
+          returnedCount: 0,
+          pendingAmount: 0,
+        },
+      );
+  },
+});
+
+export const setRefundPeriod = mutation({
+  args: {
+    token: v.string(),
+    scope: v.optional(orderScopeSchema),
+    startDate: v.string(),
+    endDate: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const startDate = args.startDate.trim();
+    const endDate = args.endDate.trim();
+
+    if (!isValidRefundDateKey(startDate) || !isValidRefundDateKey(endDate)) {
+      throw new Error("Izaberite ispravne datume za period povrata.");
+    }
+    if (startDate > endDate) {
+      throw new Error('Datum "Od" ne moze biti posle datuma "Do".');
+    }
+
+    const now = Date.now();
+    const existing = await loadRefundPeriod(ctx, user._id, scope);
+    if (existing) {
+      await ctx.db.patch(existing._id, { startDate, endDate, updatedAt: now });
+    } else {
+      await ctx.db.insert("orderRefundPeriods", {
+        userId: user._id,
+        scope,
+        startDate,
+        endDate,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { startDate, endDate, updatedAt: now };
+  },
+});
+
+export const clearRefundPeriod = mutation({
+  args: { token: v.string(), scope: v.optional(orderScopeSchema) },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const existing = await loadRefundPeriod(ctx, user._id, scope);
+    if (existing) {
+      await ctx.db.delete(existing._id);
+    }
+    return { success: true };
+  },
+});
+
 export const get = query({
   args: { token: v.string(), id: v.id("orders"), scope: v.optional(orderScopeSchema) },
   handler: async (ctx, args) => {
@@ -789,6 +918,9 @@ export const list = query({
     const rawTo = typeof args.dateTo === "number" && Number.isFinite(args.dateTo) ? args.dateTo : undefined;
     const dateFrom = rawFrom !== undefined && rawTo !== undefined && rawFrom > rawTo ? rawTo : rawFrom;
     const dateTo = rawFrom !== undefined && rawTo !== undefined && rawFrom > rawTo ? rawFrom : rawTo;
+
+    const storedRefundPeriod = await loadRefundPeriod(ctx, user._id, scope);
+    const activeRefundPeriod = toRefundPeriod(storedRefundPeriod);
 
     let orders = await ctx.db
       .query("orders")
@@ -884,12 +1016,14 @@ export const list = query({
           profit: summary.profit,
           transport: summary.transport,
           myProfitPercent: order.myProfitPercent,
+          refundPeriod: activeRefundPeriod,
+          povratVracen: order.povratVracen,
         });
         acc.nabavno += summary.totals.totalNabavno;
         acc.transport += summary.transport;
         acc.prodajno += summary.totals.totalProdajno;
-        acc.profit += refund.profitForRefund;
-        acc.povrat += refund.refundAmount;
+        acc.profit += refund.outstandingProfitForRefund;
+        acc.povrat += refund.outstandingRefundAmount;
         return acc;
       },
       { nabavno: 0, transport: 0, prodajno: 0, profit: 0, povrat: 0 },

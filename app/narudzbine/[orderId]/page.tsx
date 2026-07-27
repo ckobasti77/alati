@@ -24,7 +24,16 @@ import {
   type OrderDetailPdfItem,
 } from "@/lib/pdfExport";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
-import type { OrderEvent, OrderStage, OrderWithProduct, Product, ProductVariant, ShippingOwnerOptions, Supplier } from "@/types/order";
+import type {
+  OrderEvent,
+  OrderRefundPeriodOverview,
+  OrderStage,
+  OrderWithProduct,
+  Product,
+  ProductVariant,
+  ShippingOwnerOptions,
+  Supplier,
+} from "@/types/order";
 
 const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
   { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -77,6 +86,13 @@ const StageBadge = ({ stage }: { stage: OrderStage }) => {
     </span>
   );
 };
+
+const formatRefundPeriodDate = (value: string) =>
+  new Intl.DateTimeFormat("sr-RS", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(`${value}T12:00:00`));
 
 const getOrderEventTitle = (event: OrderEvent) => {
   if (event.type === "povrat") {
@@ -432,6 +448,10 @@ function OrderDetails({
   const queryResult = useConvexQuery<OrderWithProduct | null>("orders:get", {
     token: sessionToken,
     id: orderId,
+    scope: orderScope,
+  });
+  const refundPeriodOverview = useConvexQuery<OrderRefundPeriodOverview>("orders:refundPeriod", {
+    token: sessionToken,
     scope: orderScope,
   });
   const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
@@ -921,12 +941,17 @@ function OrderDetails({
         profit: prof,
         transport,
         myProfitPercent: order.myProfitPercent,
+        refundPeriod: refundPeriodOverview?.period,
+        povratVracen: order.povratVracen,
       })
     : null;
-  const profitShare = refund?.profitForRefund ?? 0;
+  const profitShare = refund?.outstandingProfitForRefund ?? 0;
+  const calculatedProfitShare = refund?.profitForRefund ?? 0;
   const profitSharePercent = refund?.profitForRefundPercent ?? 0;
-  const povrat = refund?.refundAmount ?? 0;
-  const isFullRefundWeek = refund?.isFullRefundWeek ?? false;
+  const povrat = refund?.outstandingRefundAmount ?? 0;
+  const calculatedPovrat = refund?.refundAmount ?? 0;
+  const isInRefundPeriod = refund?.isInRefundPeriod ?? false;
+  const isExcludedBecauseReturned = refund?.isExcludedBecauseReturned ?? false;
   const telHref = order ? `tel:${order.phone.replace(/[^+\d]/g, "")}` : "";
   const shipmentNumber = resolveShipmentNumber(order);
   const hasShipmentNumber = shipmentNumber.length > 0;
@@ -947,6 +972,13 @@ function OrderDetails({
           transport: formatCurrency(transport, "EUR"),
           prodajno: formatCurrency(prodajnoUkupno, "EUR"),
           cleanProfit: formatCurrency(prof, "EUR"),
+          refund: formatCurrency(povrat, "EUR"),
+          refundProfit: formatCurrency(profitShare, "EUR"),
+          refundNote: isInRefundPeriod
+            ? isExcludedBecauseReturned
+              ? `Period 100% - vec vraceno (obracunato ${formatCurrency(calculatedPovrat, "EUR")})`
+              : "Period 100%: nabavna + ceo profit - transport"
+            : `Standardni obracun (${formatPercent(profitSharePercent)})`,
         });
 
         if (mode === "share") {
@@ -968,7 +1000,20 @@ function OrderDetails({
         setOrderPdfMode(null);
       }
     },
-    [isOrderPdfBusy, nabavnoUkupno, order, prodajnoUkupno, prof, transport],
+    [
+      calculatedPovrat,
+      isExcludedBecauseReturned,
+      isInRefundPeriod,
+      isOrderPdfBusy,
+      nabavnoUkupno,
+      order,
+      povrat,
+      prodajnoUkupno,
+      prof,
+      profitShare,
+      profitSharePercent,
+      transport,
+    ],
   );
 
   const handleShipmentNumberCopy = useCallback(async () => {
@@ -1254,9 +1299,15 @@ function OrderDetails({
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold text-slate-900">{order.title}</h1>
               <StageBadge stage={order.stage} />
-              {isFullRefundWeek ? (
-                <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800">
-                  Povrat 100%
+              {isInRefundPeriod ? (
+                <span
+                  className={`rounded-full border px-2 py-1 text-xs font-bold uppercase tracking-wide ${
+                    isExcludedBecauseReturned
+                      ? "border-slate-200 bg-slate-100 text-slate-600"
+                      : "border-emerald-300 bg-emerald-100 text-emerald-800"
+                  }`}
+                >
+                  {isExcludedBecauseReturned ? "Već vraćeno — ne računa se" : "Povrat 100%"}
                 </span>
               ) : null}
             </div>
@@ -1961,10 +2012,31 @@ function OrderDetails({
             <CardTitle>Finansije</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {isFullRefundWeek ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-emerald-950">
-                <p className="text-sm font-semibold">Prva puna nedelja u mesecu</p>
-                <p className="mt-0.5 text-xs text-emerald-800">Povrat: nabavna cena + 100% ukupnog profita − transport.</p>
+            {isInRefundPeriod ? (
+              <div
+                className={`rounded-lg border px-3 py-2 ${
+                  isExcludedBecauseReturned
+                    ? "border-slate-200 bg-slate-50 text-slate-800"
+                    : "border-emerald-200 bg-emerald-50/80 text-emerald-950"
+                }`}
+              >
+                <p className="text-sm font-semibold">
+                  {isExcludedBecauseReturned
+                    ? "Povrat je već vraćen i ne ulazi u zbir"
+                    : "Porudžbina je u periodu 100% povrata"}
+                </p>
+                {refundPeriodOverview?.period ? (
+                  <p className="mt-0.5 text-xs">
+                    Period: {formatRefundPeriodDate(refundPeriodOverview.period.startDate)} –{" "}
+                    {formatRefundPeriodDate(refundPeriodOverview.period.endDate)}
+                  </p>
+                ) : null}
+                <p className="mt-0.5 text-xs">Povrat: nabavna cena + 100% ukupnog profita − transport.</p>
+                {isExcludedBecauseReturned ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Obračunati iznos je {formatCurrency(calculatedPovrat, "EUR")}, a preostalo za vraćanje 0.
+                  </p>
+                ) : null}
               </div>
             ) : null}
             <div className="grid gap-3 md:grid-cols-4">
@@ -2005,8 +2077,10 @@ function OrderDetails({
                 <p className="text-xs uppercase tracking-wide text-slate-500">Povrat</p>
                 <p className="text-base font-semibold text-slate-900">{formatCurrency(povrat, "EUR")}</p>
                 <p className="text-xs text-slate-500">
-                  {isFullRefundWeek
-                    ? `Ukupan profit (100%): ${formatCurrency(profitShare, "EUR")}`
+                  {isInRefundPeriod
+                    ? isExcludedBecauseReturned
+                      ? `Obračunati profit (100%): ${formatCurrency(calculatedProfitShare, "EUR")} — već vraćeno`
+                      : `Ukupan profit (100%): ${formatCurrency(profitShare, "EUR")}`
                     : `Profit (50%): ${formatCurrency(profitShare, "EUR")} (${formatPercent(profitSharePercent)})`}
                 </p>
               </div>

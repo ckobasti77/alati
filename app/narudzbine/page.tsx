@@ -7,7 +7,7 @@ import { useForm, type DeepPartial, type FieldErrors, type Resolver } from "reac
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
+import { ArrowUpRight, BadgePercent, CalendarRange, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,8 @@ import type { Customer } from "@/types/customer";
 import type {
   Order,
   OrderListResponse,
+  OrderRefundPeriod,
+  OrderRefundPeriodOverview,
   OrderStage,
   Product,
   ProductVariant,
@@ -455,6 +457,13 @@ const resolveProfitPercent = (value?: number) =>
 const formatPercent = (value: number) =>
   `${value.toLocaleString("sr-RS", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
 
+const formatRefundPeriodDate = (value: string) =>
+  new Intl.DateTimeFormat("sr-RS", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(`${value}T12:00:00`));
+
 const resolveOrderSortValue = (order: Order) => order.sortIndex ?? order.kreiranoAt;
 
 const buildOrderExportTitle = (order: Order, productMap: Map<string, Product>) => {
@@ -480,7 +489,11 @@ const buildOrderExportTitle = (order: Order, productMap: Map<string, Product>) =
   return parts.filter(Boolean).join("\n");
 };
 
-const buildOrdersPdfRows = (exportOrders: Order[], productMap: Map<string, Product>): OrdersTablePdfRow[] =>
+const buildOrdersPdfRows = (
+  exportOrders: Order[],
+  productMap: Map<string, Product>,
+  refundPeriod?: OrderRefundPeriod | null,
+): OrdersTablePdfRow[] =>
   exportOrders.map((order) => {
     const totals = orderTotals(order);
     const refund = calculateOrderRefund({
@@ -489,6 +502,8 @@ const buildOrdersPdfRows = (exportOrders: Order[], productMap: Map<string, Produ
       profit: totals.profit,
       transport: totals.transport,
       myProfitPercent: order.myProfitPercent,
+      refundPeriod,
+      povratVracen: order.povratVracen,
     });
     const shipmentNumber = resolveShipmentNumber(order);
     const contactParts = [order.customerName, order.phone];
@@ -502,8 +517,8 @@ const buildOrdersPdfRows = (exportOrders: Order[], productMap: Map<string, Produ
       nabavno: formatCurrency(totals.totalNabavno, "EUR"),
       transport: formatCurrency(totals.transport, "EUR"),
       prodajno: formatCurrency(totals.totalProdajno, "EUR"),
-      profit: formatCurrency(refund.profitForRefund, "EUR"),
-      povrat: formatCurrency(refund.refundAmount, "EUR"),
+      profit: formatCurrency(refund.outstandingProfitForRefund, "EUR"),
+      povrat: formatCurrency(refund.outstandingRefundAmount, "EUR"),
       shipmentNumber: shipmentNumber || order.napomena || "-",
     };
   });
@@ -603,6 +618,10 @@ function OrdersContent() {
   const [shipmentStageModal, setShipmentStageModal] = useState<ShipmentStageModalState | null>(null);
   const [shipmentNumberDraft, setShipmentNumberDraft] = useState("");
   const [isShipmentStageSaving, setIsShipmentStageSaving] = useState(false);
+  const [refundPeriodModalOpen, setRefundPeriodModalOpen] = useState(false);
+  const [refundPeriodStart, setRefundPeriodStart] = useState("");
+  const [refundPeriodEnd, setRefundPeriodEnd] = useState("");
+  const [isRefundPeriodSaving, setIsRefundPeriodSaving] = useState(false);
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const restockProductInputRef = useRef<HTMLInputElement | null>(null);
   const previousSlanjeModeRef = useRef<(typeof slanjeModes)[number] | undefined>(undefined);
@@ -721,9 +740,23 @@ function OrdersContent() {
     page,
     pageSize: 10,
   });
+  const refundPeriodOverview = useConvexQuery<OrderRefundPeriodOverview>("orders:refundPeriod", {
+    token: sessionToken,
+    scope: orderScope,
+  });
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const createOrder = useConvexMutation("orders:create");
   const updateOrder = useConvexMutation("orders:update");
+  const setRefundPeriod = useConvexMutation<{
+    token: string;
+    scope: "default" | "kalaba";
+    startDate: string;
+    endDate: string;
+  }>("orders:setRefundPeriod");
+  const clearRefundPeriod = useConvexMutation<{
+    token: string;
+    scope: "default" | "kalaba";
+  }>("orders:clearRefundPeriod");
   const bulkUpdateOrders = useConvexMutation<{
     token: string;
     scope: "default" | "kalaba";
@@ -783,6 +816,8 @@ function OrdersContent() {
           profit: totals.profit,
           transport: totals.transport,
           myProfitPercent: order.myProfitPercent,
+          refundPeriod: refundPeriodOverview?.period,
+          povratVracen: order.povratVracen,
         });
         const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
         const myProfit = totals.profit * (myProfitPercent / 100);
@@ -793,13 +828,16 @@ function OrdersContent() {
           transport: totals.transport,
           myProfit,
           myProfitPercent,
-          profitShare: refund.profitForRefund,
+          profitShare: refund.outstandingProfitForRefund,
+          calculatedProfitShare: refund.profitForRefund,
           profitSharePercent: refund.profitForRefundPercent,
-          povrat: refund.refundAmount,
-          isFullRefundWeek: refund.isFullRefundWeek,
+          povrat: refund.outstandingRefundAmount,
+          calculatedPovrat: refund.refundAmount,
+          isInRefundPeriod: refund.isInRefundPeriod,
+          isExcludedBecauseReturned: refund.isExcludedBecauseReturned,
         };
       }),
-    [orders],
+    [orders, refundPeriodOverview?.period],
   );
   const visibleOrderIds = useMemo(() => orderEntries.map(({ order }) => order._id), [orderEntries]);
   const selectedVisibleCount = visibleOrderIds.filter((id) => selectedOrderIds.has(id)).length;
@@ -914,7 +952,7 @@ function OrdersContent() {
           return;
         }
 
-        const rows = buildOrdersPdfRows(exportData.orders, productMap);
+        const rows = buildOrdersPdfRows(exportData.orders, productMap, refundPeriodOverview?.period);
         const today = new Date().toISOString().slice(0, 10);
         const file = await createOrdersTablePdfFile({
           rows,
@@ -943,7 +981,7 @@ function OrdersContent() {
         setOrdersPdfMode(null);
       }
     },
-    [buildOrdersPdfSubtitle, fetchOrdersForPdf, isOrdersPdfBusy, productMap],
+    [buildOrdersPdfSubtitle, fetchOrdersForPdf, isOrdersPdfBusy, productMap, refundPeriodOverview?.period],
   );
 
   useEffect(() => {
@@ -1063,6 +1101,65 @@ function OrdersContent() {
     setOrdersTotals(emptyOrderListTotals);
     setIsLoadingMoreOrders(false);
   }, []);
+
+  const openRefundPeriodModal = useCallback(() => {
+    setRefundPeriodStart(refundPeriodOverview?.period?.startDate ?? "");
+    setRefundPeriodEnd(refundPeriodOverview?.period?.endDate ?? "");
+    setRefundPeriodModalOpen(true);
+  }, [refundPeriodOverview?.period]);
+
+  const handleSaveRefundPeriod = useCallback(async () => {
+    if (!refundPeriodStart || !refundPeriodEnd) {
+      toast.error('Izaberite oba datuma: "Od" i "Do".');
+      return;
+    }
+    if (refundPeriodStart > refundPeriodEnd) {
+      toast.error('Datum "Od" ne moze biti posle datuma "Do".');
+      return;
+    }
+
+    setIsRefundPeriodSaving(true);
+    try {
+      await setRefundPeriod({
+        token: sessionToken,
+        scope: orderScope,
+        startDate: refundPeriodStart,
+        endDate: refundPeriodEnd,
+      });
+      resetOrdersFeed();
+      setRefundPeriodModalOpen(false);
+      toast.success("Period 100% povrata je sacuvan.");
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Period nije sacuvan.");
+    } finally {
+      setIsRefundPeriodSaving(false);
+    }
+  }, [
+    orderScope,
+    refundPeriodEnd,
+    refundPeriodStart,
+    resetOrdersFeed,
+    sessionToken,
+    setRefundPeriod,
+  ]);
+
+  const handleClearRefundPeriod = useCallback(async () => {
+    setIsRefundPeriodSaving(true);
+    try {
+      await clearRefundPeriod({ token: sessionToken, scope: orderScope });
+      resetOrdersFeed();
+      setRefundPeriodStart("");
+      setRefundPeriodEnd("");
+      setRefundPeriodModalOpen(false);
+      toast.success("Poseban period povrata je uklonjen.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Period nije uklonjen.");
+    } finally {
+      setIsRefundPeriodSaving(false);
+    }
+  }, [clearRefundPeriod, orderScope, resetOrdersFeed, sessionToken]);
 
   useEffect(() => {
     const current = listStateRef.current;
@@ -2502,6 +2599,76 @@ function OrdersContent() {
 
   return (
     <div className="relative mx-auto space-y-6">
+      <Dialog open={refundPeriodModalOpen} onOpenChange={setRefundPeriodModalOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Period 100% povrata</DialogTitle>
+            <DialogDescription>
+              Sve nevraćene porudžbine kreirane u ovom rasponu računaju se po posebnom pravilu. Datumi su uključivi.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                <span>Od</span>
+                <Input
+                  type="date"
+                  value={refundPeriodStart}
+                  onChange={(event) => setRefundPeriodStart(event.target.value)}
+                />
+              </label>
+              <label className="space-y-1.5 text-sm font-medium text-slate-700">
+                <span>Do</span>
+                <Input
+                  type="date"
+                  value={refundPeriodEnd}
+                  onChange={(event) => setRefundPeriodEnd(event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
+              <p className="font-semibold">Poseban obračun</p>
+              <p className="mt-1 text-emerald-800">Nabavna cena + 100% ukupnog profita − transport.</p>
+              <p className="mt-2 text-xs text-emerald-700">
+                Porudžbine kojima je povrat već označen kao vraćen ostaju vidljive, ali se ne računaju u iznos za vraćanje.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <div>
+              {refundPeriodOverview?.period ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-red-700 hover:bg-red-50 hover:text-red-800"
+                  onClick={() => void handleClearRefundPeriod()}
+                  disabled={isRefundPeriodSaving}
+                >
+                  Ukloni period
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRefundPeriodModalOpen(false)}
+                disabled={isRefundPeriodSaving}
+              >
+                Otkaži
+              </Button>
+              <Button
+                type="button"
+                className="bg-emerald-800 text-white hover:bg-emerald-900"
+                onClick={() => void handleSaveRefundPeriod()}
+                disabled={isRefundPeriodSaving}
+              >
+                {isRefundPeriodSaving ? "Čuvanje..." : "Sačuvaj period"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={isModalOpen}
         onOpenChange={(open) => {
@@ -3944,6 +4111,22 @@ function OrdersContent() {
                 <Button
                   type="button"
                   variant="outline"
+                  className={cn(
+                    "col-span-2 w-full gap-2 sm:col-span-1 sm:w-auto",
+                    refundPeriodOverview?.period
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
+                      : "",
+                  )}
+                  onClick={openRefundPeriodModal}
+                >
+                  <CalendarRange className="h-4 w-4" />
+                  {refundPeriodOverview?.period
+                    ? `${formatRefundPeriodDate(refundPeriodOverview.period.startDate)} – ${formatRefundPeriodDate(refundPeriodOverview.period.endDate)}`
+                    : "Period 100%"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
                   className="w-full gap-2 sm:w-auto"
                   onClick={() => void handleOrdersPdf("download")}
                   disabled={isOrdersPdfBusy || isOrdersLoading}
@@ -3978,6 +4161,31 @@ function OrdersContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {refundPeriodOverview?.period ? (
+            <div className="grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 sm:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))] sm:items-center">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">Aktivan period 100% povrata</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-950">
+                  {formatRefundPeriodDate(refundPeriodOverview.period.startDate)} –{" "}
+                  {formatRefundPeriodDate(refundPeriodOverview.period.endDate)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-emerald-700">Za povrat</p>
+                <p className="text-lg font-bold text-emerald-950">{refundPeriodOverview.pendingCount}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-emerald-700">Već vraćeno</p>
+                <p className="text-lg font-bold text-emerald-950">{refundPeriodOverview.returnedCount}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-emerald-700">Preostali iznos</p>
+                <p className="text-lg font-bold text-emerald-950">
+                  {formatCurrency(refundPeriodOverview.pendingAmount, "EUR")}
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
@@ -4071,7 +4279,17 @@ function OrdersContent() {
                 Jos nema narudzbina.
               </div>
             ) : (
-              orderEntries.map(({ order, prodajnoUkupno, nabavnoUkupno, transport, profitShare, povrat, isFullRefundWeek }) => {
+              orderEntries.map(({
+                order,
+                prodajnoUkupno,
+                nabavnoUkupno,
+                transport,
+                profitShare,
+                povrat,
+                calculatedPovrat,
+                isInRefundPeriod,
+                isExcludedBecauseReturned,
+              }) => {
                   const previewImages = getOrderPreviewImages(order);
                   const itemNames = (order.items ?? [])
                     .map((item) => {
@@ -4091,9 +4309,19 @@ function OrdersContent() {
                       className={cn(
                         "rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition",
                         draggingOrderId === order._id ? "opacity-60" : "hover:border-blue-200",
-                        isFullRefundWeek ? "border-emerald-200 bg-emerald-50/70 shadow-emerald-950/5 hover:border-emerald-300" : "",
+                        isInRefundPeriod && !isExcludedBecauseReturned
+                          ? "refund-card refund-card--active"
+                          : "",
+                        isExcludedBecauseReturned
+                          ? "refund-card refund-card--complete"
+                          : "",
                       )}
                       onClick={() => handleRowClick(order._id)}
+                      aria-label={
+                        isInRefundPeriod
+                          ? `${primaryTitle}, ${isExcludedBecauseReturned ? "povrat je već vraćen" : "obračun sa 100% profita"}`
+                          : undefined
+                      }
                     >
                       <div className="flex items-start justify-between gap-2">
                         <label
@@ -4115,9 +4343,17 @@ function OrdersContent() {
                           <p className="text-[10px] text-slate-500">
                             {order.stageChangedAt ? `Status: ${formatDate(order.stageChangedAt)}` : "Datum nije zabelezen"}
                           </p>
-                          {isFullRefundWeek ? (
-                            <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
-                              Povrat 100%
+                          {isInRefundPeriod ? (
+                            <span
+                              className={cn(
+                                "refund-status-badge",
+                                isExcludedBecauseReturned
+                                  ? "refund-status-badge--complete"
+                                  : "refund-status-badge--active",
+                              )}
+                            >
+                              <BadgePercent aria-hidden="true" />
+                              {isExcludedBecauseReturned ? "Već vraćeno — ne računa se" : "Povrat 100%"}
                             </span>
                           ) : null}
                         </div>
@@ -4256,10 +4492,27 @@ function OrdersContent() {
                           </p>
                         </div>
                       </div>
-                      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                      <div
+                        className={cn(
+                          "mt-3 flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2",
+                          isInRefundPeriod && !isExcludedBecauseReturned ? "refund-amount-card" : "",
+                        )}
+                      >
                         <div>
                           <p className="text-[10px] uppercase tracking-wide text-slate-500">Povrat</p>
-                          <p className="text-sm font-semibold text-slate-900">{formatCurrency(povrat, "EUR")}</p>
+                          <p
+                            className={cn(
+                              "text-sm font-semibold text-slate-900",
+                              isInRefundPeriod && !isExcludedBecauseReturned ? "refund-amount-value" : "",
+                            )}
+                          >
+                            {formatCurrency(povrat, "EUR")}
+                          </p>
+                          {isExcludedBecauseReturned ? (
+                            <p className="mt-0.5 text-[10px] text-slate-500">
+                              Obračunato {formatCurrency(calculatedPovrat, "EUR")}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="text-right">
                           <label className="flex items-center justify-end gap-2 text-xs font-semibold text-slate-600">
@@ -4418,7 +4671,9 @@ function OrdersContent() {
                     transport,
                     profitShare,
                     povrat,
-                    isFullRefundWeek,
+                    calculatedPovrat,
+                    isInRefundPeriod,
+                    isExcludedBecauseReturned,
                   }) => {
                     const previewImages = getOrderPreviewImages(order);
                     const itemNames = (order.items ?? [])
@@ -4440,8 +4695,18 @@ function OrdersContent() {
                           "cursor-pointer transition",
                           draggingOrderId === order._id ? "opacity-60" : "hover:bg-slate-50",
                           dragOverOrderId === order._id && draggingOrderId !== order._id ? "bg-blue-50" : "",
-                          isFullRefundWeek ? "border-l-4 border-l-emerald-300 bg-emerald-50/70 hover:bg-emerald-100/70" : "",
+                          isInRefundPeriod && !isExcludedBecauseReturned
+                            ? "refund-row refund-row--active"
+                            : "",
+                          isExcludedBecauseReturned
+                            ? "refund-row refund-row--complete"
+                            : "",
                         )}
+                        aria-label={
+                          isInRefundPeriod
+                            ? `${primaryTitle}, ${isExcludedBecauseReturned ? "povrat je već vraćen" : "obračun sa 100% profita"}`
+                            : undefined
+                        }
                         onClick={() => handleRowClick(order._id)}
                         onDragOver={handleOrderDragOver(order._id)}
                         onDragLeave={handleOrderDragLeave(order._id)}
@@ -4475,9 +4740,17 @@ function OrdersContent() {
                             <p className="text-[10px] text-slate-500">
                               {order.stageChangedAt ? formatDate(order.stageChangedAt) : "Datum nije zabelezen"}
                             </p>
-                            {isFullRefundWeek ? (
-                              <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
-                                Povrat 100%
+                            {isInRefundPeriod ? (
+                              <span
+                                className={cn(
+                                  "refund-status-badge",
+                                  isExcludedBecauseReturned
+                                    ? "refund-status-badge--complete"
+                                    : "refund-status-badge--active",
+                                )}
+                              >
+                                <BadgePercent aria-hidden="true" />
+                                {isExcludedBecauseReturned ? "Već vraćeno — ne računa se" : "Povrat 100%"}
                               </span>
                             ) : null}
                           </div>
@@ -4605,9 +4878,20 @@ function OrdersContent() {
                             </span>
                         </TableCell>
                         <TableCell className="text-center">
-                          <div className="flex flex-col items-end gap-1">
+                          <div
+                            className={cn(
+                              "flex flex-col items-end gap-1",
+                              isInRefundPeriod && !isExcludedBecauseReturned ? "refund-amount-card" : "",
+                            )}
+                          >
                             <div className="flex items-center justify-end gap-2">
-                              <span>{formatCurrency(povrat, "EUR")}</span>
+                              <span
+                                className={cn(
+                                  isInRefundPeriod && !isExcludedBecauseReturned ? "refund-amount-value" : "",
+                                )}
+                              >
+                                {formatCurrency(povrat, "EUR")}
+                              </span>
                               <input
                                 type="checkbox"
                                 checked={Boolean(order.povratVracen)}
@@ -4619,6 +4903,11 @@ function OrdersContent() {
                                 className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                               />
                             </div>
+                            {isExcludedBecauseReturned ? (
+                              <p className="text-[10px] text-slate-500">
+                                Obračunato {formatCurrency(calculatedPovrat, "EUR")}
+                              </p>
+                            ) : null}
                             {order.povratVracen ? (
                               <p className="text-[10px] text-slate-500">
                                 {order.povratVracenAt ? formatDate(order.povratVracenAt) : "Datum nije zabelezen"}
