@@ -57,6 +57,11 @@
   --refund-badge-text: #065f46;
   --refund-badge-border: rgba(5, 150, 105, 0.28);
   --refund-card-shadow: 0 12px 28px -22px rgba(4, 120, 87, 0.55);
+  --late-row-surface: rgba(255, 237, 213, 0.95);
+  --late-row-surface-soft: rgba(255, 247, 237, 0.75);
+  --late-row-hover: rgba(254, 215, 170, 0.92);
+  --late-accent: #ea580c;
+  --late-accent-soft: #fdba74;
 }
 
 :root[data-theme="dark"] {
@@ -111,6 +116,11 @@
   --refund-badge-text: #d1fae5;
   --refund-badge-border: rgba(110, 231, 183, 0.34);
   --refund-card-shadow: 0 14px 34px -22px rgba(52, 211, 153, 0.46);
+  --late-row-surface: rgba(124, 45, 18, 0.42);
+  --late-row-surface-soft: rgba(20, 20, 20, 0.68);
+  --late-row-hover: rgba(154, 52, 18, 0.52);
+  --late-accent: #fb923c;
+  --late-accent-soft: rgba(251, 146, 60, 0.36);
 }
 
 body {
@@ -306,6 +316,30 @@ h6 {
 .refund-row--complete {
   background: var(--refund-row-complete);
   box-shadow: inset 3px 0 0 var(--refund-accent-soft);
+}
+
+/* Orders: paket poslat ali kasni sa isporukom */
+.order-row--late {
+  background:
+    linear-gradient(
+      90deg,
+      var(--late-row-surface) 0%,
+      var(--late-row-surface) 46%,
+      var(--late-row-surface-soft) 100%
+    );
+  box-shadow:
+    inset 4px 0 0 var(--late-accent),
+    inset 5px 0 0 var(--late-accent-soft);
+}
+
+.order-row--late:hover {
+  background:
+    linear-gradient(
+      90deg,
+      var(--late-row-hover) 0%,
+      var(--late-row-surface) 52%,
+      var(--late-row-surface-soft) 100%
+    );
 }
 
 .refund-card {

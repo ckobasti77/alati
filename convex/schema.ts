@@ -149,6 +149,8 @@ export default defineSchema({
     povratVracenAt: v.optional(v.number()),
     manualRefund100: v.optional(v.boolean()),
     manualRefund100At: v.optional(v.number()),
+    kasni: v.optional(v.boolean()),
+    kasniAt: v.optional(v.number()),
     stageChangedAt: v.optional(v.number()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(

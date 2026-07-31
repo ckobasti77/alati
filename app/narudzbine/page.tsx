@@ -624,6 +624,7 @@ function OrdersContent() {
   const [refundPeriodEnd, setRefundPeriodEnd] = useState("");
   const [isRefundPeriodSaving, setIsRefundPeriodSaving] = useState(false);
   const [manualRefundSavingId, setManualRefundSavingId] = useState<string | null>(null);
+  const [kasniSavingId, setKasniSavingId] = useState<string | null>(null);
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const restockProductInputRef = useRef<HTMLInputElement | null>(null);
   const previousSlanjeModeRef = useRef<(typeof slanjeModes)[number] | undefined>(undefined);
@@ -2288,6 +2289,7 @@ function OrdersContent() {
       napomena: order.napomena,
       brojPosiljke: order.brojPosiljke,
       povratVracen: order.povratVracen,
+      kasni: order.kasni,
       items: order.items,
     }),
     [orderScope, sessionToken],
@@ -2448,6 +2450,27 @@ function OrdersContent() {
     } catch (error) {
       console.error(error);
       toast.error("Nije moguce sacuvati povrat.");
+    }
+  };
+
+  const handleKasniToggle = async (order: Order, nextValue: boolean) => {
+    if (kasniSavingId) return;
+    setKasniSavingId(order._id);
+    try {
+      await updateOrder({ ...buildOrderUpdatePayload(order), kasni: nextValue });
+      setOrders((prev) =>
+        prev.map((item) =>
+          item._id === order._id
+            ? { ...item, kasni: nextValue, kasniAt: nextValue ? Date.now() : undefined }
+            : item,
+        ),
+      );
+      toast.success(nextValue ? "Označeno da kasni." : "Oznaka kašnjenja je uklonjena.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Nije moguce sacuvati oznaku kašnjenja.");
+    } finally {
+      setKasniSavingId(null);
     }
   };
 
@@ -4774,6 +4797,8 @@ function OrdersContent() {
                     const remainingCount = itemNames.length > 3 ? itemNames.length - 3 : 0;
                     const shipmentNumber = resolveShipmentNumber(order);
                     const showShipmentNumberInNote = shipmentNumber.length > 0;
+                    const isSent = order.stage === "poslato";
+                    const isLate = isSent && Boolean(order.kasni);
 
                     return (
                       <TableRow
@@ -4788,6 +4813,7 @@ function OrdersContent() {
                           isExcludedBecauseReturned
                             ? "refund-row refund-row--complete"
                             : "",
+                          isLate ? "order-row--late" : "",
                         )}
                         aria-label={
                           isFullRefund100
@@ -4827,6 +4853,33 @@ function OrdersContent() {
                             <p className="text-[10px] text-slate-500">
                               {order.stageChangedAt ? formatDate(order.stageChangedAt) : "Datum nije zabelezen"}
                             </p>
+                            {isSent ? (
+                              <label
+                                className={cn(
+                                  "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition",
+                                  isLate
+                                    ? "border-orange-300 bg-orange-100 text-orange-800"
+                                    : "border-slate-200 bg-white text-slate-600 hover:border-orange-200 hover:text-orange-700",
+                                  kasniSavingId === order._id ? "opacity-60" : "",
+                                )}
+                                title="Označi da paket kasni sa isporukom"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(order.kasni)}
+                                  disabled={kasniSavingId === order._id}
+                                  onChange={(event) => {
+                                    event.stopPropagation();
+                                    void handleKasniToggle(order, event.target.checked);
+                                  }}
+                                  className="h-3 w-3 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                                />
+                                {isLate
+                                  ? `Kasni${order.slanjeMode ? ` · zovi ${order.slanjeMode}` : ""}`
+                                  : "Kasni"}
+                              </label>
+                            ) : null}
                             {isFullRefund100 ? (
                               <span
                                 className={cn(

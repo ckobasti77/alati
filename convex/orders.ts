@@ -1135,6 +1135,7 @@ export const create = mutation({
     napomena: v.optional(v.string()),
     brojPosiljke: v.optional(v.string()),
     povratVracen: v.optional(v.boolean()),
+    kasni: v.optional(v.boolean()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
     slanjeMode: v.optional(slanjeModeSchema),
@@ -1271,6 +1272,7 @@ export const update = mutation({
     napomena: v.optional(v.string()),
     brojPosiljke: v.optional(v.string()),
     povratVracen: v.optional(v.boolean()),
+    kasni: v.optional(v.boolean()),
     transportCost: v.optional(v.number()),
     transportMode: v.optional(transportModeSchema),
     slanjeMode: v.optional(slanjeModeSchema),
@@ -1332,6 +1334,10 @@ export const update = mutation({
     const usedAt = Date.now();
     const stageChanged = existing.stage !== nextStage;
     const povratChanged = Boolean(existing.povratVracen) !== povratVracen;
+    // "Kasni" (kasni sa isporukom) ima smisla samo dok je paket poslat.
+    const requestedKasni = args.kasni ?? existing.kasni ?? false;
+    const kasni = nextStage === "poslato" ? requestedKasni : false;
+    const kasniChanged = Boolean(existing.kasni) !== kasni;
 
     await ctx.db.patch(args.id, {
       scope,
@@ -1348,6 +1354,8 @@ export const update = mutation({
       brojPosiljke,
       povratVracen,
       povratVracenAt: povratChanged ? (povratVracen ? usedAt : undefined) : existing.povratVracenAt,
+      kasni,
+      kasniAt: kasniChanged ? (kasni ? usedAt : undefined) : existing.kasniAt,
       stageChangedAt: stageChanged ? usedAt : existing.stageChangedAt,
       transportCost,
       transportMode,

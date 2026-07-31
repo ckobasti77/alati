@@ -174,6 +174,8 @@ export interface Order {
   povratVracenAt?: number;
   manualRefund100?: boolean;
   manualRefund100At?: number;
+  kasni?: boolean;
+  kasniAt?: number;
   stageChangedAt?: number;
   customerName: string;
   address: string;
