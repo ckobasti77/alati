@@ -210,6 +210,7 @@ type OrderItemRecord = {
   nabavnaCena: number;
   prodajnaCena: number;
   manualProdajna?: boolean;
+  manualNabavna?: boolean;
 };
 
 type OrderItemWithProduct = OrderItemRecord & { product?: any };
@@ -230,6 +231,7 @@ const resolveItemsFromOrder = (order: Doc<"orders">): OrderItemRecord[] => {
       nabavnaCena: sanitizePrice(item.nabavnaCena),
       prodajnaCena: sanitizePrice(item.prodajnaCena),
       manualProdajna: Boolean((item as any).manualProdajna),
+      manualNabavna: Boolean((item as any).manualNabavna),
     }))
     .filter((item) => item.title && item.kolicina > 0);
   if (normalized.length > 0) return normalized;
@@ -245,6 +247,7 @@ const resolveItemsFromOrder = (order: Doc<"orders">): OrderItemRecord[] => {
       nabavnaCena: sanitizePrice(order.nabavnaCena),
       prodajnaCena: sanitizePrice(order.prodajnaCena),
       manualProdajna: false,
+      manualNabavna: false,
     },
   ];
 };
@@ -282,6 +285,7 @@ const normalizeOrderItems = async (
     let nabavnaCena = item.nabavnaCena;
     let prodajnaCena = item.prodajnaCena;
     const manualProdajna = item.manualProdajna === true;
+    const manualNabavna = item.manualNabavna === true;
     let product: Doc<"products"> | null = null;
 
     if (productId) {
@@ -314,7 +318,10 @@ const normalizeOrderItems = async (
         manualProdajna && prodajnaCena !== undefined ? sanitizePrice(prodajnaCena) : defaultProdajna;
       const supplierChoice = resolveSupplierPrice(product, variantId, supplierId);
       supplierId = supplierChoice.supplierId ?? supplierId;
-      nabavnaCena = supplierChoice.price ?? resolvedVariant?.nabavnaCena ?? product.nabavnaCena;
+      nabavnaCena =
+        manualNabavna && nabavnaCena !== undefined
+          ? sanitizePrice(nabavnaCena)
+          : supplierChoice.price ?? resolvedVariant?.nabavnaCena ?? product.nabavnaCena;
       if (!title) {
         title = variantLabel ?? displayName;
       }
@@ -324,6 +331,9 @@ const normalizeOrderItems = async (
     }
     if (manualProdajna && (prodajnaCena === undefined || Number.isNaN(prodajnaCena))) {
       throw new Error("Unesi prodajnu cenu.");
+    }
+    if (manualNabavna && (nabavnaCena === undefined || Number.isNaN(nabavnaCena))) {
+      throw new Error("Unesi nabavnu cenu.");
     }
 
     const normalizedItem: OrderItemRecord = {
@@ -337,6 +347,7 @@ const normalizeOrderItems = async (
       nabavnaCena: sanitizePrice(nabavnaCena),
       prodajnaCena: sanitizePrice(prodajnaCena),
       manualProdajna,
+      manualNabavna,
     };
     normalized.push(normalizedItem);
   }
@@ -432,6 +443,7 @@ const itemArgSchema = v.object({
   nabavnaCena: v.optional(v.number()),
   prodajnaCena: v.optional(v.number()),
   manualProdajna: v.optional(v.boolean()),
+  manualNabavna: v.optional(v.boolean()),
 });
 
 export const latest = query({
@@ -948,6 +960,8 @@ export const list = query({
     unreturnedOnly: v.optional(v.boolean()),
     returnedOnly: v.optional(v.boolean()),
     pickupOnly: v.optional(v.boolean()),
+    shippingOnly: v.optional(v.boolean()),
+    lateOnly: v.optional(v.boolean()),
     dateFrom: v.optional(v.number()),
     dateTo: v.optional(v.number()),
     scope: v.optional(orderScopeSchema),
@@ -1048,6 +1062,14 @@ export const list = query({
 
     if (args.pickupOnly) {
       orders = orders.filter((order) => Boolean(order.pickup));
+    } else if (args.shippingOnly) {
+      orders = orders.filter((order) => !order.pickup);
+    }
+
+    if (args.lateOnly) {
+      orders = orders.filter(
+        (order) => Boolean(order.kasni) && normalizeStage(order.stage as any) === "poslato",
+      );
     }
 
     const totals = orders.reduce(
@@ -1180,6 +1202,7 @@ export const create = mutation({
               nabavnaCena: args.nabavnaCena,
               prodajnaCena: args.prodajnaCena,
               manualProdajna: false,
+              manualNabavna: false,
             },
           ];
 

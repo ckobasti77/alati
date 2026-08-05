@@ -101,7 +101,7 @@ export const calculateOrderRefund = ({
   const isFullRefund100 = isInRefundPeriod || isManualRefund100;
 
   if (isFullRefund100) {
-    const refundAmount = totalNabavno + profit - transport;
+    const refundAmount = totalNabavno + profit + transport;
     const isExcludedBecauseReturned = Boolean(povratVracen);
     return {
       isInRefundPeriod,

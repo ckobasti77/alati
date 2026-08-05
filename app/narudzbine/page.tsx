@@ -327,6 +327,7 @@ type OrderItemDraft = {
   nabavnaCena: number;
   prodajnaCena: number;
   manualProdajna?: boolean;
+  manualNabavna?: boolean;
   variantLabel?: string;
   title: string;
 };
@@ -555,8 +556,11 @@ function OrdersContent() {
   const unreturnedQuery = useMemo(() => searchParams?.get("unreturned") === "1", [searchParamsString, searchParams]);
   const returnedQuery = useMemo(() => searchParams?.get("returned") === "1", [searchParamsString, searchParams]);
   const pickupQuery = useMemo(() => searchParams?.get("pickup") === "1", [searchParamsString, searchParams]);
+  const shippingQuery = useMemo(() => searchParams?.get("shipping") === "1", [searchParamsString, searchParams]);
+  const lateQuery = useMemo(() => searchParams?.get("late") === "1", [searchParamsString, searchParams]);
   const effectiveUnreturnedQuery = unreturnedQuery && !returnedQuery;
   const effectiveReturnedQuery = returnedQuery;
+  const effectiveShippingQuery = shippingQuery && !pickupQuery;
   const { token } = useAuth();
   const sessionToken = token as string;
   const [search, setSearch] = useState(searchQuery);
@@ -566,6 +570,8 @@ function OrdersContent() {
   const [showUnreturnedOnly, setShowUnreturnedOnly] = useState(effectiveUnreturnedQuery);
   const [showReturnedOnly, setShowReturnedOnly] = useState(effectiveReturnedQuery);
   const [showPickupOnly, setShowPickupOnly] = useState(pickupQuery);
+  const [showShippingOnly, setShowShippingOnly] = useState(effectiveShippingQuery);
+  const [showLateOnly, setShowLateOnly] = useState(lateQuery);
   const [filterMenuMode, setFilterMenuMode] = useState<"closed" | "hover" | "pinned">("closed");
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -612,6 +618,8 @@ function OrdersContent() {
   const [itemQuantity, setItemQuantity] = useState(1);
   const [useManualSalePrice, setUseManualSalePrice] = useState(false);
   const [manualSalePrice, setManualSalePrice] = useState("");
+  const [useManualPurchasePrice, setUseManualPurchasePrice] = useState(false);
+  const [manualPurchasePrice, setManualPurchasePrice] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
   const [quickEdit, setQuickEdit] = useState<QuickEditState | null>(null);
@@ -651,6 +659,8 @@ function OrdersContent() {
     showUnreturnedOnly: boolean;
     showReturnedOnly: boolean;
     showPickupOnly: boolean;
+    showShippingOnly: boolean;
+    showLateOnly: boolean;
     dateFrom: string;
     dateTo: string;
   }>({
@@ -662,6 +672,8 @@ function OrdersContent() {
     showUnreturnedOnly: false,
     showReturnedOnly: false,
     showPickupOnly: false,
+    showShippingOnly: false,
+    showLateOnly: false,
     dateFrom: "",
     dateTo: "",
   });
@@ -710,6 +722,8 @@ function OrdersContent() {
     unreturnedOnly: boolean;
     returnedOnly: boolean;
     pickupOnly: boolean;
+    shippingOnly: boolean;
+    lateOnly: boolean;
     dateFrom: number | undefined;
     dateTo: number | undefined;
     scope: "default" | "kalaba";
@@ -721,6 +735,8 @@ function OrdersContent() {
       unreturnedOnly: showUnreturnedOnly,
       returnedOnly: showReturnedOnly,
       pickupOnly: showPickupOnly,
+      shippingOnly: showShippingOnly,
+      lateOnly: showLateOnly,
       dateFrom: dateFromTimestamp,
       dateTo: dateToTimestamp,
       scope: orderScope,
@@ -732,6 +748,8 @@ function OrdersContent() {
       search,
       sessionToken,
       showPickupOnly,
+      showShippingOnly,
+      showLateOnly,
       showReturnedOnly,
       showUnreturnedOnly,
       stageFilters,
@@ -892,6 +910,8 @@ function OrdersContent() {
     (showUnreturnedOnly ? 1 : 0) +
     (showReturnedOnly ? 1 : 0) +
     (showPickupOnly ? 1 : 0) +
+    (showShippingOnly ? 1 : 0) +
+    (showLateOnly ? 1 : 0) +
     (dateFilterActive ? 1 : 0);
   const isFilterMenuOpen = filterMenuMode !== "closed";
   const restockEntries = restockRequests ?? [];
@@ -924,13 +944,15 @@ function OrdersContent() {
       if (showUnreturnedOnly) filters.push("Povrat: nepovraceni");
       if (showReturnedOnly) filters.push("Povrat: povraceno");
       if (showPickupOnly) filters.push("Preuzimanje: licno");
+      if (showShippingOnly) filters.push("Preuzimanje: slanje");
+      if (showLateOnly) filters.push("Isporuka: kasni");
       if (dateFilterActive) {
         filters.push(`Datum: ${dateFrom || "pocetak"} - ${dateTo || "danas"}`);
       }
       const filterText = filters.length > 0 ? filters.join(" | ") : "Bez aktivnih filtera";
       return `Izvezeno ${count} od ${total} narudzbina. ${filterText}.`;
     },
-    [dateFilterActive, dateFrom, dateTo, search, showPickupOnly, showReturnedOnly, showUnreturnedOnly, stageFilters],
+    [dateFilterActive, dateFrom, dateTo, search, showLateOnly, showPickupOnly, showShippingOnly, showReturnedOnly, showUnreturnedOnly, stageFilters],
   );
 
   const fetchOrdersForPdf = useCallback(async () => {
@@ -1009,10 +1031,12 @@ function OrdersContent() {
       showUnreturnedOnly,
       showReturnedOnly,
       showPickupOnly,
+      showShippingOnly,
+      showLateOnly,
       dateFrom,
       dateTo,
     };
-  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, showPickupOnly, stageFilters, dateFrom, dateTo]);
+  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, stageFilters, dateFrom, dateTo]);
 
   useEffect(() => {
     if (didRestoreRef.current) return;
@@ -1025,6 +1049,8 @@ function OrdersContent() {
     const storedUnreturned = stored.extra?.showUnreturnedOnly === true;
     const storedReturned = stored.extra?.showReturnedOnly === true;
     const storedPickup = stored.extra?.showPickupOnly === true;
+    const storedShipping = stored.extra?.showShippingOnly === true;
+    const storedLate = stored.extra?.showLateOnly === true;
     const storedDateFrom = normalizeDateInput(
       typeof stored.extra?.dateFrom === "string" ? stored.extra.dateFrom : "",
     );
@@ -1037,6 +1063,8 @@ function OrdersContent() {
       storedUnreturned !== effectiveUnreturnedQuery ||
       storedReturned !== effectiveReturnedQuery ||
       storedPickup !== pickupQuery ||
+      storedShipping !== effectiveShippingQuery ||
+      storedLate !== lateQuery ||
       storedDateFrom !== dateFromQuery ||
       storedDateTo !== dateToQuery
     ) {
@@ -1056,6 +1084,8 @@ function OrdersContent() {
     setShowUnreturnedOnly(effectiveUnreturnedQuery);
     setShowReturnedOnly(effectiveReturnedQuery);
     setShowPickupOnly(pickupQuery);
+    setShowShippingOnly(effectiveShippingQuery);
+    setShowLateOnly(lateQuery);
     setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
     clearListState(listStateKey);
   }, [
@@ -1065,6 +1095,8 @@ function OrdersContent() {
     effectiveUnreturnedQuery,
     effectiveReturnedQuery,
     pickupQuery,
+    effectiveShippingQuery,
+    lateQuery,
     dateFromQuery,
     dateToQuery,
   ]);
@@ -1096,6 +1128,8 @@ function OrdersContent() {
           showUnreturnedOnly: snapshot.showUnreturnedOnly,
           showReturnedOnly: snapshot.showReturnedOnly,
           showPickupOnly: snapshot.showPickupOnly,
+          showShippingOnly: snapshot.showShippingOnly,
+          showLateOnly: snapshot.showLateOnly,
           dateFrom: snapshot.dateFrom,
           dateTo: snapshot.dateTo,
         },
@@ -1186,7 +1220,9 @@ function OrdersContent() {
     const unreturnedChanged = current.showUnreturnedOnly !== effectiveUnreturnedQuery;
     const returnedChanged = current.showReturnedOnly !== effectiveReturnedQuery;
     const pickupChanged = current.showPickupOnly !== pickupQuery;
-    if (!searchChanged && !dateFromChanged && !dateToChanged && !stagesChanged && !unreturnedChanged && !returnedChanged && !pickupChanged) {
+    const shippingChanged = current.showShippingOnly !== effectiveShippingQuery;
+    const lateChanged = current.showLateOnly !== lateQuery;
+    if (!searchChanged && !dateFromChanged && !dateToChanged && !stagesChanged && !unreturnedChanged && !returnedChanged && !pickupChanged && !shippingChanged && !lateChanged) {
       skipUrlSyncRef.current = false;
       return;
     }
@@ -1211,6 +1247,12 @@ function OrdersContent() {
     if (pickupChanged) {
       setShowPickupOnly(pickupQuery);
     }
+    if (shippingChanged) {
+      setShowShippingOnly(effectiveShippingQuery);
+    }
+    if (lateChanged) {
+      setShowLateOnly(lateQuery);
+    }
     if (!skipUrlSyncRef.current) {
       resetOrdersFeed();
     }
@@ -1222,6 +1264,8 @@ function OrdersContent() {
     effectiveUnreturnedQuery,
     effectiveReturnedQuery,
     pickupQuery,
+    effectiveShippingQuery,
+    lateQuery,
     dateFromQuery,
     dateToQuery,
   ]);
@@ -1237,7 +1281,9 @@ function OrdersContent() {
       !areArraysEqual(normalizedStages, stageQuery) ||
       showUnreturnedOnly !== effectiveUnreturnedQuery ||
       showReturnedOnly !== effectiveReturnedQuery ||
-      showPickupOnly !== pickupQuery;
+      showPickupOnly !== pickupQuery ||
+      showShippingOnly !== effectiveShippingQuery ||
+      showLateOnly !== lateQuery;
     if (!needsUpdate) return;
     const params = new URLSearchParams(searchParams.toString());
     if (nextSearch) {
@@ -1272,6 +1318,16 @@ function OrdersContent() {
     } else {
       params.delete("pickup");
     }
+    if (showShippingOnly) {
+      params.set("shipping", "1");
+    } else {
+      params.delete("shipping");
+    }
+    if (showLateOnly) {
+      params.set("late", "1");
+    } else {
+      params.delete("late");
+    }
     const next = params.toString();
     router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
   }, [
@@ -1283,11 +1339,15 @@ function OrdersContent() {
     showUnreturnedOnly,
     showReturnedOnly,
     showPickupOnly,
+    showShippingOnly,
+    showLateOnly,
     stageFilters,
     stageQuery,
     effectiveUnreturnedQuery,
     effectiveReturnedQuery,
     pickupQuery,
+    effectiveShippingQuery,
+    lateQuery,
     dateFrom,
     dateTo,
     dateFromQuery,
@@ -1327,6 +1387,28 @@ function OrdersContent() {
   const handlePickupToggle = useCallback(
     (checked: boolean) => {
       setShowPickupOnly(checked);
+      if (checked) {
+        setShowShippingOnly(false);
+      }
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  const handleShippingToggle = useCallback(
+    (checked: boolean) => {
+      setShowShippingOnly(checked);
+      if (checked) {
+        setShowPickupOnly(false);
+      }
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  const handleLateToggle = useCallback(
+    (checked: boolean) => {
+      setShowLateOnly(checked);
       resetOrdersFeed();
     },
     [resetOrdersFeed],
@@ -1767,6 +1849,7 @@ function OrdersContent() {
         nabavnaCena: Number(item.nabavnaCena ?? 0),
         prodajnaCena: Number(item.prodajnaCena ?? 0),
         manualProdajna: Boolean(item.manualProdajna),
+        manualNabavna: Boolean(item.manualNabavna),
         variantLabel: item.variantLabel ?? "",
         title: item.title ?? "",
       })),
@@ -1777,6 +1860,8 @@ function OrdersContent() {
       itemQuantity: Number(itemQuantity ?? 0),
       useManualSalePrice: Boolean(useManualSalePrice),
       manualSalePrice: manualSalePrice ?? "",
+      useManualPurchasePrice: Boolean(useManualPurchasePrice),
+      manualPurchasePrice: manualPurchasePrice ?? "",
     });
   }, [
     draftItems,
@@ -1786,8 +1871,10 @@ function OrdersContent() {
     itemQuantity,
     itemSupplierId,
     itemVariantId,
+    manualPurchasePrice,
     manualSalePrice,
     productInput,
+    useManualPurchasePrice,
     useManualSalePrice,
   ]);
 
@@ -1882,6 +1969,8 @@ function OrdersContent() {
     setItemQuantity(1);
     setUseManualSalePrice(false);
     setManualSalePrice("");
+    setUseManualPurchasePrice(false);
+    setManualPurchasePrice("");
     setCustomerQuery("");
     setCustomerMenuOpen(false);
     setExitConfirmOpen(false);
@@ -1928,7 +2017,20 @@ function OrdersContent() {
       supplierId
         ? supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ?? bestSupplierLocal?.price
         : bestSupplierLocal?.price;
-    const nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? selectedProduct.nabavnaCena;
+    let nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? selectedProduct.nabavnaCena;
+    if (useManualPurchasePrice) {
+      const manualInput = manualPurchasePrice.trim();
+      if (manualInput.length === 0) {
+        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
+        return;
+      }
+      const parsed = Number(manualInput.replace(",", "."));
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
+        return;
+      }
+      nabavnaCena = parsed;
+    }
     let prodajnaCena = variant?.prodajnaCena ?? selectedProduct.prodajnaCena;
     if (useManualSalePrice) {
       const manualInput = manualSalePrice.trim();
@@ -1955,6 +2057,7 @@ function OrdersContent() {
       nabavnaCena,
       prodajnaCena,
       manualProdajna: useManualSalePrice,
+      manualNabavna: useManualPurchasePrice,
       variantLabel,
       title,
     };
@@ -1965,6 +2068,8 @@ function OrdersContent() {
     setItemQuantity(1);
     setUseManualSalePrice(false);
     setManualSalePrice("");
+    setUseManualPurchasePrice(false);
+    setManualPurchasePrice("");
     setProductInput("");
     setProductMenuOpen(false);
   };
@@ -2004,6 +2109,8 @@ function OrdersContent() {
       setItemQuantity(1);
       setUseManualSalePrice(false);
       setManualSalePrice("");
+      setUseManualPurchasePrice(false);
+      setManualPurchasePrice("");
       setProductSearch("");
       setProductMenuOpen(false);
       if (defaultVariant) {
@@ -2103,6 +2210,7 @@ function OrdersContent() {
         nabavnaCena: item.nabavnaCena,
         prodajnaCena: item.prodajnaCena,
         manualProdajna: Boolean(item.manualProdajna),
+        manualNabavna: Boolean(item.manualNabavna),
       }));
       const payload = {
         stage: values.stage,
@@ -3054,54 +3162,84 @@ function OrdersContent() {
               ) : null}
 
               {selectedProduct ? (
-                <div className="grid gap-3 md:grid-cols-3 md:items-end">
-                  <div>
-                    <FormLabel>Kolicina</FormLabel>
-                    <Input
-                      name="itemQuantity"
-                      type="number"
-                      min={1}
-                      required
-                      value={itemQuantity}
-                      onChange={(event) => {
-                        const next = Number(event.target.value);
-                        if (Number.isNaN(next)) {
-                          setItemQuantity(1);
-                          return;
-                        }
-                        setItemQuantity(Math.max(Math.round(next), 1));
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <FormLabel className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={useManualSalePrice}
+                <div className="space-y-3">
+                  <div className="grid gap-3 md:grid-cols-3 md:items-end">
+                    <div>
+                      <FormLabel>Kolicina</FormLabel>
+                      <Input
+                        name="itemQuantity"
+                        type="number"
+                        min={1}
+                        required
+                        value={itemQuantity}
                         onChange={(event) => {
-                          setUseManualSalePrice(event.target.checked);
-                          if (!event.target.checked) {
-                            setManualSalePrice("");
+                          const next = Number(event.target.value);
+                          if (Number.isNaN(next)) {
+                            setItemQuantity(1);
+                            return;
                           }
+                          setItemQuantity(Math.max(Math.round(next), 1));
                         }}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
-                      Rucno unosim prodajnu cenu
-                    </FormLabel>
-                    <Input
-                      name="manualSalePrice"
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      disabled={!useManualSalePrice}
-                      required={useManualSalePrice}
-                      value={manualSalePrice}
-                      onChange={(event) => setManualSalePrice(event.target.value)}
-                      placeholder="npr. 120"
-                      className={!useManualSalePrice ? "bg-slate-100" : undefined}
-                    />
+                    </div>
+                    <div>
+                      <FormLabel className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={useManualPurchasePrice}
+                          onChange={(event) => {
+                            setUseManualPurchasePrice(event.target.checked);
+                            if (!event.target.checked) {
+                              setManualPurchasePrice("");
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Rucno unosim nabavnu cenu
+                      </FormLabel>
+                      <Input
+                        name="manualPurchasePrice"
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        disabled={!useManualPurchasePrice}
+                        required={useManualPurchasePrice}
+                        value={manualPurchasePrice}
+                        onChange={(event) => setManualPurchasePrice(event.target.value)}
+                        placeholder="npr. 80"
+                        className={!useManualPurchasePrice ? "bg-slate-100" : undefined}
+                      />
+                    </div>
+                    <div>
+                      <FormLabel className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={useManualSalePrice}
+                          onChange={(event) => {
+                            setUseManualSalePrice(event.target.checked);
+                            if (!event.target.checked) {
+                              setManualSalePrice("");
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Rucno unosim prodajnu cenu
+                      </FormLabel>
+                      <Input
+                        name="manualSalePrice"
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        disabled={!useManualSalePrice}
+                        required={useManualSalePrice}
+                        value={manualSalePrice}
+                        onChange={(event) => setManualSalePrice(event.target.value)}
+                        placeholder="npr. 120"
+                        className={!useManualSalePrice ? "bg-slate-100" : undefined}
+                      />
+                    </div>
                   </div>
-                  <div className="md:col-span-1 flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleAddItem} className="gap-2">
                       <Plus className="h-4 w-4" />
                       Dodaj u narudzbinu
@@ -3116,6 +3254,8 @@ function OrdersContent() {
                         setProductInput("");
                         setUseManualSalePrice(false);
                         setManualSalePrice("");
+                        setUseManualPurchasePrice(false);
+                        setManualPurchasePrice("");
                         setItemQuantity(1);
                       }}
                     >
@@ -3146,10 +3286,19 @@ function OrdersContent() {
                           <p className="text-xs text-slate-500">
                             Kolicina: {item.kolicina} / Nabavna {formatCurrency(item.nabavnaCena, "EUR")} / Prodajna {formatCurrency(item.prodajnaCena, "EUR")}
                           </p>
-                          {item.manualProdajna ? (
-                            <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                              Rucno uneta cena
-                            </span>
+                          {item.manualNabavna || item.manualProdajna ? (
+                            <div className="flex flex-wrap gap-1">
+                              {item.manualNabavna ? (
+                                <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                  Rucno uneta nabavna
+                                </span>
+                              ) : null}
+                              {item.manualProdajna ? (
+                                <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                  Rucno uneta prodajna
+                                </span>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
                         <Button
@@ -4125,21 +4274,58 @@ function OrdersContent() {
                         </div>
                         <div className="space-y-2">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Preuzimanje</p>
+                          <div className="flex flex-col gap-2">
+                            <label
+                              className={cn(
+                                "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
+                                showPickupOnly
+                                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={showPickupOnly}
+                                onChange={(event) => handlePickupToggle(event.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              Samo licno preuzimanje
+                            </label>
+                            <label
+                              className={cn(
+                                "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
+                                showShippingOnly
+                                  ? "border-sky-200 bg-sky-50 text-sky-700"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={showShippingOnly}
+                                onChange={(event) => handleShippingToggle(event.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              Samo slanje
+                            </label>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Isporuka</p>
                           <label
                             className={cn(
                               "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                              showPickupOnly
-                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                              showLateOnly
+                                ? "border-orange-300 bg-orange-100 text-orange-800"
                                 : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
                             )}
                           >
                             <input
                               type="checkbox"
-                              checked={showPickupOnly}
-                              onChange={(event) => handlePickupToggle(event.target.checked)}
-                              className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              checked={showLateOnly}
+                              onChange={(event) => handleLateToggle(event.target.checked)}
+                              className="h-3.5 w-3.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
                             />
-                            Samo licno preuzimanje
+                            Samo oni koji kasne
                           </label>
                         </div>
                         <div className="space-y-2">

@@ -28,7 +28,7 @@ describe("refund policy", () => {
     expect(isOrderInRefundPeriod(atBelgradeNoon(2026, 8, 5), { startDate: "2026-08-12", endDate: "2026-08-03" })).toBe(false);
   });
 
-  it("u izabranom periodu koristi nabavno plus ceo profit minus transport", () => {
+  it("u izabranom periodu koristi nabavno plus ceo profit plus transport", () => {
     expect(
       calculateOrderRefund({
         orderCreatedAt: atBelgradeNoon(2026, 8, 3),
@@ -46,8 +46,8 @@ describe("refund policy", () => {
       profitForRefund: 30,
       outstandingProfitForRefund: 30,
       profitForRefundPercent: 100,
-      refundAmount: 100,
-      outstandingRefundAmount: 100,
+      refundAmount: 120,
+      outstandingRefundAmount: 120,
     });
   });
 
@@ -66,7 +66,7 @@ describe("refund policy", () => {
       isManualRefund100: false,
       isFullRefund100: true,
       isExcludedBecauseReturned: true,
-      refundAmount: 100,
+      refundAmount: 120,
       outstandingRefundAmount: 0,
       outstandingProfitForRefund: 0,
     });
@@ -88,8 +88,8 @@ describe("refund policy", () => {
       isManualRefund100: true,
       isFullRefund100: true,
       profitForRefund: 30,
-      refundAmount: 100,
-      outstandingRefundAmount: 100,
+      refundAmount: 120,
+      outstandingRefundAmount: 120,
     });
   });
 

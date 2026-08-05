@@ -183,6 +183,7 @@ export default defineSchema({
           nabavnaCena: v.number(),
           prodajnaCena: v.number(),
           manualProdajna: v.optional(v.boolean()),
+          manualNabavna: v.optional(v.boolean()),
         }),
       ),
     ),

@@ -148,6 +148,7 @@ export interface OrderItem {
   nabavnaCena: number;
   prodajnaCena: number;
   manualProdajna?: boolean;
+  manualNabavna?: boolean;
 }
 
 export interface Order {
