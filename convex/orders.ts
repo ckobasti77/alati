@@ -1,9 +1,11 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireUser } from "./auth";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "./search";
 import { calculateOrderRefund, isValidRefundDateKey } from "../lib/refund-policy";
+import { decideMarkPoslato } from "../lib/markPoslatoDecision";
+import { decideWaImport } from "../lib/waIntake/dedup";
 
 const orderStages = ["poruceno", "aks", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"] as const;
 const transportModes = ["Kol", "Joe", "Smg"] as const;
@@ -35,6 +37,33 @@ const slanjeModeSchema = v.union(
 );
 const slanjeOwnerSchema = v.string();
 const orderScopeSchema = v.union(v.literal(orderScopes[0]), v.literal(orderScopes[1]));
+
+const DELIVERY_DELAY_TIMEZONE = "Europe/Belgrade";
+const DELIVERY_DELAY_HOUR = 11;
+const DELIVERY_DELAY_MINUTE = 59;
+const delayCutoffFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: DELIVERY_DELAY_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+// Vraca lokalni datum (Beograd) i vreme za dati trenutak, koriscen za "kasni" automatizaciju.
+const getBelgradeDateParts = (timestamp: number) => {
+  const parts = delayCutoffFormatter.formatToParts(timestamp);
+  const map: Record<string, string> = {};
+  for (const part of parts) {
+    if (part.type !== "literal") map[part.type] = part.value;
+  }
+  return {
+    dateKey: `${map.year}-${map.month}-${map.day}`,
+    hour: Number(map.hour),
+    minute: Number(map.minute),
+  };
+};
 const refundPeriodOverviewSchema = v.object({
   period: v.union(
     v.null(),
@@ -1550,5 +1579,283 @@ export const remove = mutation({
       await ctx.db.delete(event._id);
     }
     await ctx.db.delete(args.id);
+  },
+});
+
+// Pokrece se periodicno preko convex/crons.ts. Cim stigne 11:59 (Beograd) narednog dana
+// posle slanja (AKS/BEX), oznaci porudzbinu kao "kasni" ako jos uvek nije stigla.
+export const flagDelayedOrders = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const nowParts = getBelgradeDateParts(now);
+    const pastCutoffToday =
+      nowParts.hour > DELIVERY_DELAY_HOUR ||
+      (nowParts.hour === DELIVERY_DELAY_HOUR && nowParts.minute >= DELIVERY_DELAY_MINUTE);
+    if (!pastCutoffToday) {
+      return { flagged: 0 };
+    }
+
+    const sentOrders = await ctx.db
+      .query("orders")
+      .filter((q) => q.eq(q.field("stage"), "poslato"))
+      .collect();
+
+    let flagged = 0;
+    for (const order of sentOrders) {
+      if (order.kasni) continue;
+      if (order.slanjeMode !== "Aks" && order.slanjeMode !== "Bex") continue;
+      if (!order.brojPosiljke) continue;
+      const sentAt = order.stageChangedAt ?? order.kreiranoAt;
+      const sentDateKey = getBelgradeDateParts(sentAt).dateKey;
+      if (sentDateKey >= nowParts.dateKey) continue;
+      await ctx.db.patch(order._id, { kasni: true, kasniAt: now });
+      flagged += 1;
+    }
+    return { flagged };
+  },
+});
+
+// Kandidati za uvoz AKS priznanica: narudzbine koje cekaju slanje (aks/na_stanju,
+// bez pickup-a, slanje Aks ili bez definisanog nacina). Ukljucuje i "poslato" iz
+// poslednjih 30 dana da bi matcher mogao da prijavi duplu priznanicu
+// ("Telefon pogadja narudzbinu koja je VEC poslata") — matcher ih ne predlaze
+// kao pozitivne pogotke.
+export const pendingForShipping = query({
+  args: { token: v.string(), scope: v.optional(orderScopeSchema) },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const poslatoCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const items = await ctx.db
+      .query("orders")
+      .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
+      .collect();
+    return items
+      .filter((order) => normalizeScope(order.scope) === scope && !order.pickup)
+      .filter((order) => {
+        const mode = resolveSlanjeModeFromOrder(order);
+        return mode === "Aks" || mode === undefined;
+      })
+      .filter((order) => {
+        const stage = normalizeStage(order.stage as any);
+        if (stage === "aks" || stage === "na_stanju") return true;
+        if (stage === "poslato") return (order.stageChangedAt ?? order.kreiranoAt) >= poslatoCutoff;
+        return false;
+      })
+      .map((order) => ({
+        id: order._id as string,
+        customerName: order.customerName,
+        phone: order.phone,
+        stage: normalizeStage(order.stage as any),
+        slanjeMode: resolveSlanjeModeFromOrder(order),
+        brojPosiljke: normalizeShipmentNumber(order.brojPosiljke),
+      }));
+  },
+});
+
+// Batch oznacavanje kao "poslato" iz uvoza priznanica. Svaka stavka se obradjuje
+// nezavisno: skip (sa razlogom) umesto throw, jer bi throw rollback-ovao celu
+// transakciju i ponistio vec upisane stavke koje je covek pojedinacno potvrdio.
+// Skip logika zivi u lib/markPoslatoDecision.ts (cist TS, pokriven vitest-om).
+// Idempotentno: ponovni identican batch vraca sve "skipped" bez ijednog upisa.
+export const markPoslatoBatch = mutation({
+  args: {
+    token: v.string(),
+    scope: v.optional(orderScopeSchema),
+    items: v.array(v.object({ orderId: v.id("orders"), brojPosiljke: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const now = Date.now();
+    const seen = new Set<string>();
+    const results: { orderId: Id<"orders">; status: "updated" | "skipped"; reason?: string }[] = [];
+
+    for (const item of args.items) {
+      const key = String(item.orderId);
+      if (seen.has(key)) {
+        results.push({ orderId: item.orderId, status: "skipped", reason: "Duplikat u zahtevu." });
+        continue;
+      }
+      seen.add(key);
+
+      const order = await ctx.db.get(item.orderId);
+      if (!order || order.userId !== user._id || normalizeScope(order.scope) !== scope) {
+        results.push({
+          orderId: item.orderId,
+          status: "skipped",
+          reason: "Narudzbina nije pronadjena ili nije dostupna.",
+        });
+        continue;
+      }
+
+      const decision = decideMarkPoslato(
+        { stage: normalizeStage(order.stage as any), brojPosiljke: order.brojPosiljke },
+        item.brojPosiljke,
+      );
+      if (decision.action === "skip") {
+        results.push({ orderId: item.orderId, status: "skipped", reason: decision.reason });
+        continue;
+      }
+
+      await ctx.db.patch(order._id, {
+        stage: "poslato",
+        brojPosiljke: decision.brojPosiljke,
+        stageChangedAt: now,
+      });
+      await ctx.db.insert("orderEvents", {
+        orderId: order._id,
+        userId: user._id,
+        scope,
+        type: "stage",
+        previousStage: order.stage,
+        stage: "poslato",
+        brojPosiljke: decision.brojPosiljke,
+        createdAt: now,
+      });
+      results.push({ orderId: item.orderId, status: "updated" });
+    }
+
+    return results;
+  },
+});
+
+// Dokle je WhatsApp uvoz stigao: najveci waTimestamp medju uvezenim narudzbinama
+// (ili null ako jos nista nije uvezeno). Sledeci uvoz vuce poruke posle toga.
+export const lastImportedWa = query({
+  args: { token: v.string(), scope: v.optional(orderScopeSchema) },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
+      .collect();
+    let max: number | null = null;
+    for (const order of orders) {
+      if (normalizeScope(order.scope) !== scope) continue;
+      if (typeof order.waTimestamp === "number" && (max === null || order.waTimestamp > max)) {
+        max = order.waTimestamp;
+      }
+    }
+    return max;
+  },
+});
+
+// Batch upis potvrdjenih WhatsApp draftova. Svaka stavka nezavisno: skip (sa
+// razlogom) umesto throw, da jedan duplikat ne rollback-uje ceo batch koji je
+// covek potvrdio. Dedup po waMessageId (odluka u lib/waIntake/dedup.ts, cist TS):
+// ponovni identican batch vraca sve "skipped" bez ijednog upisa.
+export const createBatchFromWa = mutation({
+  args: {
+    token: v.string(),
+    scope: v.optional(orderScopeSchema),
+    items: v.array(
+      v.object({
+        waMessageId: v.string(),
+        waTimestamp: v.number(),
+        customerName: v.string(),
+        phone: v.string(),
+        address: v.string(),
+        pickup: v.optional(v.boolean()),
+        title: v.string(),
+        productId: v.optional(v.id("products")),
+        nabavnaCena: v.optional(v.number()),
+        prodajnaCena: v.optional(v.number()),
+        napomena: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const results: { waMessageId: string; status: "inserted" | "skipped"; reason?: string; orderId?: Id<"orders"> }[] = [];
+    // Set vec uvezenih id-jeva: puni se iz baze (po stavci) + posle svakog upisa,
+    // pa je i duplikat UNUTAR istog batcha pokriven.
+    const imported = new Set<string>();
+
+    for (const item of args.items) {
+      const waMessageId = item.waMessageId.trim();
+      if (waMessageId && !imported.has(waMessageId)) {
+        const existing = await ctx.db
+          .query("orders")
+          .withIndex("by_waMessageId", (q) => q.eq("waMessageId", waMessageId))
+          .first();
+        if (existing) imported.add(waMessageId);
+      }
+      const decision = decideWaImport(item.waMessageId, imported);
+      if (decision.action === "skip") {
+        results.push({ waMessageId: item.waMessageId, status: "skipped", reason: decision.reason });
+        continue;
+      }
+
+      const now = Date.now();
+      const pickup = Boolean(item.pickup);
+      const customerName = item.customerName.trim();
+      const phone = item.phone.trim();
+      const address = pickup ? "" : item.address.trim();
+      // Cene iz drafta su vec razresene (pricing.ts); manual* cuva bas te vrednosti
+      // umesto da ih normalizeOrderItems pregazi kataloskim.
+      const baseItems: IncomingItem[] = [
+        {
+          productId: item.productId,
+          title: item.title,
+          kolicina: 1,
+          nabavnaCena: item.nabavnaCena,
+          prodajnaCena: item.prodajnaCena,
+          manualNabavna: item.nabavnaCena !== undefined,
+          manualProdajna: item.prodajnaCena !== undefined,
+        },
+      ];
+      const normalizedItems = await normalizeOrderItems(ctx, user._id, baseItems, item.title);
+      if (normalizedItems.length === 0) {
+        results.push({ waMessageId, status: "skipped", reason: "Stavka nema naziv proizvoda." });
+        continue;
+      }
+      const totals = summarizeItems(normalizedItems);
+      const title = item.title.trim() || normalizedItems[0].title || "Narudzbina";
+
+      const orderId = await ctx.db.insert("orders", {
+        userId: user._id,
+        scope,
+        stage: "poruceno",
+        productId: normalizedItems[0].productId,
+        supplierId: normalizedItems[0].supplierId,
+        variantId: normalizedItems[0].variantId,
+        variantLabel: normalizedItems[0].variantLabel,
+        title,
+        kolicina: Math.max(totals.totalQty, 1),
+        nabavnaCena: totals.avgNabavna,
+        prodajnaCena: totals.avgProdajna,
+        napomena: item.napomena?.trim() || undefined,
+        stageChangedAt: now,
+        myProfitPercent: 100,
+        customerName,
+        address,
+        phone,
+        pickup,
+        items: normalizedItems,
+        sortIndex: now,
+        kreiranoAt: now,
+        waMessageId,
+        waTimestamp: item.waTimestamp,
+        waImportedAt: now,
+      });
+      await ctx.db.insert("orderEvents", {
+        orderId,
+        userId: user._id,
+        scope,
+        type: "stage",
+        stage: "poruceno",
+        createdAt: now,
+      });
+      await upsertCustomer(ctx, user._id, scope, { name: customerName, phone, address, pickup }, now);
+
+      imported.add(waMessageId);
+      results.push({ waMessageId, status: "inserted", orderId });
+    }
+
+    return results;
   },
 });

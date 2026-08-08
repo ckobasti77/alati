@@ -4156,6 +4156,10 @@ function OrdersContent() {
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
             {ordersPagination.total} narudzbina
           </div>
+          <Button variant="outline" onClick={() => router.push("/narudzbine/uvoz")} className="gap-2">
+            <Share2 className="h-4 w-4" />
+            Uvoz priznanica
+          </Button>
           <Button onClick={openCreateModal} className="gap-2">
             <Plus className="h-4 w-4" />
             Nova narudzbina

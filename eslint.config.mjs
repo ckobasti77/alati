@@ -19,6 +19,10 @@ const eslintConfig = defineConfig([
     "storefront/build/**",
   ]),
   {
+    // ESLint 10 je uklonio context.getFilename, a eslint-plugin-react (unutar
+    // eslint-config-next) ga jos zove pri react verziji "detect" — eksplicitna
+    // verzija preskace detekciju i spasava ceo lint run od TypeError-a.
+    settings: { react: { version: "19.2.4" } },
     rules: {
       // Legacy codebase uses these patterns heavily; keep signal as warnings.
       "@typescript-eslint/no-explicit-any": "warn",

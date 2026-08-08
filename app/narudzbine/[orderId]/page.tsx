@@ -480,6 +480,8 @@ function OrderDetails({
   const [itemVariantId, setItemVariantId] = useState("");
   const [itemSupplierId, setItemSupplierId] = useState("");
   const [itemQuantity, setItemQuantity] = useState(1);
+  const [useManualPurchasePrice, setUseManualPurchasePrice] = useState(false);
+  const [manualPurchasePrice, setManualPurchasePrice] = useState("");
   const [useManualSalePrice, setUseManualSalePrice] = useState(false);
   const [manualSalePrice, setManualSalePrice] = useState("");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -828,6 +830,8 @@ function OrderDetails({
     setItemVariantId("");
     setItemSupplierId("");
     setItemQuantity(1);
+    setUseManualPurchasePrice(false);
+    setManualPurchasePrice("");
     setUseManualSalePrice(false);
     setManualSalePrice("");
     setProductInput("");
@@ -860,7 +864,20 @@ function OrderDetails({
       supplierId
         ? supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ?? bestSupplierLocal?.price
         : bestSupplierLocal?.price;
-    const nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? selectedProduct.nabavnaCena;
+    let nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? selectedProduct.nabavnaCena;
+    if (useManualPurchasePrice) {
+      const manualInput = manualPurchasePrice.trim();
+      if (manualInput.length === 0) {
+        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
+        return;
+      }
+      const parsed = Number(manualInput.replace(",", "."));
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
+        return;
+      }
+      nabavnaCena = parsed;
+    }
     let prodajnaCena = variant?.prodajnaCena ?? selectedProduct.prodajnaCena;
     if (useManualSalePrice) {
       const manualInput = manualSalePrice.trim();
@@ -889,6 +906,7 @@ function OrderDetails({
       nabavnaCena,
       prodajnaCena,
       manualProdajna: useManualSalePrice,
+      manualNabavna: useManualPurchasePrice,
       product: selectedProduct,
     };
 
@@ -1348,6 +1366,11 @@ function OrderDetails({
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold text-slate-900">{order.title}</h1>
               <StageBadge stage={order.stage} />
+              {order.stage === "poslato" && order.kasni ? (
+                <span className="rounded-full border border-orange-300 bg-orange-100 px-2 py-1 text-xs font-bold uppercase tracking-wide text-orange-800">
+                  {`Kasni${order.slanjeMode ? ` · zovi ${order.slanjeMode}` : ""}`}
+                </span>
+              ) : null}
               {isFullRefund100 ? (
                 <span
                   className={`rounded-full border px-2 py-1 text-xs font-bold uppercase tracking-wide ${
@@ -1482,10 +1505,19 @@ function OrderDetails({
                       <p className="text-xs uppercase tracking-wide text-slate-500">Prodajna</p>
                       <p className="font-semibold text-slate-900">{formatCurrency(item.prodajnaCena, "EUR")}</p>
                       <p className="text-xs text-slate-500">Nabavna {formatCurrency(item.nabavnaCena, "EUR")}</p>
-                        {item.manualProdajna ? (
-                          <span className="inline-flex justify-end text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                            Rucno uneta cena
-                          </span>
+                        {item.manualNabavna || item.manualProdajna ? (
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {item.manualNabavna ? (
+                              <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                Rucno uneta nabavna
+                              </span>
+                            ) : null}
+                            {item.manualProdajna ? (
+                              <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                Rucno uneta prodajna
+                              </span>
+                            ) : null}
+                          </div>
                         ) : null}
                     </div>
                     <div className="flex items-center justify-end">
@@ -1570,6 +1602,8 @@ function OrderDetails({
                               setProductInput(getProductDisplayName(product));
                               setItemVariantId(defaultVariant?.id ?? "");
                               setItemSupplierId("");
+                              setUseManualPurchasePrice(false);
+                              setManualPurchasePrice("");
                               setUseManualSalePrice(false);
                               setManualSalePrice("");
                               setItemQuantity(1);
@@ -1728,7 +1762,7 @@ function OrderDetails({
             ) : null}
 
             {selectedProduct ? (
-              <div className="grid gap-3 md:grid-cols-3 md:items-end">
+              <div className="grid gap-3 md:grid-cols-4 md:items-end">
                 <div>
                   <p className="text-sm font-medium text-slate-700">Kolicina</p>
                   <Input
@@ -1745,6 +1779,34 @@ function OrderDetails({
                       }
                       setItemQuantity(Math.max(Math.round(next), 1));
                     }}
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={useManualPurchasePrice}
+                      onChange={(event) => {
+                        setUseManualPurchasePrice(event.target.checked);
+                        if (!event.target.checked) {
+                          setManualPurchasePrice("");
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Rucno unosim nabavnu cenu
+                  </label>
+                  <Input
+                    name="manualPurchasePrice"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    disabled={!useManualPurchasePrice}
+                    required={useManualPurchasePrice}
+                    value={manualPurchasePrice}
+                    onChange={(event) => setManualPurchasePrice(event.target.value)}
+                    placeholder="npr. 80"
+                    className={!useManualPurchasePrice ? "bg-slate-100" : undefined}
                   />
                 </div>
                 <div>
@@ -2065,25 +2127,24 @@ function OrderDetails({
             <CardTitle>Finansije</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-3 py-2">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Ručno uključi povrat 100%</p>
-                <p className="text-xs text-slate-500">
-                  Porudžbina koristi ceo profit bez obzira na datum kreiranja.
-                  {isInRefundPeriod ? " Trenutno već ulazi i po izabranom periodu." : ""}
-                </p>
+            {!isInRefundPeriod || isManualRefund100 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-3 py-2">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Ručno uključi povrat 100%</p>
+                  <p className="text-xs text-slate-500">Porudžbina koristi ceo profit bez obzira na datum kreiranja.</p>
+                </div>
+                <label className="flex items-center gap-2 text-sm font-medium text-emerald-900">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(order.manualRefund100)}
+                    disabled={isManualRefundSaving}
+                    onChange={(event) => void handleManualRefund100Toggle(event.target.checked)}
+                    className="h-4 w-4 rounded border-emerald-300 text-emerald-700 focus:ring-emerald-600"
+                  />
+                  {isManualRefundSaving ? "Čuvanje..." : order.manualRefund100 ? "Ručno uključeno" : "Uključi"}
+                </label>
               </div>
-              <label className="flex items-center gap-2 text-sm font-medium text-emerald-900">
-                <input
-                  type="checkbox"
-                  checked={Boolean(order.manualRefund100)}
-                  disabled={isManualRefundSaving}
-                  onChange={(event) => void handleManualRefund100Toggle(event.target.checked)}
-                  className="h-4 w-4 rounded border-emerald-300 text-emerald-700 focus:ring-emerald-600"
-                />
-                {isManualRefundSaving ? "Čuvanje..." : order.manualRefund100 ? "Ručno uključeno" : "Uključi"}
-              </label>
-            </div>
+            ) : null}
             {isFullRefund100 ? (
               <div
                 className={`rounded-lg border px-3 py-2 ${

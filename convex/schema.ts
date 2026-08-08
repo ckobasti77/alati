@@ -145,6 +145,9 @@ export default defineSchema({
     prodajnaCena: v.number(),
     napomena: v.optional(v.string()),
     brojPosiljke: v.optional(v.string()),
+    aksDelivered: v.optional(v.boolean()),
+    aksTrackingStatus: v.optional(v.string()),
+    aksTrackingCheckedAt: v.optional(v.number()),
     povratVracen: v.optional(v.boolean()),
     povratVracenAt: v.optional(v.number()),
     manualRefund100: v.optional(v.boolean()),
@@ -189,9 +192,14 @@ export default defineSchema({
     ),
     sortIndex: v.optional(v.number()),
     kreiranoAt: v.number(),
+    // WhatsApp uvoz (wa-intake): dedup kljuc + dokle smo stali + kada je uvezeno.
+    waMessageId: v.optional(v.string()),
+    waTimestamp: v.optional(v.number()),
+    waImportedAt: v.optional(v.number()),
   })
     .index("by_kreiranoAt", ["kreiranoAt"])
-    .index("by_user_kreiranoAt", ["userId", "kreiranoAt"]),
+    .index("by_user_kreiranoAt", ["userId", "kreiranoAt"])
+    .index("by_waMessageId", ["waMessageId"]),
   orderEvents: defineTable({
     orderId: v.id("orders"),
     userId: v.id("users"),
