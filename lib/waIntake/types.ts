@@ -1,11 +1,11 @@
 // waIntake/types.ts
 // Zajednicki tipovi za "WhatsApp -> Narudzbine (uvoz na dugme)".
-// Sve eksterno (WhatsApp, Ollama, KP/Playwright) je iza interfejsa odavde,
+// Sve eksterno (WhatsApp, Gemini, KP/Playwright) je iza interfejsa odavde,
 // pa se orkestracija i cisti moduli testiraju sa fake implementacijama.
 
 // Jedna WhatsApp poruka u prozoru za obradu. `index` je pozicija u prozoru
-// (na nju se Qwen referise pri segmentaciji), `id` je waMessageId (dedup kljuc),
-// `ts` je epoch ms, `images` su base64 (bez data: prefiksa) za Ollamu.
+// (na nju se model referise pri segmentaciji), `id` je waMessageId (dedup kljuc),
+// `ts` je epoch ms, `images` su base64 (bez data: prefiksa) za vision model.
 export type WaMessage = {
   index: number;
   id: string;
@@ -23,7 +23,7 @@ export type SegmentGroup = {
   tip: SegmentTip;
 };
 
-// Stage B rezultat: polja koja je Qwen izvukao iz teksta + slika jedne grupe.
+// Stage B rezultat: polja koja je vision model izvukao iz teksta + slika jedne grupe.
 export type ExtractedFields = {
   customerName?: string;
   phone?: string;
@@ -71,14 +71,32 @@ export type DraftOrder = {
 
 // --- Provider interfejsi (real implementacije u providers/, fake za testove) ---
 
+// Dva WhatsApp naloga: "porudzbine" (uvoz porudzbina, chat WA_PORUDZBINE_CHAT)
+// i "papirici" (AKS priznanice, WA_PAPIRICI_CHAT). Svaki nalog = posebna
+// LocalAuth sesija (.wwebjs_auth, headless browser); QR se skenira jednom po
+// nalogu, posle toga sesija je zapamcena.
+export type WaAccount = "porudzbine" | "papirici";
+
+// Rezime jednog WhatsApp chata za dev-helper koji proverava imena chatova.
+export type WaChatSummary = {
+  id: string;
+  name: string;
+  isGroup: boolean;
+  lastMessageAt?: number;
+};
+
 export interface WhatsAppSource {
   // Poruke iz pracenog chata sa timestamp > sinceTs (uz mali overlap);
   // sinceTs === null znaci "od pocetka prozora" (prvi uvoz).
   fetchMessagesSince(sinceTs: number | null): Promise<WaMessage[]>;
+  // Svi chatovi klijenta, sortirani opadajuce po poslednjoj poruci
+  // (dev-helper za proveru imena chata iz WA_*_CHAT env varijabli).
+  listChats(): Promise<WaChatSummary[]>;
 }
 
 export interface VisionChat {
-  // Jedan poziv Ollama /api/chat (format json, temperature 0); vraca message.content.
+  // Jedan vision poziv (JSON izlaz, temperature 0); vraca sadrzaj kao string
+  // koji segment.ts parsira (real: Gemini preko lib/gemini.ts).
   chatJson(prompt: string, images: string[]): Promise<string>;
 }
 

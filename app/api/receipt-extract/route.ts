@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { extractReceipt, OllamaUnavailableError, RECEIPT_EXTRACT_MODEL } from "@/lib/receiptExtract";
+import { extractReceipt, VisionUnavailableError } from "@/lib/receiptExtract";
 
-// Tanka ruta nad lib/receiptExtract.ts (prompt, poziv Ollame i parsiranje zive tamo,
+// Tanka ruta nad lib/receiptExtract.ts (prompt, Gemini poziv i parsiranje zive tamo,
 // pa ih integracioni testovi pokrivaju bez next/server importa).
 //
-// Bez auth-a: ruta samo prosledjuje sliku lokalnoj Ollami i ne dira Convex/podatke.
+// Bez auth-a: ruta samo prosledjuje sliku Gemini ekstrakciji i ne dira Convex/podatke.
 // Feature se koristi iskljucivo lokalno (npm run dev). Ako se app ikad javno
 // deploy-uje, ovu rutu treba gate-ovati tokenom kao app/api/social.
 
@@ -23,12 +23,10 @@ export async function POST(request: Request) {
     const result = await extractReceipt(base64);
     return jsonResponse(result);
   } catch (error) {
-    if (error instanceof OllamaUnavailableError) {
-      console.error("Receipt extract: Ollama unavailable", error.message);
+    if (error instanceof VisionUnavailableError) {
+      console.error("Receipt extract: Gemini unavailable", error.message);
       return jsonResponse(
-        {
-          error: `Ollama nije dostupna. Proveri da li je pokrenuta (ollama serve) i da li je model ${RECEIPT_EXTRACT_MODEL} preuzet.`,
-        },
+        { error: `Gemini nije dostupan: ${error.message} Proveri GEMINI_API_KEY u .env.local.` },
         503,
       );
     }

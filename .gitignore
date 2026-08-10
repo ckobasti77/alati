@@ -38,6 +38,10 @@ yarn-error.log*
 /fb-poster/.env
 /fb-poster/auth.json
 
+# whatsapp-web.js sesije (LocalAuth) — tajne, nikad u git
+.wwebjs_auth/
+.wwebjs_cache/
+
 # vercel
 .vercel
 

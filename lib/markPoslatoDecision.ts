@@ -7,9 +7,13 @@
 // 1. prazan broj -> skip (nema sta da se upise)
 // 2. vec "poslato" -> skip PRE provere konflikta, da idempotentan ponovni run istog
 //    batcha prijavi "vec oznacena" umesto laznog konflikta broja
-// 3. stage van {aks, na_stanju} -> skip (stiglo/legle_pare/vraceno se ne vracaju nazad)
-// 4. postojeci DRUGI broj posiljke -> skip (poredjenje samo po ciframa, bez laznih
+// 3. postojeci DRUGI broj posiljke -> skip (poredjenje samo po ciframa, bez laznih
 //    konflikata zbog razmaka; upisuje se trimovan string kao normalizeShipmentNumber)
+//
+// Napomena o stanjima: priznanica sme da oznaci BILO KOJU narudzbinu (bilo koje stanje,
+// ukljucujuci "poruceno" i "licno") kao poslato. Jedini izuzetak je vec "poslato"
+// (idempotencija). Zavrsena stanja (stiglo/legle_pare/vraceno) matcher salje na
+// review sa upozorenjem, pa je covekova potvrda svesno gaziranje unazad.
 
 export type MarkPoslatoSnapshot = {
   stage: string;
@@ -22,8 +26,6 @@ export type MarkPoslatoDecision =
 
 const digitsOnly = (value?: string) => (value ?? "").replace(/\D/g, "");
 
-const SENDABLE_STAGES = new Set(["aks", "na_stanju"]);
-
 export function decideMarkPoslato(
   order: MarkPoslatoSnapshot,
   requestedBroj: string | undefined,
@@ -34,12 +36,6 @@ export function decideMarkPoslato(
   }
   if (order.stage === "poslato") {
     return { action: "skip", reason: "Narudzbina je vec oznacena kao poslato." };
-  }
-  if (!SENDABLE_STAGES.has(order.stage)) {
-    return {
-      action: "skip",
-      reason: `Status narudzbine (${order.stage}) ne dozvoljava oznacavanje kao poslato.`,
-    };
   }
   const existing = digitsOnly(order.brojPosiljke);
   if (existing && existing !== digitsOnly(trimmed)) {

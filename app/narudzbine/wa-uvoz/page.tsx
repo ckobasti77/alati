@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Download, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Download, List, Trash2 } from "lucide-react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
@@ -38,6 +38,8 @@ type BatchItem = {
 };
 
 type BatchResult = { waMessageId: string; status: "inserted" | "skipped"; reason?: string; orderId?: string };
+
+type WaChat = { id: string; name: string; isGroup: boolean; lastMessageAt?: number };
 
 type DraftRow = {
   key: string;
@@ -102,6 +104,9 @@ function WaUvozContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastPullInfo, setLastPullInfo] = useState<string | null>(null);
 
+  const [chats, setChats] = useState<WaChat[] | null>(null);
+  const [isListingChats, setIsListingChats] = useState(false);
+
   const productOptions = useMemo(
     () =>
       (products ?? [])
@@ -154,6 +159,38 @@ function WaUvozContent() {
       toast.error(error instanceof Error ? error.message : "Uvoz iz WhatsApp-a nije uspeo.");
     } finally {
       setIsPulling(false);
+    }
+  };
+
+  const handleListChats = async () => {
+    if (isListingChats) return;
+    setIsListingChats(true);
+    try {
+      const response = await fetch("/api/wa-intake/chats");
+      const data = (await response.json().catch(() => null)) as { chats?: WaChat[]; error?: string } | null;
+      if (!response.ok) {
+        throw new Error(data?.error || "Izlistavanje chatova nije uspelo.");
+      }
+      const list = data?.chats ?? [];
+      setChats(list);
+      if (list.length === 0) {
+        toast.info("Nema chatova (ili klijent jos nije spreman).");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Izlistavanje chatova nije uspelo.");
+    } finally {
+      setIsListingChats(false);
+    }
+  };
+
+  const handleCopyChatId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      toast.success("ID kopiran.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Kopiranje nije uspelo.");
     }
   };
 
@@ -287,6 +324,63 @@ function WaUvozContent() {
       ) : null}
 
       {lastPullInfo && !isPulling ? <p className="text-xs text-slate-500">{lastPullInfo}</p> : null}
+
+      <div className="space-y-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Dev helper: proveri ime chata</h2>
+            <p className="text-xs text-slate-500">
+              Izlista sve chatove — tacno IME ide u WA_PORUDZBINE_CHAT / WA_PAPIRICI_CHAT u .env.local.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => void handleListChats()}
+            disabled={isListingChats}
+          >
+            <List className="h-4 w-4" />
+            {isListingChats ? "Ucitavanje..." : "Izlistaj WhatsApp chatove"}
+          </Button>
+        </div>
+
+        {isListingChats ? <LoadingDots show label="Ucitavam chatove (skeniraj QR u konzoli servera ako je prvi put)..." /> : null}
+
+        {!isListingChats && chats && chats.length > 0 ? (
+          <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
+            {chats.map((chat) => (
+              <li
+                key={chat.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-slate-900">
+                    {chat.name || "(bez imena)"}
+                    {chat.isGroup ? <span className="ml-2 text-xs font-normal text-slate-500">grupa</span> : null}
+                  </p>
+                  <p className="truncate font-mono text-xs text-slate-500">{chat.id}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 gap-1"
+                  onClick={() => void handleCopyChatId(chat.id)}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Kopiraj ID
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {!isListingChats && chats && chats.length === 0 ? (
+          <p className="text-xs text-slate-500">Nema chatova za prikaz.</p>
+        ) : null}
+      </div>
 
       {rows.length > 0 ? (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">

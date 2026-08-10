@@ -133,12 +133,23 @@ describe("matchReceipt", () => {
     expect(r.orderId).toBeUndefined();
   });
 
-  it("12) match samo protiv narudžbina koje čekaju slanje (ne 'stiglo' i sl.)", () => {
+  it("12) završena narudžbina ('stiglo') se i dalje poklopi, ali ide na review + upozorenje", () => {
     const p: CandidateOrder[] = [
       order({ id: "x", customerName: "Stefan Nikolić", phone: "065 903 31 10", stage: "stiglo" }),
     ];
     const r = matchReceipt({ name: "Stefan Nikolic", phone: "065 903 31 10", brojPosiljke: "1" }, p);
-    expect(r.status).toBe("none");
+    expect(r.status).toBe("review");
+    expect(r.orderId).toBe("x");
+    expect(r.warnings.join(" ")).toMatch(/STIGLO/i);
+  });
+
+  it("12b) 'lično'/pickup narudžbina (slanjeMode nije Aks) se svejedno poklopi po telefonu -> high", () => {
+    const p: CandidateOrder[] = [
+      order({ id: "licno", customerName: "Stefan Nikolić", phone: "065 903 31 10", stage: "poruceno", slanjeMode: "Licno" }),
+    ];
+    const r = matchReceipt({ name: "Stefan Nikolic", phone: "065 903 31 10", brojPosiljke: "1" }, p);
+    expect(r.status).toBe("high");
+    expect(r.orderId).toBe("licno");
   });
 });
 

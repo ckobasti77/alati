@@ -34,11 +34,10 @@ describe("decideMarkPoslato", () => {
     }
   });
 
-  it("6. stage van {aks, na_stanju} -> skip (ne vracaj unazad na poslato)", () => {
-    for (const stage of ["stiglo", "legle_pare", "vraceno", "poruceno"]) {
+  it("6. bilo koje stanje osim 'poslato' (poruceno/stiglo/legle_pare/vraceno) -> update (dozvoljeno)", () => {
+    for (const stage of ["poruceno", "aks", "na_stanju", "stiglo", "legle_pare", "vraceno"]) {
       const d = decideMarkPoslato({ stage }, "92044002798488");
-      expect(d.action).toBe("skip");
-      expect(d.action === "skip" && d.reason).toContain(stage);
+      expect(d).toEqual({ action: "update", brojPosiljke: "92044002798488" });
     }
   });
 

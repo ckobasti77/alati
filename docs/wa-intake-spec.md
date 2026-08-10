@@ -100,8 +100,9 @@ u promptu (srpski). Uvek parsiraj `message.content` kao JSON; robusno na višak 
 - Postojeći `lib/receiptMatcher.test.ts` ostaje zelen posle refaktora `textMatch`.
 
 ## Zavisnosti
-`npm i whatsapp-web.js playwright-core qrcode-terminal`. Providere drži lenjo-inicijalizovane
-(singleton na `globalThis` da preživi Next dev reload). QR se ispiše u konzolu servera pri prvom radu.
+`npm i whatsapp-web.js playwright-core`. Providere drži lenjo-inicijalizovane
+(singleton na `globalThis` da preživi Next dev reload). WhatsApp se kači preko CDP-a na već
+prijavljeni Chrome naloga (`WA_*_CDP_URL`) — bez QR-a i bez headless-a.
 
 ## Definicija gotovog
 `npx tsc --noEmit` čist; `npm run lint` čist; `npm run test` sve zeleno; `npx convex dev --once` uspešno.

@@ -1626,23 +1626,15 @@ export const pendingForShipping = query({
   handler: async (ctx, args) => {
     const { user } = await requireUser(ctx, args.token);
     const scope = normalizeScope(args.scope);
-    const poslatoCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const items = await ctx.db
       .query("orders")
       .withIndex("by_user_kreiranoAt", (q) => q.eq("userId", user._id))
       .collect();
+    // Priznanica sme da poklopi BILO KOJU postojecu narudzbinu u istom scope-u,
+    // bez obzira na stanje ili nacin slanja (ukljucujuci "licno"/pickup).
+    // Bezbednosna upozorenja (vec poslato/stiglo, drugi broj posiljke) resava matcher.
     return items
-      .filter((order) => normalizeScope(order.scope) === scope && !order.pickup)
-      .filter((order) => {
-        const mode = resolveSlanjeModeFromOrder(order);
-        return mode === "Aks" || mode === undefined;
-      })
-      .filter((order) => {
-        const stage = normalizeStage(order.stage as any);
-        if (stage === "aks" || stage === "na_stanju") return true;
-        if (stage === "poslato") return (order.stageChangedAt ?? order.kreiranoAt) >= poslatoCutoff;
-        return false;
-      })
+      .filter((order) => normalizeScope(order.scope) === scope)
       .map((order) => ({
         id: order._id as string,
         customerName: order.customerName,

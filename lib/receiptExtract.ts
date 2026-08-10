@@ -1,8 +1,12 @@
 // receiptExtract.ts
-// Ekstrakcija podataka sa fotografije AKS priznanice preko lokalne Ollame
-// (vision model qwen2.5vl:7b). Ovde zivi sva logika rute /api/receipt-extract
+// Ekstrakcija podataka sa fotografije AKS priznanice preko Gemini vision API-ja
+// (lib/gemini.ts). Ovde zivi sva logika rute /api/receipt-extract
 // (prompt, poziv, parsiranje, post-processing) da bi bila testabilna bez
 // importa next/server — integracioni testovi ciljaju extractReceipt direktno.
+
+import { geminiVision } from "./gemini";
+
+export { VisionUnavailableError } from "./gemini";
 
 export type ReceiptExtraction = {
   imePrimaoca: string;
@@ -11,18 +15,7 @@ export type ReceiptExtraction = {
   warning?: string;
 };
 
-export class OllamaUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "OllamaUnavailableError";
-  }
-}
-
-export const RECEIPT_EXTRACT_MODEL = "qwen2.5vl:7b";
-
-export const DEFAULT_OLLAMA_URL = "http://localhost:11434";
-
-// Instrukcije na engleskom (qwen2.5vl ih najpouzdanije prati), JSON kljucevi srpski.
+// Instrukcije na engleskom (vision modeli ih najpouzdanije prate), JSON kljucevi srpski.
 export const RECEIPT_EXTRACT_PROMPT = `You are reading a photo of an AKS courier shipping receipt from Serbia.
 The photo may contain several overlapping receipts. Read ONLY the frontmost,
 most fully visible receipt and ignore all others.
@@ -60,20 +53,6 @@ const SENDER_ACCOUNT_DIGITS = "265000000761511990";
 const digitsOnly = (value: string) => value.replace(/\D/g, "");
 
 const asString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
-
-function parseModelJson(content: string): Record<string, unknown> | null {
-  try {
-    return JSON.parse(content) as Record<string, unknown>;
-  } catch {
-    const match = content.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[0]) as Record<string, unknown>;
-    } catch {
-      return null;
-    }
-  }
-}
 
 // Deterministicki cistac poznatih promasaja modela: procitan POSILJALAC blok,
 // "Kurir:" broj umesto broja posiljke, broj racuna umesto telefona.
@@ -113,50 +92,22 @@ function postProcess(raw: Record<string, unknown>): ReceiptExtraction {
   };
 }
 
-export async function extractReceipt(
-  imageBase64: string,
-  opts?: { ollamaUrl?: string; timeoutMs?: number },
-): Promise<ReceiptExtraction> {
-  const baseUrl = (opts?.ollamaUrl ?? process.env.OLLAMA_URL ?? DEFAULT_OLLAMA_URL).replace(/\/+$/, "");
-  const timeoutMs = opts?.timeoutMs ?? 120_000;
-
-  let response: Response;
+export async function extractReceipt(imageBase64: string): Promise<ReceiptExtraction> {
+  let parsed: unknown;
   try {
-    response = await fetch(`${baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(timeoutMs),
-      body: JSON.stringify({
-        model: RECEIPT_EXTRACT_MODEL,
-        stream: false,
-        format: "json",
-        options: { temperature: 0 },
-        messages: [{ role: "user", content: RECEIPT_EXTRACT_PROMPT, images: [imageBase64] }],
-      }),
-    });
-  } catch {
-    throw new OllamaUnavailableError(
-      `Ollama nije dostupna na ${baseUrl}. Proveri da li je pokrenuta (ollama serve).`,
-    );
+    parsed = await geminiVision(RECEIPT_EXTRACT_PROMPT, [imageBase64]);
+  } catch (error) {
+    // Gemini vratio ne-JSON sadrzaj: isti fallback kao pre (prazna polja + warning);
+    // VisionUnavailableError i ostalo ide dalje ka ruti.
+    if (error instanceof SyntaxError) {
+      return { imePrimaoca: "", telefonPrimaoca: "", brojPosiljke: "", warning: "Model nije vratio validan JSON." };
+    }
+    throw error;
   }
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new OllamaUnavailableError(
-      `Ollama je vratila gresku ${response.status} za model ${RECEIPT_EXTRACT_MODEL}. ${body.slice(0, 200)}`,
-    );
-  }
-
-  const payload = (await response.json().catch(() => null)) as { message?: { content?: string } } | null;
-  const content = payload?.message?.content;
-  if (typeof content !== "string" || !content.trim()) {
-    return { imePrimaoca: "", telefonPrimaoca: "", brojPosiljke: "", warning: "Model nije vratio sadrzaj." };
-  }
-
-  const parsed = parseModelJson(content);
-  if (!parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return { imePrimaoca: "", telefonPrimaoca: "", brojPosiljke: "", warning: "Model nije vratio validan JSON." };
   }
 
-  return postProcess(parsed);
+  return postProcess(parsed as Record<string, unknown>);
 }

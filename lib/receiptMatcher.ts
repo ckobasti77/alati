@@ -44,7 +44,10 @@ export type MatchResult = {
 };
 
 // --- konfiguracija pragova ---
-const SENDABLE_STAGES = new Set(["aks", "na_stanju"]);
+// Priznanica sme da poklopi BILO KOJU postojecu narudzbinu, bez obzira na stanje
+// (ukljucujuci "licno"/pickup i bilo koji nacin slanja). Zavrsena stanja ne blokiraju
+// poklapanje, ali dobijaju upozorenje da se narudzbina ne pomeri unazad slucajno.
+const COMPLETED_STAGES = new Set(["poslato", "stiglo", "legle_pare", "vraceno"]);
 const NAME_HIGH = 0.9; // ime dovoljno slicno za "high" (uz jasnu prednost)
 const NAME_MARGIN = 0.08; // prednost nad drugim kandidatom
 const NAME_REVIEW = 0.74; // ispod ovoga za name-only -> "none"
@@ -79,14 +82,21 @@ function phoneEq(candidateRaw: string, receiptCanonical: string): boolean {
 }
 
 const digitsOnly = (s?: string) => (s ?? "").replace(/\D/g, "");
-const isSendable = (o: CandidateOrder) =>
-  SENDABLE_STAGES.has(o.stage) && (o.slanjeMode === undefined || o.slanjeMode === "Aks");
+// Bilo koja postojeca narudzbina je kandidat (bilo koje stanje, i "licno").
+const isSendable = (_o: CandidateOrder) => true;
+
+const COMPLETED_LABEL: Record<string, string> = {
+  poslato: "POSLATO",
+  stiglo: "STIGLO",
+  legle_pare: "LEGLE PARE",
+  vraceno: "VRAĆENO",
+};
 
 function orderWarnings(c: CandidateOrder, receipt: ReceiptData): { warnings: string[]; blocking: boolean } {
   const warnings: string[] = [];
   let blocking = false;
-  if (c.stage === "poslato") {
-    warnings.push("Narudžbina je već označena kao POSLATO.");
+  if (COMPLETED_STAGES.has(c.stage)) {
+    warnings.push(`Narudžbina je već u stanju ${COMPLETED_LABEL[c.stage] ?? c.stage.toUpperCase()}.`);
     blocking = true;
   }
   if (c.brojPosiljke && receipt.brojPosiljke && digitsOnly(c.brojPosiljke) !== digitsOnly(receipt.brojPosiljke)) {

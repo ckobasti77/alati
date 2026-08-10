@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, ImagePlus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, ImagePlus, RotateCcw, Trash2 } from "lucide-react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
@@ -31,9 +31,18 @@ import type { ReceiptExtraction } from "@/lib/receiptExtract";
 const digitsOnly = (value?: string) => (value ?? "").replace(/\D/g, "");
 
 const stageShortLabels: Record<string, string> = {
+  poruceno: "Poruceno",
   aks: "Aks",
   na_stanju: "Na stanju",
+  poslato: "Poslato",
+  stiglo: "Stiglo",
+  legle_pare: "Legle pare",
+  vraceno: "Vraceno",
 };
+
+// Zavrsena stanja: i dalje se mogu izabrati u dropdownu, ali se ne racunaju u
+// badge "ceka slanje" (matcher ih salje na review sa upozorenjem).
+const COMPLETED_STAGES = new Set(["poslato", "stiglo", "legle_pare", "vraceno"]);
 
 const matchBadge: Record<MatchResult["status"], { label: string; tone: string }> = {
   high: { label: "Pouzdano", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
@@ -76,6 +85,20 @@ async function extractViaApi(file: File): Promise<ReceiptExtraction> {
   return data;
 }
 
+// Jedna slika povucena iz WhatsApp chata (ruta /api/receipt-extract/from-whatsapp).
+type WaPulledImage = { messageId: string; imageIndex: number; ts: number; data: string };
+
+const waImageKey = (entry: { messageId: string; imageIndex: number }) => `${entry.messageId}#${entry.imageIndex}`;
+
+// base64 (bez data: prefiksa) -> File, da WhatsApp slike udju kroz isti
+// addFiles/red-obrade pipeline kao rucni drag-drop.
+function base64ToFile(base64: string, name: string): File {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], name, { type: "image/jpeg" });
+}
+
 export default function UvozPriznanicaPage() {
   return (
     <RequireAuth>
@@ -102,8 +125,13 @@ function UvozContent() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPullingWa, setIsPullingWa] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const processingRef = useRef(false);
+  // Kljucevi (messageId#imageIndex) vec povucenih WhatsApp slika u ovoj sesiji;
+  // ref (ne state) jer ne utice na render. Brisanje reda namerno NE oslobadja
+  // kljuc — ponovni pull ne sme da vaskrsne namerno obrisan red.
+  const pulledWaKeysRef = useRef<Set<string>>(new Set());
   const previewUrlsRef = useRef<string[]>([]);
 
   previewUrlsRef.current = rows.map((row) => row.previewUrl);
@@ -159,16 +187,17 @@ function UvozContent() {
     })();
   }, [rows]);
 
-  const sendableCandidates = useMemo(() => {
+  // Sve narudzbine su kandidati (bilo koje stanje, i "licno") — dropdown i prefil
+  // koriste ceo spisak. Badge "ceka slanje" broji samo one koje jos nisu zavrsene.
+  const dropdownCandidates = useMemo(() => {
     if (!candidates) return [];
-    return candidates
-      .filter(
-        (candidate) =>
-          (candidate.stage === "aks" || candidate.stage === "na_stanju") &&
-          (candidate.slanjeMode === undefined || candidate.slanjeMode === "Aks"),
-      )
-      .sort((a, b) => a.customerName.localeCompare(b.customerName, "sr"));
+    return [...candidates].sort((a, b) => a.customerName.localeCompare(b.customerName, "sr"));
   }, [candidates]);
+
+  const waitingCount = useMemo(
+    () => (candidates ?? []).filter((candidate) => !COMPLETED_STAGES.has(candidate.stage)).length,
+    [candidates],
+  );
 
   const matchableRows = useMemo(
     () => rows.filter((row) => row.status === "ready" && !row.writeResult),
@@ -192,14 +221,14 @@ function UvozContent() {
   // (samo za "high" bez mismatch-a i sa procitanim brojem).
   useEffect(() => {
     if (!candidates) return;
-    const sendableIds = new Set(sendableCandidates.map((candidate) => candidate.id));
+    const candidateIds = new Set(dropdownCandidates.map((candidate) => candidate.id));
     setRows((prev) => {
       let changed = false;
       const next = prev.map((row) => {
         if (row.status !== "ready" || row.matchInit || row.writeResult) return row;
         const match = matches.get(row.key);
         if (!match) return row;
-        const proposed = match.orderId && sendableIds.has(match.orderId) ? match.orderId : "";
+        const proposed = match.orderId && candidateIds.has(match.orderId) ? match.orderId : "";
         changed = true;
         return {
           ...row,
@@ -211,7 +240,7 @@ function UvozContent() {
       });
       return changed ? next : prev;
     });
-  }, [matches, candidates, sendableCandidates]);
+  }, [matches, candidates, dropdownCandidates]);
 
   const updateRow = useCallback((key: string, patch: Partial<ReceiptRow>) => {
     setRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -278,6 +307,36 @@ function UvozContent() {
     event.target.value = "";
   };
 
+  const handlePullFromWhatsApp = async () => {
+    if (isPullingWa) return;
+    setIsPullingWa(true);
+    try {
+      const response = await fetch("/api/receipt-extract/from-whatsapp", { method: "POST" });
+      const data = (await response.json().catch(() => null)) as
+        | { images?: WaPulledImage[]; scannedMessages?: number; error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(data?.error || "Povlacenje iz WhatsApp-a nije uspelo.");
+      }
+      const entries = data?.images ?? [];
+      const fresh = entries.filter((entry) => !pulledWaKeysRef.current.has(waImageKey(entry)));
+      if (fresh.length === 0) {
+        toast.info(
+          entries.length === 0 ? "Nema slika u chatu u poslednjih 48h." : "Sve slike iz chata su vec u tabeli.",
+        );
+        return;
+      }
+      for (const entry of fresh) pulledWaKeysRef.current.add(waImageKey(entry));
+      addFiles(fresh.map((entry) => base64ToFile(entry.data, `wa-${entry.messageId}-${entry.imageIndex}.jpg`)));
+      toast.success(`Dodato ${fresh.length} slika iz WhatsApp-a — obrada krece.`);
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Povlacenje iz WhatsApp-a nije uspelo.");
+    } finally {
+      setIsPullingWa(false);
+    }
+  };
+
   const candidateName = (orderId?: string) => {
     if (!orderId) return "—";
     const candidate = candidates?.find((entry) => entry.id === orderId);
@@ -324,13 +383,13 @@ function UvozContent() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Uvoz AKS priznanica</h1>
           <p className="text-sm text-slate-500">
-            Ubaci slike priznanica — ekstrakcija (lokalna Ollama) + bar-kod predlazu narudzbine. Nista se ne upisuje
+            Ubaci slike priznanica — ekstrakcija (Gemini) + bar-kod predlazu narudzbine. Nista se ne upisuje
             bez tvoje potvrde.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
-            {candidates === undefined ? "..." : `${sendableCandidates.length} ceka slanje`}
+            {candidates === undefined ? "..." : `${waitingCount} ceka slanje`}
           </div>
           <Button asChild variant="outline" className="gap-2">
             <Link href="/narudzbine">
@@ -371,6 +430,24 @@ function UvozContent() {
         <p className="text-xs text-slate-500">Moze vise slika odjednom. Obrada ide redom, slika po slika.</p>
       </div>
 
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <p className="text-xs text-slate-500">Ili povuci slike papirica direktno iz WhatsApp chata (poslednjih 48h).</p>
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2"
+          onClick={() => void handlePullFromWhatsApp()}
+          disabled={isPullingWa}
+        >
+          <Download className="h-4 w-4" />
+          {isPullingWa ? "Povlacenje..." : "Povuci papiriće iz WhatsApp-a"}
+        </Button>
+      </div>
+
+      {isPullingWa ? (
+        <LoadingDots show label="Povlacim slike iz WhatsApp-a (ako je prvi put, skeniraj QR u konzoli servera)..." />
+      ) : null}
+
       {pendingCount > 0 ? (
         <LoadingDots show label={`Obrada priznanica (${pendingCount} preostalo)...`} />
       ) : null}
@@ -396,7 +473,7 @@ function UvozContent() {
                 const warnings: string[] = [];
                 if (row.extracted?.warning) warnings.push(row.extracted.warning);
                 if (row.broj?.mismatch) {
-                  warnings.push(`Bar-kod (${digitsOnly(row.barcode ?? "")}) se ne poklapa sa Qwen ciframa — proveri.`);
+                  warnings.push(`Bar-kod (${digitsOnly(row.barcode ?? "")}) se ne poklapa sa Gemini ciframa — proveri.`);
                 }
                 if (row.broj?.source === "barcode") {
                   warnings.push("Broj procitan samo sa bar-koda — proveri.");
@@ -459,7 +536,7 @@ function UvozContent() {
                           }
                         >
                           <option value="">— izaberi —</option>
-                          {sendableCandidates.map((candidate) => (
+                          {dropdownCandidates.map((candidate) => (
                             <option key={candidate.id} value={candidate.id}>
                               {candidate.customerName} · {candidate.phone} ·{" "}
                               {stageShortLabels[candidate.stage] ?? candidate.stage}

@@ -1,16 +1,16 @@
 // POST /api/wa-intake — orkestracija uvoza porudzbina iz WhatsApp chata (lokalno).
-// Tok: lastImportedWa -> WhatsApp poruke -> Qwen segmentacija (Stage A) ->
-// Qwen ekstrakcija po grupi (Stage B) -> productMatch -> KP cena -> pricing ->
+// Tok: lastImportedWa -> WhatsApp poruke -> Gemini segmentacija (Stage A) ->
+// Gemini ekstrakcija po grupi (Stage B) -> productMatch -> KP cena -> pricing ->
 // DraftOrder[] nazad stranici. NISTA se ne upisuje u bazu odavde — upis ide tek
 // posle ljudske potvrde kroz orders.createBatchFromWa.
 //
-// Sva "ziva" spoljasnost (WhatsApp, Ollama, KP/Chrome) je iza interfejsa iz
+// Sva "ziva" spoljasnost (WhatsApp, Gemini, KP/Chrome) je iza interfejsa iz
 // lib/waIntake; ova ruta radi samo lokalno (npm run dev), kao /api/receipt-extract.
 
 import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import { OllamaUnavailableError } from "@/lib/receiptExtract";
+import { VisionUnavailableError } from "@/lib/gemini";
 import {
   buildExtractionPrompt,
   buildSegmentationPrompt,
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
     const sinceTs = (await convex.query(api.orders.lastImportedWa, { token, scope })) as number | null;
 
     // 2) poruke iz chata (sa malim overlapom u provideru)
-    const whatsapp = getWhatsAppSource();
+    const whatsapp = getWhatsAppSource("porudzbine");
     const messages = await whatsapp.fetchMessagesSince(sinceTs);
     if (messages.length === 0) {
       return jsonResponse({ drafts: [], scannedMessages: 0, sinceTs });
@@ -177,7 +177,7 @@ export async function POST(request: Request) {
         if (sinceTs !== null && draft.waTimestamp <= sinceTs) continue;
         drafts.push(draft);
       } catch (error) {
-        if (error instanceof OllamaUnavailableError) throw error;
+        if (error instanceof VisionUnavailableError) throw error;
         console.error("[wa-intake] obrada grupe nije uspela", group, error);
         groupErrors.push(error instanceof Error ? error.message : "Obrada grupe nije uspela.");
       }
@@ -191,8 +191,8 @@ export async function POST(request: Request) {
       errors: groupErrors,
     });
   } catch (error) {
-    if (error instanceof OllamaUnavailableError) {
-      console.error("[wa-intake] Ollama nedostupna:", error.message);
+    if (error instanceof VisionUnavailableError) {
+      console.error("[wa-intake] Gemini nedostupan:", error.message);
       return jsonResponse({ error: error.message }, 503);
     }
     console.error("[wa-intake] uvoz nije uspeo", error);
