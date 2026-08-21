@@ -24,6 +24,7 @@ import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
+import { openTracking, resolveTrackingTarget } from "@/lib/tracking";
 import {
   createOrdersTablePdfFile,
   downloadPdfFile,
@@ -4844,9 +4845,12 @@ function OrdersContent() {
                         <button
                           type="button"
                           className="mt-3 flex w-full items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-left text-xs text-blue-700"
+                          title="Kopiraj + otvori pracenje"
                           onClick={(event) => {
                             event.stopPropagation();
                             void copyText(shipmentNumber, "Broj posiljke je kopiran.");
+                            const target = resolveTrackingTarget(shipmentNumber, resolveOrderShippingMode(order));
+                            if (target) openTracking(target);
                           }}
                         >
                           <span className="font-semibold uppercase tracking-wide">Broj porudzbine</span>
@@ -5279,6 +5283,8 @@ function OrdersContent() {
                               onClick={(event) => {
                                 event.stopPropagation();
                                 void copyText(shipmentNumber, "Broj posiljke je kopiran.");
+                                const target = resolveTrackingTarget(shipmentNumber, resolveOrderShippingMode(order));
+                                if (target) openTracking(target);
                               }}
                               title={shipmentNumber}
                             >

@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Alati — Auto praćenje pošiljki",
+  "version": "1.0.0",
+  "description": "Automatski upisuje broj pošiljke u AKS/Pošta praćenje i traži status.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.aks.rs/pracenje-posiljke*",
+        "https://aks.rs/pracenje-posiljke*",
+        "https://posta.rs/cir/alati/pracenje-posiljke.aspx*",
+        "https://www.posta.rs/cir/alati/pracenje-posiljke.aspx*"
+      ],
+      "run_at": "document_idle",
+      "js": ["content.js"]
+    }
+  ]
+}

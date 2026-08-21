@@ -24,6 +24,7 @@ import {
   type OrderDetailPdfItem,
 } from "@/lib/pdfExport";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
+import { openTracking, resolveTrackingTarget } from "@/lib/tracking";
 import type {
   OrderEvent,
   OrderRefundPeriodOverview,
@@ -1050,8 +1051,10 @@ function OrderDetails({
 
   const handleShipmentNumberCopy = useCallback(async () => {
     if (!hasShipmentNumber) return;
+    const target = resolveTrackingTarget(shipmentNumber, resolveOrderShippingMode(order));
+    if (target) openTracking(target);
     await copyText(shipmentNumber, "Broj posiljke je kopiran.");
-  }, [copyText, hasShipmentNumber, shipmentNumber]);
+  }, [copyText, hasShipmentNumber, order, shipmentNumber]);
 
   const closeShipmentStageModal = useCallback(() => {
     if (isShipmentStageSaving) return;
