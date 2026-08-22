@@ -44,9 +44,12 @@ export type MatchResult = {
 };
 
 // --- konfiguracija pragova ---
-// Priznanica sme da poklopi BILO KOJU postojecu narudzbinu, bez obzira na stanje
-// (ukljucujuci "licno"/pickup i bilo koji nacin slanja). Zavrsena stanja ne blokiraju
-// poklapanje, ali dobijaju upozorenje da se narudzbina ne pomeri unazad slucajno.
+// Priznanica poklapa SAMO AKTIVNE narudzbine (koje jos cekaju slanje), bez obzira
+// na nacin slanja (ukljucujuci "licno"/pickup). Zavrsena stanja (poslato/stiglo/
+// legle_pare/vraceno) se NE gledaju pri poklapanju — vazno za kupca koji se vrati
+// posle ranije zavrsene porudzbine: nova aktivna narudzbina se bira, stara zavrsena
+// se ignorise. Zavrsene i dalje sluze samo kao sigurnosno upozorenje (duplikat) kad
+// telefon pogadja iskljucivo vec zavrsenu narudzbinu.
 const COMPLETED_STAGES = new Set(["poslato", "stiglo", "legle_pare", "vraceno"]);
 const NAME_HIGH = 0.9; // ime dovoljno slicno za "high" (uz jasnu prednost)
 const NAME_MARGIN = 0.08; // prednost nad drugim kandidatom
@@ -82,8 +85,9 @@ function phoneEq(candidateRaw: string, receiptCanonical: string): boolean {
 }
 
 const digitsOnly = (s?: string) => (s ?? "").replace(/\D/g, "");
-// Bilo koja postojeca narudzbina je kandidat (bilo koje stanje, i "licno").
-const isSendable = (_o: CandidateOrder) => true;
+// Kandidat za poklapanje je samo AKTIVNA narudzbina (bilo koji nacin slanja, i "licno").
+// Zavrsene se izostavljaju iz poklapanja (vidi COMPLETED_STAGES iznad).
+const isSendable = (o: CandidateOrder) => !COMPLETED_STAGES.has(o.stage);
 
 const COMPLETED_LABEL: Record<string, string> = {
   poslato: "POSLATO",
@@ -171,15 +175,18 @@ export function matchReceipt(receipt: ReceiptData, candidates: CandidateOrder[])
       };
     }
 
-    // nema pogotka medju "za slanje" -> da li je mozda vec poslata (duplikat)?
-    const sentHit = candidates.find((c) => c.stage === "poslato" && phoneEq(c.phone, rPhone));
-    if (sentHit) {
+    // nema pogotka medju aktivnima -> da li telefon pogadja neku VEC ZAVRSENU (duplikat)?
+    const completedHit = candidates.find((c) => COMPLETED_STAGES.has(c.stage) && phoneEq(c.phone, rPhone));
+    if (completedHit) {
+      const label = COMPLETED_LABEL[completedHit.stage] ?? completedHit.stage.toUpperCase();
       return {
         status: "review",
-        orderId: sentHit.id,
+        orderId: completedHit.id,
         score: 0.9,
-        reason: "Telefon pogađa narudžbinu koja je VEĆ poslata.",
-        warnings: ["Narudžbina je već označena kao POSLATO."],
+        reason: `Telefon pogađa VEĆ ZAVRŠENU narudžbinu (${label}).`,
+        warnings: [
+          `Narudžbina je već u stanju ${label}. Ako je ovo nova porudžbina, prvo je dodaj u narudžbine.`,
+        ],
         alternatives: [],
       };
     }

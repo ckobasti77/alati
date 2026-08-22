@@ -143,6 +143,27 @@ describe("matchReceipt", () => {
     expect(r.warnings.join(" ")).toMatch(/STIGLO/i);
   });
 
+  it("12c) kupac se vratio: stara ZAVRŠENA + nova AKTIVNA (isti telefon/ime) -> high na aktivnu, zavrsena se ignorise", () => {
+    const p: CandidateOrder[] = [
+      order({ id: "stara", customerName: "Stefan Nikolić", phone: "065 903 31 10", stage: "legle_pare" }),
+      order({ id: "nova", customerName: "Stefan Nikolić", phone: "065 903 31 10", stage: "aks" }),
+    ];
+    const r = matchReceipt({ name: "Stefan Nikolic", phone: "065 903 31 10", brojPosiljke: "92044002799487" }, p);
+    expect(r.status).toBe("high");
+    expect(r.orderId).toBe("nova");
+    expect(r.warnings).toHaveLength(0);
+  });
+
+  it("12d) samo ZAVRŠENA ('legle_pare') pogađa po telefonu -> review + upozorenje (duplikat)", () => {
+    const p: CandidateOrder[] = [
+      order({ id: "z", customerName: "Stefan Nikolić", phone: "065 903 31 10", stage: "legle_pare" }),
+    ];
+    const r = matchReceipt({ name: "Stefan Nikolic", phone: "065 903 31 10", brojPosiljke: "1" }, p);
+    expect(r.status).toBe("review");
+    expect(r.orderId).toBe("z");
+    expect(r.warnings.join(" ")).toMatch(/LEGLE PARE/i);
+  });
+
   it("12b) 'lično'/pickup narudžbina (slanjeMode nije Aks) se svejedno poklopi po telefonu -> high", () => {
     const p: CandidateOrder[] = [
       order({ id: "licno", customerName: "Stefan Nikolić", phone: "065 903 31 10", stage: "poruceno", slanjeMode: "Licno" }),
