@@ -5,6 +5,7 @@ import { requireUser } from "./auth";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "./search";
 import { calculateOrderRefund, isValidRefundDateKey } from "../lib/refund-policy";
 import { decideMarkPoslato } from "../lib/markPoslatoDecision";
+import { decideMarkLeglo } from "../lib/markLegloDecision";
 import { decideWaImport } from "../lib/waIntake/dedup";
 
 const orderStages = ["poruceno", "aks", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"] as const;
@@ -1704,6 +1705,69 @@ export const markPoslatoBatch = mutation({
         previousStage: order.stage,
         stage: "poslato",
         brojPosiljke: decision.brojPosiljke,
+        createdAt: now,
+      });
+      results.push({ orderId: item.orderId, status: "updated" });
+    }
+
+    return results;
+  },
+});
+
+// Batch oznacavanje kao "legle_pare" iz uvoza AKS specifikacije (leglih pouzeca).
+// Kandidati se biraju istim query-jem kao priznanice (pendingForShipping), a
+// poklapanje ide po broju posiljke (NalogID) na klijentu (lib/legleMatcher.ts).
+// Ovde se NE upisuje broj posiljke (vec postoji); menja se samo stanje.
+// Svaka stavka nezavisno: skip (sa razlogom) umesto throw, idempotentno.
+export const markLegloBatch = mutation({
+  args: {
+    token: v.string(),
+    scope: v.optional(orderScopeSchema),
+    items: v.array(v.object({ orderId: v.id("orders") })),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUser(ctx, args.token);
+    const scope = normalizeScope(args.scope);
+    const now = Date.now();
+    const seen = new Set<string>();
+    const results: { orderId: Id<"orders">; status: "updated" | "skipped"; reason?: string }[] = [];
+
+    for (const item of args.items) {
+      const key = String(item.orderId);
+      if (seen.has(key)) {
+        results.push({ orderId: item.orderId, status: "skipped", reason: "Duplikat u zahtevu." });
+        continue;
+      }
+      seen.add(key);
+
+      const order = await ctx.db.get(item.orderId);
+      if (!order || order.userId !== user._id || normalizeScope(order.scope) !== scope) {
+        results.push({
+          orderId: item.orderId,
+          status: "skipped",
+          reason: "Narudzbina nije pronadjena ili nije dostupna.",
+        });
+        continue;
+      }
+
+      const decision = decideMarkLeglo({ stage: normalizeStage(order.stage as any) });
+      if (decision.action === "skip") {
+        results.push({ orderId: item.orderId, status: "skipped", reason: decision.reason });
+        continue;
+      }
+
+      await ctx.db.patch(order._id, {
+        stage: "legle_pare",
+        stageChangedAt: now,
+      });
+      await ctx.db.insert("orderEvents", {
+        orderId: order._id,
+        userId: user._id,
+        scope,
+        type: "stage",
+        previousStage: order.stage,
+        stage: "legle_pare",
+        brojPosiljke: order.brojPosiljke,
         createdAt: now,
       });
       results.push({ orderId: item.orderId, status: "updated" });
