@@ -7,7 +7,7 @@ import { useForm, type DeepPartial, type FieldErrors, type Resolver } from "reac
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { ArrowUpRight, BadgePercent, CalendarRange, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
+import { ArrowUpRight, BadgePercent, Banknote, CalendarRange, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
@@ -4160,6 +4160,10 @@ function OrdersContent() {
           <Button variant="outline" onClick={() => router.push("/narudzbine/uvoz")} className="gap-2">
             <Share2 className="h-4 w-4" />
             Uvoz priznanica
+          </Button>
+          <Button variant="outline" onClick={() => router.push("/narudzbine/pare")} className="gap-2">
+            <Banknote className="h-4 w-4" />
+            Legle pare
           </Button>
           <Button onClick={openCreateModal} className="gap-2">
             <Plus className="h-4 w-4" />
