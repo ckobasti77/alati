@@ -38,9 +38,7 @@ import type {
   Product,
   ShippingOwnerOption,
   ShippingOwnerOptions,
-  Supplier,
-} from "@/types/order";
-import type { RestockRequest } from "@/types/restockRequest";
+  } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +74,8 @@ import { RichTextSnippet } from "./_components/RichTextSnippet";
 import { StageBadge } from "./_components/LegacyStageBadge";
 import { useOrdersFeed } from "./_hooks/useOrdersFeed";
 import { useRefundPeriod } from "./_hooks/useRefundPeriod";
+import { useOrderCatalog } from "./_hooks/useOrderCatalog";
+import { useRestock } from "./_hooks/useRestock";
 
 export default function OrdersPage() {
   return (
@@ -109,18 +109,6 @@ function OrdersContent() {
   const [deleteCandidate, setDeleteCandidate] = useState<Order | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
-  const [restockModalOpen, setRestockModalOpen] = useState(false);
-  const [restockDeleteOpen, setRestockDeleteOpen] = useState(false);
-  const [restockDeleteCandidate, setRestockDeleteCandidate] = useState<RestockRequest | null>(null);
-  const [isDeletingRestock, setIsDeletingRestock] = useState(false);
-  const [restockProductId, setRestockProductId] = useState("");
-  const [restockProductInput, setRestockProductInput] = useState("");
-  const [restockProductSearch, setRestockProductSearch] = useState("");
-  const [restockProductMenuOpen, setRestockProductMenuOpen] = useState(false);
-  const [restockVariantId, setRestockVariantId] = useState("");
-  const [restockName, setRestockName] = useState("");
-  const [restockPhone, setRestockPhone] = useState("");
-  const [isCreatingRestock, setIsCreatingRestock] = useState(false);
   const [draftItems, setDraftItems] = useState<OrderItemDraft[]>([]);
   const [itemProductId, setItemProductId] = useState("");
   const [itemVariantId, setItemVariantId] = useState("");
@@ -141,7 +129,6 @@ function OrdersContent() {
   const [manualRefundSavingId, setManualRefundSavingId] = useState<string | null>(null);
   const [kasniSavingId, setKasniSavingId] = useState<string | null>(null);
   const productInputRef = useRef<HTMLInputElement | null>(null);
-  const restockProductInputRef = useRef<HTMLInputElement | null>(null);
   const previousSlanjeModeRef = useRef<(typeof slanjeModes)[number] | undefined>(undefined);
   const previousPickupValueRef = useRef<boolean | null>(null);
   const lastAutoSelectedOwnerRef = useRef<string | null>(null);
@@ -152,17 +139,6 @@ function OrdersContent() {
   const preselectHandledRef = useRef<string | null>(null);
   const didSyncCustomersRef = useRef(false);
   const preselectProductId = searchParams?.get("productId") ?? "";
-  useEffect(() => {
-    if (restockModalOpen) return;
-    setRestockProductId("");
-    setRestockProductInput("");
-    setRestockProductSearch("");
-    setRestockProductMenuOpen(false);
-    setRestockVariantId("");
-    setRestockName("");
-    setRestockPhone("");
-  }, [restockModalOpen]);
-
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const createOrder = useConvexMutation("orders:create");
   const updateOrder = useConvexMutation("orders:update");
@@ -195,8 +171,7 @@ function OrdersContent() {
     base: number;
   }>("orders:reorder");
   const syncCustomers = useConvexMutation("customers:syncFromOrders");
-  const products = useConvexQuery<Product[]>("products:list", { token: sessionToken });
-  const suppliers = useConvexQuery<Supplier[]>("suppliers:list", { token: sessionToken });
+  const { products, productMap, supplierMap, isProductsLoading } = useOrderCatalog({ sessionToken });
   const customers = useConvexQuery<Customer[]>("customers:list", {
     token: sessionToken,
     scope: orderScope,
@@ -207,22 +182,7 @@ function OrdersContent() {
     token: sessionToken,
     scope: orderScope,
   });
-  const restockRequests = useConvexQuery<RestockRequest[]>("restockRequests:list", {
-    token: sessionToken,
-    scope: orderScope,
-  });
-  const createRestockRequest = useConvexMutation<{
-    token: string;
-    scope: "default" | "kalaba";
-    name: string;
-    phone: string;
-    productId?: string;
-    productTitle: string;
-    variantLabel?: string;
-  }>("restockRequests:create");
-  const deleteRestockRequest = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>(
-    "restockRequests:remove",
-  );
+  const { restockModalOpen, setRestockModalOpen, restockDeleteOpen, restockDeleteCandidate, isDeletingRestock, setRestockProductId, restockProductInput, setRestockProductInput, restockProductSearch, setRestockProductSearch, restockProductMenuOpen, setRestockProductMenuOpen, restockVariantId, setRestockVariantId, restockName, setRestockName, restockPhone, setRestockPhone, isCreatingRestock, restockProductInputRef, restockEntries, isRestockLoading, restockFilteredProducts, restockSelectedProduct, restockSelectedVariants, openRestockDeleteModal, closeRestockDeleteModal, handleRestockDeleteOpenChange, handleRestockDelete, resetRestockForm, handleCreateRestockRequest } = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
 
   const orderEntries = useMemo(
     () =>
@@ -277,37 +237,10 @@ function OrdersContent() {
       return matchesAllTokensInNormalizedText(searchableText, searchTokens);
     });
   }, [products, productSearch]);
-  const productMap = useMemo(
-    () => new Map((products ?? []).map((product) => [product._id, product])),
-    [products],
-  );
-  const supplierMap = useMemo(
-    () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
-    [suppliers],
-  );
-  const isProductsLoading = products === undefined;
   const isOrdersPdfBusy = ordersPdfMode !== null;
   const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
   const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
   const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
-  const restockEntries = restockRequests ?? [];
-  const isRestockLoading = restockRequests === undefined;
-  const restockFilteredProducts = useMemo(() => {
-    const list = products ?? [];
-    const searchTokens = toSearchTokens(restockProductSearch.trim());
-    if (!searchTokens.length) return list;
-    return list.filter((product) => {
-      const variantsText = (product.variants ?? [])
-        .map((variant) => `${variant.label ?? ""} ${variant.opis ?? ""}`)
-        .join(" ");
-      const searchableText = normalizeSearchText(
-        `${getProductDisplayName(product)} ${product.opisFbInsta ?? product.opis ?? ""} ${product.opisKp ?? ""} ${variantsText}`,
-      );
-      return matchesAllTokensInNormalizedText(searchableText, searchTokens);
-    });
-  }, [products, restockProductSearch]);
-  const restockSelectedProduct = restockProductId ? productMap.get(restockProductId) : undefined;
-  const restockSelectedVariants = restockSelectedProduct?.variants ?? [];
 
   const buildOrdersPdfSubtitle = useCallback(
     (count: number, total: number) => {
@@ -1054,20 +987,6 @@ function OrdersContent() {
     if (isNewOrderRequested) handleNewOrderRequest();
   }, [isNewOrderRequested]);
 
-  // "Zahtevi za dopunu" sa kontrolne table vode na ?restock=1: otvori postojeći modal pa očisti parametar.
-  const isRestockRequested = searchParams?.get("restock") === "1";
-  const handleRestockRequest = useEffectEvent(() => {
-    setRestockModalOpen(true);
-    const params = new URLSearchParams(searchParamsString);
-    params.delete("restock");
-    const next = params.toString();
-    router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
-  });
-
-  useEffect(() => {
-    if (isRestockRequested) handleRestockRequest();
-  }, [isRestockRequested]);
-
   const handleSubmitOrder = async (values: OrderFormValues) => {
     if (draftItems.length === 0) {
       toast.error("Dodaj bar jedan proizvod u narudzbinu.");
@@ -1189,94 +1108,6 @@ function OrdersContent() {
       toast.error("Brisanje nije uspelo.");
     } finally {
       setIsDeletingOrder(false);
-    }
-  };
-
-  const openRestockDeleteModal = (entry: RestockRequest) => {
-    setRestockDeleteCandidate(entry);
-    setRestockDeleteOpen(true);
-  };
-
-  const closeRestockDeleteModal = () => {
-    setRestockDeleteOpen(false);
-    setRestockDeleteCandidate(null);
-  };
-
-  const handleRestockDeleteOpenChange = (open: boolean) => {
-    if (open) {
-      setRestockDeleteOpen(true);
-    } else {
-      closeRestockDeleteModal();
-    }
-  };
-
-  const handleRestockDelete = async (id: string) => {
-    if (isDeletingRestock) return;
-    setIsDeletingRestock(true);
-    try {
-      await deleteRestockRequest({ id, token: sessionToken, scope: orderScope });
-      toast.success("Zahtev je obrisan.");
-      closeRestockDeleteModal();
-    } catch (error) {
-      console.error(error);
-      toast.error("Brisanje zahteva nije uspelo.");
-    } finally {
-      setIsDeletingRestock(false);
-    }
-  };
-
-  const resetRestockForm = () => {
-    setRestockProductId("");
-    setRestockProductInput("");
-    setRestockProductSearch("");
-    setRestockProductMenuOpen(false);
-    setRestockVariantId("");
-    setRestockName("");
-    setRestockPhone("");
-  };
-
-  const handleCreateRestockRequest = async () => {
-    if (isCreatingRestock) return;
-    const name = restockName.trim();
-    const phone = restockPhone.trim();
-    const productId = restockProductId.trim();
-    const product = restockSelectedProduct;
-    if (!productId || !product) {
-      toast.error("Izaberi proizvod.");
-      return;
-    }
-    const productTitle = getProductDisplayName(product);
-    const variants = product.variants ?? [];
-    const selectedVariant =
-      variants.find((variant) => variant.id === restockVariantId) ??
-      variants.find((variant) => variant.isDefault) ??
-      variants[0];
-    if (!name) {
-      toast.error("Unesi ime.");
-      return;
-    }
-    if (!phone) {
-      toast.error("Unesi broj telefona.");
-      return;
-    }
-    setIsCreatingRestock(true);
-    try {
-      await createRestockRequest({
-        token: sessionToken,
-        scope: orderScope,
-        name,
-        phone,
-        productId,
-        productTitle,
-        variantLabel: selectedVariant?.label,
-      });
-      toast.success("Zahtev je sacuvan.");
-      resetRestockForm();
-    } catch (error) {
-      console.error(error);
-      toast.error("Cuvanje zahteva nije uspelo.");
-    } finally {
-      setIsCreatingRestock(false);
     }
   };
 
