@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     "storefront/.next/**",
     "storefront/out/**",
     "storefront/build/**",
+    // Kopije repoa u Claude worktree-ovima (lazna upozorenja).
+    ".claude/worktrees/**",
   ]),
   {
     // ESLint 10 je uklonio context.getFilename, a eslint-plugin-react (unutar
