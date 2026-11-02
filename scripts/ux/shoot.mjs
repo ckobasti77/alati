@@ -161,6 +161,8 @@ try {
 
       await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded" });
       await settle(page, Number(args.wait));
+      // Next.js dev indikator ("N" dole levo) nije deo aplikacije.
+      await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
       if (args.click) {
         await page.locator(args.click).first().click();
         await page.waitForTimeout(700);

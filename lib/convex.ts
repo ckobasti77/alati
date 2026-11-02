@@ -8,7 +8,8 @@ type ConvexQueryReference = Parameters<typeof convexUseQuery>[0];
 type ConvexQueryArgs = Parameters<typeof convexUseQuery>[1];
 type ConvexMutationReference = Parameters<typeof convexUseMutation>[0];
 
-export function useConvexQuery<T = unknown>(name: string, args: AnyRecord = {}) {
+/** `"skip"` preskače query (npr. dok paleta nije otvorena ili nema sesije). */
+export function useConvexQuery<T = unknown>(name: string, args: AnyRecord | "skip" = {}) {
   return convexUseQuery(
     name as unknown as ConvexQueryReference,
     args as ConvexQueryArgs,

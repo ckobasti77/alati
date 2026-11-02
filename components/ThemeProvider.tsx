@@ -19,11 +19,14 @@ const ThemeContext = createContext<{
 } | null>(null);
 
 const STORAGE_KEY = "alati-theme";
+// Boja statusne trake (PWA/mobilni browser) prati izabranu temu, ne OS. Iste vrednosti kao viewport.themeColor u app/layout.tsx.
+const THEME_COLORS: Record<Theme, string> = { light: "#f8fafc", dark: "#0a0a0a" };
 
 function applyTheme(theme: Theme) {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
+  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => meta.setAttribute("content", THEME_COLORS[theme]));
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type TouchEvent } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent, type MouseEvent, type TouchEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useConvex } from "convex/react";
 import { useForm, type DeepPartial, type FieldErrors, type Resolver } from "react-hook-form";
@@ -671,6 +671,7 @@ function OrdersContent() {
     const params = new URLSearchParams(searchParamsString);
     params.delete("productId");
     params.delete("orderModal");
+    params.delete("nova");
     const suffix = params.toString();
     return `listState:${basePath}${suffix ? `?${suffix}` : ""}`;
   }, [basePath, searchParamsString]);
@@ -2147,6 +2148,21 @@ function OrdersContent() {
     openCreateModalWithProduct(selected);
     clearPreselectQuery();
   }, [preselectProductId, products, openCreateModalWithProduct, clearPreselectQuery]);
+
+  // [+] iz donje navigacije / headera vodi na ?nova=1: otvori formu pa očisti parametar.
+  const isNewOrderRequested = searchParams?.get("nova") === "1";
+  const handleNewOrderRequest = useEffectEvent(() => {
+    // Već otvorena forma se ne briše (npr. + dok je unos u toku).
+    if (!isModalOpen) openCreateModal();
+    const params = new URLSearchParams(searchParamsString);
+    params.delete("nova");
+    const next = params.toString();
+    router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
+  });
+
+  useEffect(() => {
+    if (isNewOrderRequested) handleNewOrderRequest();
+  }, [isNewOrderRequested]);
 
   const handleSubmitOrder = async (values: OrderFormValues) => {
     if (draftItems.length === 0) {
@@ -4144,15 +4160,15 @@ function OrdersContent() {
           <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
             {ordersPagination.total} narudzbina
           </div>
-          <Button variant="outline" onClick={() => router.push("/narudzbine/uvoz")} className="gap-2">
+          <Button variant="outline" onClick={() => router.push("/narudzbine/uvoz")} className="hidden gap-2 md:inline-flex">
             <Share2 className="h-4 w-4" />
             Uvoz priznanica
           </Button>
-          <Button variant="outline" onClick={() => router.push("/narudzbine/pare")} className="gap-2">
+          <Button variant="outline" onClick={() => router.push("/narudzbine/pare")} className="hidden gap-2 md:inline-flex">
             <Banknote className="h-4 w-4" />
             Legle pare
           </Button>
-          <Button onClick={openCreateModal} className="gap-2">
+          <Button onClick={openCreateModal} className="hidden gap-2 md:inline-flex">
             <Plus className="h-4 w-4" />
             Nova narudzbina
           </Button>

@@ -18,6 +18,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { RequireAuth } from "@/components/RequireAuth";
+import { HeaderActions } from "@/components/shell/ShellProvider";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
@@ -90,6 +91,15 @@ function UiKit() {
 
   return (
     <div className="flex flex-col divide-y divide-border">
+      <HeaderActions>
+        <ActionMenu
+          label="Akcije stranice (primer)"
+          items={[
+            { label: "Otvori sheet", icon: Pencil, onSelect: () => setSheet("short") },
+            { label: "Obriši (primer)", icon: Trash2, destructive: true, separatorBefore: true, onSelect: () => setConfirm("danger") },
+          ]}
+        />
+      </HeaderActions>
       <header className="flex flex-col gap-1 pb-4">
         <h1 className="text-2xl font-semibold tracking-tight">UI kit</h1>
         <p className="text-sm text-text-muted">
