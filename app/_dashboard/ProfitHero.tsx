@@ -2,6 +2,7 @@ import { TrendingDown, TrendingUp } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { Skeleton } from "@/components/ui/skeleton";
 import { profitDelta, type DashboardPeriod, type DashboardTotals } from "@/lib/dashboard";
+import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PERIOD_LABELS, formatMonthLong, formatPercent, pluralNarudzbina } from "./format";
 import type { DashboardOverview } from "./types";
@@ -65,6 +66,10 @@ export function ProfitHero({ period: requestedPeriod, data, stale = false }: Pro
         stale && "opacity-60",
       )}
     >
+      {/* Najava za citace ekrana kad stigne novi period (vizuelno se menja samo broj). */}
+      <p role="status" className="sr-only">
+        {totals && !stale ? `Profit, ${periodTitle(period, data)}: ${formatCurrency(totals.profit, "EUR")}` : ""}
+      </p>
       <div className="flex flex-col gap-1">
         <h2 id="profit-hero" className="text-sm font-medium text-text-muted">
           Profit · {periodTitle(period, data)}

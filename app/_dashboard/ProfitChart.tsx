@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Money } from "@/components/ui/money";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TODAY_CHART_DAYS } from "@/lib/dashboard";
+import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { formatAxisMoney, formatDayKey, formatDayLong, formatMonthLong, formatMonthShort, formatWeekday, pluralNarudzbina } from "./format";
 import type { DashboardOverview } from "./types";
@@ -64,6 +65,7 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
   const foundIndex = selectedKey ? series.findIndex((point) => point.key === selectedKey) : -1;
   const selectedIndex = foundIndex >= 0 ? foundIndex : defaultIndex;
   const selected = series[selectedIndex];
+  const unit = bucket === "month" ? "mesec" : "dan";
 
   const formatKeyLong = (key: string) => (bucket === "month" ? formatMonthLong(key) : formatDayLong(key));
   const formatKeyShort = (key: string) =>
@@ -116,7 +118,7 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
           {title}
         </h2>
         {selected && !isEmpty ? (
-          <p aria-live="polite" className="text-[13px] leading-5 text-text-muted">
+          <p id="profit-grafikon-izbor" aria-live="polite" aria-atomic="true" className="text-[13px] leading-5 text-text-muted">
             <span className="text-text">{formatKeyLong(selected.key)}</span> ·{" "}
             <Money value={selected.profit} tone="profit" className="font-medium" /> · {pluralNarudzbina(selected.count)}
           </p>
@@ -136,8 +138,17 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
       ) : (
         <div className="flex flex-col gap-1.5 md:flex-1">
           <div
-            role="group"
-            aria-label={`${title}. Strelice levo i desno biraju ${bucket === "month" ? "mesec" : "dan"}.`}
+            // Slider: citaci ekrana prepustaju strelice widgetu (role=group bi ih zadrzao u browse modu).
+            role="slider"
+            aria-label={`${title}: izbor (${unit}), strelice levo i desno`}
+            aria-valuemin={1}
+            aria-valuemax={series.length}
+            aria-valuenow={selectedIndex + 1}
+            aria-valuetext={
+              selected
+                ? `${formatKeyLong(selected.key)}, ${formatCurrency(selected.profit, "EUR")}, ${pluralNarudzbina(selected.count)}`
+                : undefined
+            }
             tabIndex={0}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight") move(1);
@@ -152,11 +163,11 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
             <div ref={plotRef} className="relative h-[136px] touch-pan-y select-none md:h-auto md:min-h-[196px] md:flex-1">
               {width > 0 ? (
                 <>
-                  <span className="num absolute top-0 right-0 text-[11px] leading-4 text-text-muted" aria-hidden>
+                  <span className="num absolute top-0 right-0 text-xs leading-4 text-text-muted" aria-hidden>
                     {formatAxisMoney(maxValue)}
                   </span>
                   {minValue < 0 ? (
-                    <span className="num absolute right-0 bottom-0 text-[11px] leading-4 text-text-muted" aria-hidden>
+                    <span className="num absolute right-0 bottom-0 text-xs leading-4 text-text-muted" aria-hidden>
                       {formatAxisMoney(minValue)}
                     </span>
                   ) : null}
@@ -170,6 +181,17 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
                       if (event.pointerType === "mouse") selectAt(event.clientX, event.currentTarget);
                     }}
                   >
+                    {selected ? (
+                      // Izabrani dan/mesec: traka iza slota. Barovi ostaju puni (prigusivanje pada ispod 3:1).
+                      <rect
+                        x={selectedIndex * slot + 1}
+                        y={plotTop}
+                        width={Math.max(0, slot - 2)}
+                        height={Math.max(0, plotBottom - plotTop)}
+                        rx={4}
+                        className="fill-surface-3/70"
+                      />
+                    ) : null}
                     <line x1={0} x2={width} y1={plotTop} y2={plotTop} className="stroke-border" strokeWidth={1} />
                     {series.map((point, index) => {
                       if (point.profit === 0) return null;
@@ -178,12 +200,7 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
                         <path
                           key={point.key}
                           d={barPath(x, barWidth, y0, y(point.profit))}
-                          className={cn(
-                            "transition-opacity duration-(--duration-fast)",
-                            point.profit < 0 ? "fill-danger" : "fill-accent",
-                            // Prigusuje ostale tek kad korisnik izabere bar; inace su svi puni.
-                            foundIndex >= 0 && index !== selectedIndex ? "opacity-45" : "opacity-100",
-                          )}
+                          className={point.profit < 0 ? "fill-danger" : "fill-accent"}
                         />
                       );
                     })}
@@ -202,7 +219,7 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
                       <span
                         key={series[index].key}
                         className={cn(
-                          "absolute top-0 text-[11px] leading-4 whitespace-nowrap",
+                          "absolute top-0 text-xs leading-4 whitespace-nowrap",
                           index === selectedIndex ? "font-medium text-text" : "text-text-muted",
                           align === "center" && "-translate-x-1/2",
                           align === "end" && "-translate-x-full",
@@ -217,27 +234,30 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
             </div>
           </div>
 
-          <table className="sr-only">
-            <caption>{title}</caption>
-            <thead>
-              <tr>
-                <th scope="col">{bucket === "month" ? "Mesec" : "Dan"}</th>
-                <th scope="col">Profit</th>
-                <th scope="col">Narudžbine</th>
-              </tr>
-            </thead>
-            <tbody>
-              {series.map((point) => (
-                <tr key={point.key}>
-                  <th scope="row">{formatKeyLong(point.key)}</th>
-                  <td>
-                    <Money value={point.profit} />
-                  </td>
-                  <td>{point.count}</td>
+          {/* sr-only na omotacu: tabela ignorise width 1px i siri stranicu na uskim ekranima. */}
+          <div className="sr-only">
+            <table>
+              <caption>{title}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{bucket === "month" ? "Mesec" : "Dan"}</th>
+                  <th scope="col">Profit</th>
+                  <th scope="col">Narudžbine</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {series.map((point) => (
+                  <tr key={point.key}>
+                    <th scope="row">{formatKeyLong(point.key)}</th>
+                    <td>
+                      <Money value={point.profit} />
+                    </td>
+                    <td>{point.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>

@@ -4,7 +4,7 @@ import { AlarmClock, BellRing, CheckCircle2, ChevronRight, PackageOpen, RotateCc
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { formatKeyRange } from "./format";
+import { formatKeyRange, pluralNarudzbina } from "./format";
 import type { DashboardOverview } from "./types";
 
 type ActionItem = {
@@ -113,10 +113,15 @@ export function ActionList({ actions }: { actions: DashboardOverview["actions"] 
                     <Icon className="size-[18px]" aria-hidden />
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-[15px] font-medium leading-5 text-text md:text-sm">{item.label}</span>
+                    <span className="text-[15px] font-medium leading-5 text-text md:text-sm">
+                      {item.label}
+                      <span className="sr-only">: {pluralNarudzbina(item.count)}.</span>
+                    </span>
                     <span className="line-clamp-1 text-[13px] leading-5 text-text-muted md:line-clamp-2">{item.detail}</span>
                   </span>
-                  <span className="num text-xl font-semibold text-text">{item.count}</span>
+                  <span aria-hidden className="num text-xl font-semibold text-text">
+                    {item.count}
+                  </span>
                   <ChevronRight
                     className="size-4 shrink-0 text-text-muted transition-transform duration-(--duration-fast) group-hover:translate-x-0.5"
                     aria-hidden

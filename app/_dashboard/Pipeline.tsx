@@ -59,9 +59,13 @@ export function Pipeline({ pipeline }: { pipeline: DashboardOverview["pipeline"]
                     <span className={cn("size-2.5 shrink-0 rounded-full", meta.dotClass)} aria-hidden />
                     <span className={cn("flex-1 text-[15px] md:text-sm", entry.count > 0 ? "text-text" : "text-text-muted")}>
                       {meta.label}
+                      <span className="sr-only">: {pluralNarudzbina(entry.count)},</span>
                     </span>
                     <Money value={entry.prodajno} tone="muted" className="text-[13px]" />
-                    <span className={cn("num w-8 text-right text-[15px] font-semibold md:text-sm", entry.count > 0 ? "text-text" : "text-text-muted")}>
+                    <span
+                      aria-hidden
+                      className={cn("num w-8 text-right text-[15px] font-semibold md:text-sm", entry.count > 0 ? "text-text" : "text-text-muted")}
+                    >
                       {entry.count}
                     </span>
                     <ChevronRight className="size-4 shrink-0 text-text-muted" aria-hidden />

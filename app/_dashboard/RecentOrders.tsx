@@ -72,8 +72,14 @@ export function RecentOrders({ latest }: { latest: DashboardOverview["latest"] |
                 </span>
                 <span className="flex flex-col items-end gap-1 md:contents">
                   <StageBadge stage={order.stage} className="md:justify-self-start" />
-                  <Money value={order.prodajno} tone="muted" className="text-[13px] max-md:hidden md:text-right" />
-                  <Money value={order.profit} tone="profit" className="text-[13px] font-medium md:text-right md:text-sm" />
+                  <span className="text-[13px] max-md:hidden md:text-right">
+                    <span className="sr-only">Prodajno </span>
+                    <Money value={order.prodajno} tone="muted" />
+                  </span>
+                  <span className="text-[13px] font-medium md:text-right md:text-sm">
+                    <span className="sr-only">Profit </span>
+                    <Money value={order.profit} tone="profit" />
+                  </span>
                 </span>
               </Link>
             </li>

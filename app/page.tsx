@@ -26,9 +26,12 @@ import type { DashboardOverview } from "./_dashboard/types";
 export default function DashboardPage() {
   return (
     <RequireAuth>
-      <DashboardErrorBoundary>
-        <DashboardContent />
-      </DashboardErrorBoundary>
+      <div className="flex flex-col gap-4 md:gap-6">
+        <h1 className="sr-only md:not-sr-only md:text-2xl md:font-semibold md:tracking-tight md:text-text">Kontrolna tabla</h1>
+        <DashboardErrorBoundary>
+          <DashboardContent />
+        </DashboardErrorBoundary>
+      </div>
     </RequireAuth>
   );
 }
@@ -77,6 +80,12 @@ const periodOptions = DASHBOARD_PERIODS.map((period) => ({
   ),
 }));
 
+/** Racuni imaju svoj query i svoj error boundary: greska u obracunu ne rusi celu tablu. */
+function Accounts({ token, allTime }: { token: string; allTime: DashboardOverview["allTime"] | undefined }) {
+  const obracun = useConvexQuery<ObracunSummary>("orders:obracun", { token, scope: "default" });
+  return <AccountsCard obracun={obracun} allTime={allTime} />;
+}
+
 function DashboardContent() {
   const { token } = useAuth();
   const sessionToken = token as string;
@@ -95,15 +104,12 @@ function DashboardContent() {
   const { value: overview, stale } = useLastDefined(
     useConvexQuery<DashboardOverview>("dashboard:overview", { token: sessionToken, period, today }),
   );
-  const obracun = useConvexQuery<ObracunSummary>("orders:obracun", { token: sessionToken, scope: "default" });
 
   return (
     <div className="flex flex-col gap-4 md:gap-6">
-      <h1 className="sr-only md:not-sr-only md:text-2xl md:font-semibold md:tracking-tight md:text-text">Kontrolna tabla</h1>
-
       <ActionList actions={overview?.actions} />
 
-      <div className="grid gap-3 md:grid-cols-12 md:gap-x-6 md:gap-y-4">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-12 md:gap-x-6 md:gap-y-4">
         <div className="md:col-span-12 md:flex md:items-center md:justify-between md:gap-4">
           <h2 className="sr-only md:not-sr-only md:text-base md:font-semibold md:text-text">Pregled perioda</h2>
           <SegmentedControl
@@ -111,7 +117,7 @@ function DashboardContent() {
             value={period}
             onChange={changePeriod}
             options={periodOptions}
-            className="max-md:flex max-md:w-full max-md:[&>button]:flex-1"
+            className="max-md:flex max-md:w-full max-md:[&>button]:min-w-0 max-md:[&>button]:flex-1 max-md:[&>button]:px-1.5"
           />
         </div>
         <div className="md:col-span-5">
@@ -122,12 +128,14 @@ function DashboardContent() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-12 md:gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-12 md:gap-6">
         <div className="md:col-span-5">
           <Pipeline pipeline={overview?.pipeline} />
         </div>
         <div className="md:col-span-7">
-          <AccountsCard obracun={obracun} allTime={overview?.allTime} />
+          <DashboardErrorBoundary compact title="Računi nisu mogli da se učitaju">
+            <Accounts token={sessionToken} allTime={overview?.allTime} />
+          </DashboardErrorBoundary>
         </div>
       </div>
 

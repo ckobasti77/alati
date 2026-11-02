@@ -590,6 +590,14 @@ h6 {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     scrollbar-color: var(--border-strong) transparent;
+    /* Fokus (Tab) i skrol do sidra ne završavaju ispod sticky headera / donje navigacije (WCAG 2.4.11). */
+    scroll-padding-top: calc(var(--header-h) + 8px);
+  }
+
+  @media (width < 48rem) {
+    html {
+      scroll-padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + 8px);
+    }
   }
 
   :where(a, button, [role="button"], input, select, textarea, label, summary) {
