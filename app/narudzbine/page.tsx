@@ -7,7 +7,6 @@ import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ArrowUpRight, BadgePercent, Banknote, CalendarRange, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
-import { api } from "@/convex/_generated/api";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,17 +22,10 @@ import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import { openTracking, resolveTrackingTarget } from "@/lib/tracking";
 import { STAGES, STAGE_OPTIONS } from "@/lib/stages";
-import {
-  createOrdersTablePdfFile,
-  downloadPdfFile,
-  sanitizePdfFileName,
-  sharePdfFile,
-} from "@/lib/pdfExport";
 import { cn } from "@/lib/utils";
 import type { Customer } from "@/types/customer";
 import type {
   Order,
-  OrderListResponse,
   OrderStage,
   Product,
   ShippingOwnerOption,
@@ -46,7 +38,6 @@ import {
   slanjeModes,
   slanjeSwitchModes,
   deleteConfirmPhrase,
-  emptyOrderListTotals,
   type OrderItemDraft,
   type QuickEditField,
   type QuickEditState,
@@ -67,8 +58,7 @@ import {
   resolveProductImageUrl,
   resolveProfitPercent,
   formatRefundPeriodDate,
-  buildOrdersPdfRows,
-} from "./_lib/helpers";
+  } from "./_lib/helpers";
 import { orderSchema, type OrderFormValues, defaultFormValues, orderFocusOrder, findFirstErrorPath } from "./_lib/orderForm";
 import { RichTextSnippet } from "./_components/RichTextSnippet";
 import { StageBadge } from "./_components/LegacyStageBadge";
@@ -76,6 +66,7 @@ import { useOrdersFeed } from "./_hooks/useOrdersFeed";
 import { useRefundPeriod } from "./_hooks/useRefundPeriod";
 import { useOrderCatalog } from "./_hooks/useOrderCatalog";
 import { useRestock } from "./_hooks/useRestock";
+import { useOrdersPdf } from "./_hooks/useOrdersPdf";
 
 export default function OrdersPage() {
   return (
@@ -97,7 +88,6 @@ function OrdersContent() {
   const { search, setSearch, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, setFilterMenuMode, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId, ordersPagination, ordersTotals, isLoadingMoreOrders, ordersLoaderRef, orderListQueryArgs, isOrdersLoading, hasMoreOrders, dateFilterActive, activeFilterCount, isFilterMenuOpen, resetOrdersFeed, handleStageFilterToggle, handleUnreturnedToggle, handleReturnedToggle, handlePickupToggle, handleShippingToggle, handleLateToggle, handleDateFromChange, handleDateToChange, handleClearDateFilter, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle } = useOrdersFeed({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken });
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<"stage" | "povrat" | null>(null);
-  const [ordersPdfMode, setOrdersPdfMode] = useState<"download" | "share" | null>(null);
   const [productInput, setProductInput] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [productMenuOpen, setProductMenuOpen] = useState(false);
@@ -182,7 +172,7 @@ function OrdersContent() {
     token: sessionToken,
     scope: orderScope,
   });
-  const { restockModalOpen, setRestockModalOpen, restockDeleteOpen, restockDeleteCandidate, isDeletingRestock, setRestockProductId, restockProductInput, setRestockProductInput, restockProductSearch, setRestockProductSearch, restockProductMenuOpen, setRestockProductMenuOpen, restockVariantId, setRestockVariantId, restockName, setRestockName, restockPhone, setRestockPhone, isCreatingRestock, restockProductInputRef, restockEntries, isRestockLoading, restockFilteredProducts, restockSelectedProduct, restockSelectedVariants, openRestockDeleteModal, closeRestockDeleteModal, handleRestockDeleteOpenChange, handleRestockDelete, resetRestockForm, handleCreateRestockRequest } = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
+  const { restockModalOpen, setRestockModalOpen, restockDeleteOpen, restockDeleteCandidate, isDeletingRestock, setRestockProductId, restockProductInput, setRestockProductInput, setRestockProductSearch, restockProductMenuOpen, setRestockProductMenuOpen, restockVariantId, setRestockVariantId, restockName, setRestockName, restockPhone, setRestockPhone, isCreatingRestock, restockProductInputRef, restockEntries, isRestockLoading, restockFilteredProducts, restockSelectedProduct, restockSelectedVariants, openRestockDeleteModal, closeRestockDeleteModal, handleRestockDeleteOpenChange, handleRestockDelete, resetRestockForm, handleCreateRestockRequest } = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
 
   const orderEntries = useMemo(
     () =>
@@ -237,99 +227,11 @@ function OrdersContent() {
       return matchesAllTokensInNormalizedText(searchableText, searchTokens);
     });
   }, [products, productSearch]);
-  const isOrdersPdfBusy = ordersPdfMode !== null;
   const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
   const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
   const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
 
-  const buildOrdersPdfSubtitle = useCallback(
-    (count: number, total: number) => {
-      const filters: string[] = [];
-      const trimmedSearch = search.trim();
-      if (trimmedSearch) filters.push(`Pretraga: ${trimmedSearch}`);
-      if (stageFilters.length > 0) {
-        filters.push(`Stage: ${stageFilters.map((stage) => STAGES[stage]?.label ?? stage).join(", ")}`);
-      }
-      if (showUnreturnedOnly) filters.push("Povrat: nepovraceni");
-      if (showReturnedOnly) filters.push("Povrat: povraceno");
-      if (showPickupOnly) filters.push("Preuzimanje: licno");
-      if (showShippingOnly) filters.push("Preuzimanje: slanje");
-      if (showLateOnly) filters.push("Isporuka: kasni");
-      if (dateFilterActive) {
-        filters.push(`Datum: ${dateFrom || "pocetak"} - ${dateTo || "danas"}`);
-      }
-      const filterText = filters.length > 0 ? filters.join(" | ") : "Bez aktivnih filtera";
-      return `Izvezeno ${count} od ${total} narudzbina. ${filterText}.`;
-    },
-    [dateFilterActive, dateFrom, dateTo, search, showLateOnly, showPickupOnly, showShippingOnly, showReturnedOnly, showUnreturnedOnly, stageFilters],
-  );
-
-  const fetchOrdersForPdf = useCallback(async () => {
-    const collected: Order[] = [];
-    let totals = emptyOrderListTotals;
-    let total = 0;
-    let totalPages = 1;
-    let nextPage = 1;
-
-    do {
-      const response = (await convex.query(api.orders.list, {
-        ...orderListQueryArgs,
-        page: nextPage,
-        pageSize: 100,
-      })) as OrderListResponse;
-      collected.push(...response.items);
-      totals = response.totals;
-      total = response.pagination.total;
-      totalPages = response.pagination.totalPages;
-      nextPage += 1;
-    } while (nextPage <= totalPages);
-
-    return { orders: collected, totals, total };
-  }, [convex, orderListQueryArgs]);
-
-  const handleOrdersPdf = useCallback(
-    async (mode: "download" | "share") => {
-      if (isOrdersPdfBusy) return;
-      setOrdersPdfMode(mode);
-      try {
-        const exportData = await fetchOrdersForPdf();
-        if (exportData.orders.length === 0) {
-          toast.info("Nema narudzbina za izvoz.");
-          return;
-        }
-
-        const rows = buildOrdersPdfRows(exportData.orders, productMap, refundPeriodOverview?.period);
-        const today = new Date().toISOString().slice(0, 10);
-        const file = await createOrdersTablePdfFile({
-          rows,
-          totals: exportData.totals,
-          fileName: `${sanitizePdfFileName(`narudzbine-${today}`)}.pdf`,
-          title: "Narudzbine",
-          subtitle: buildOrdersPdfSubtitle(rows.length, exportData.total),
-        });
-
-        if (mode === "share") {
-          const result = await sharePdfFile(file, {
-            title: "Narudzbine PDF",
-            text: "Izvoz narudzbina iz tabele.",
-          });
-          if (result === "shared") toast.success("PDF je poslat u share.");
-          if (result === "downloaded") toast.info("Uredjaj ne podrzava deljenje PDF fajla, PDF je preuzet.");
-          return;
-        }
-
-        downloadPdfFile(file);
-        toast.success("PDF je preuzet.");
-      } catch (error) {
-        console.error(error);
-        toast.error("Izvoz PDF-a nije uspeo.");
-      } finally {
-        setOrdersPdfMode(null);
-      }
-    },
-    [buildOrdersPdfSubtitle, fetchOrdersForPdf, isOrdersPdfBusy, productMap, refundPeriodOverview?.period],
-  );
-
+  const { ordersPdfMode, isOrdersPdfBusy, handleOrdersPdf } = useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap });
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderSchema) as Resolver<OrderFormValues>,
     defaultValues: defaultFormValues,
