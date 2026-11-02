@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent, type MouseEvent, type TouchEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useConvex } from "convex/react";
-import { useForm, type DeepPartial, type FieldErrors, type Resolver } from "react-hook-form";
-import { z } from "zod";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ArrowUpRight, BadgePercent, Banknote, CalendarRange, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
@@ -21,28 +20,24 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
 import { calculateOrderRefund } from "@/lib/refund-policy";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
-import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
 import { openTracking, resolveTrackingTarget } from "@/lib/tracking";
-import { ORDER_STAGES, STAGES, STAGE_OPTIONS } from "@/lib/stages";
+import { STAGES, STAGE_OPTIONS } from "@/lib/stages";
 import {
   createOrdersTablePdfFile,
   downloadPdfFile,
   sanitizePdfFileName,
   sharePdfFile,
-  type OrdersTablePdfRow,
 } from "@/lib/pdfExport";
 import { cn } from "@/lib/utils";
 import type { Customer } from "@/types/customer";
 import type {
   Order,
   OrderListResponse,
-  OrderRefundPeriod,
   OrderRefundPeriodOverview,
   OrderStage,
   Product,
-  ProductVariant,
   ShippingOwnerOption,
   ShippingOwnerOptions,
   Supplier,
@@ -51,467 +46,42 @@ import type { RestockRequest } from "@/types/restockRequest";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { Badge } from "@/components/ui/badge";
-
-const slanjeModes = ["Posta", "Aks", "Bex"] as const;
-const slanjeSwitchModes = ["Aks", "Posta"] as const;
-const shippingModes = ["Posta", "Aks", "Bex"] as const;
-type ShippingMode = (typeof shippingModes)[number];
-const deleteConfirmPhrase = "potvrdjujem da brisem";
-const requiresDeleteConfirmation = (stage?: OrderStage) =>
-  stage === "stiglo" || stage === "legle_pare" || stage === "vraceno";
-const emptyOrderListTotals: OrderListResponse["totals"] = {
-  nabavno: 0,
-  transport: 0,
-  prodajno: 0,
-  profit: 0,
-  povrat: 0,
-};
-
-const resolveOrderShippingMode = (order: Pick<Order, "slanjeMode" | "transportMode">): ShippingMode | undefined => {
-  const mode = order.slanjeMode;
-  if (mode && shippingModes.includes(mode as ShippingMode)) {
-    return mode as ShippingMode;
-  }
-  const legacyMode = order.transportMode;
-  if (legacyMode && shippingModes.includes(legacyMode as ShippingMode)) {
-    return legacyMode as ShippingMode;
-  }
-  return undefined;
-};
-
-const resolveShipmentNumber = (order: Pick<Order, "brojPosiljke">) => order.brojPosiljke?.trim() ?? "";
-
-const normalizeStageFilters = (values: string[]) => {
-  if (!values.length) return [] as OrderStage[];
-  const allowed = new Set(STAGE_OPTIONS.map((option) => option.value));
-  const unique = new Set<string>();
-  values.forEach((value) => {
-    if (allowed.has(value as OrderStage)) {
-      unique.add(value);
-    }
-  });
-  return STAGE_OPTIONS.map((option) => option.value).filter((value) => unique.has(value));
-};
-
-const areArraysEqual = <T,>(left: T[], right: T[]) =>
-  left.length === right.length && left.every((value, index) => value === right[index]);
-
-const normalizeDateInput = (value?: string | null) => {
-  if (!value) return "";
-  const trimmed = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return "";
-  const [year, month, day] = trimmed.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  if (Number.isNaN(date.getTime())) return "";
-  return trimmed;
-};
-
-const resolveDateTimestamp = (value: string, boundary: "start" | "end") => {
-  if (!value) return undefined;
-  const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return undefined;
-  if (boundary === "start") {
-    return new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
-  }
-  return new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
-};
-
-const resolveTodayEndTimestamp = () => {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
-};
-
-const normalizeOwnerLookupKey = (value?: string) => normalizeSearchText(value?.trim() ?? "");
-
-const orderSchema = z
-  .object({
-    stage: z.enum(ORDER_STAGES),
-    customerName: z.string().trim().optional(),
-    address: z.string().trim().optional(),
-    phone: z.string().min(5, "Broj telefona je obavezan."),
-    transportCost: z.preprocess(
-      (value) => {
-        if (value === "" || value === undefined || value === null) return undefined;
-        const normalized = typeof value === "string" ? value.replace(",", ".") : value;
-        const parsed = Number(normalized);
-        return Number.isFinite(parsed) ? parsed : undefined;
-      },
-      z.number().min(0, "Transport je obavezan i mora biti 0 ili vise."),
-    ),
-    slanjeMode: z.preprocess(
-      (value) => {
-        if (value === "" || value === undefined || value === null) return undefined;
-        return typeof value === "string" ? value : undefined;
-      },
-      z.enum(slanjeModes).optional(),
-    ),
-    slanjeOwner: z.preprocess(
-      (value) => {
-        if (value === "" || value === undefined || value === null) return undefined;
-        return typeof value === "string" ? value.trim() : undefined;
-      },
-      z.string().min(2, "Unesi podatak za isplatu.").optional(),
-    ),
-    slanjeOwnerStartingAmount: z.preprocess(
-      (value) => {
-        if (value === "" || value === undefined || value === null) return undefined;
-        const normalized = typeof value === "string" ? value.replace(",", ".") : value;
-        const parsed = Number(normalized);
-        return Number.isFinite(parsed) ? parsed : undefined;
-      },
-      z.number().min(0, "Pocetni iznos mora biti 0 ili vise.").optional(),
-    ),
-    myProfitPercent: z.preprocess(
-      (value) => {
-        if (value === "" || value === undefined || value === null) return undefined;
-        const normalized = typeof value === "string" ? value.replace(",", ".") : value;
-        const parsed = Number(normalized);
-        return Number.isFinite(parsed) ? parsed : undefined;
-      },
-      z
-        .number()
-        .min(0, "Procenat profita mora biti izmedju 0 i 100.")
-        .max(100, "Procenat profita mora biti izmedju 0 i 100.")
-        .optional(),
-    ),
-    pickup: z.boolean().optional(),
-    note: z.string().trim().optional(),
-  })
-  .superRefine((values, ctx) => {
-    const customerName = values.customerName?.trim() ?? "";
-    const address = values.address?.trim() ?? "";
-
-    if (!values.pickup) {
-      if (customerName.length < 3) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["customerName"],
-          message: "Ime i prezime porucioca je obavezno.",
-        });
-      }
-      if (address.length < 5) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["address"],
-          message: "Adresa je obavezna.",
-        });
-      }
-    }
-
-    if (values.pickup) {
-      return;
-    }
-    if (!values.slanjeMode) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["slanjeMode"],
-        message: "Izaberi nacin slanja.",
-      });
-      return;
-    }
-    if (values.slanjeMode && !values.slanjeOwner) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["slanjeOwner"],
-        message: "Izaberi na cije ime lezu pare.",
-      });
-      return;
-    }
-    if (values.slanjeOwner && !values.slanjeMode) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["slanjeMode"],
-        message: "Izaberi nacin slanja.",
-      });
-      return;
-    }
-    if (values.slanjeMode === "Posta" && (!values.slanjeOwner || values.slanjeOwner.trim().length < 2)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["slanjeOwner"],
-        message: "Unesi na ime.",
-      });
-    }
-    if (
-      (values.slanjeMode === "Aks" || values.slanjeMode === "Bex") &&
-      (!values.slanjeOwner || values.slanjeOwner.trim().length < 2)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["slanjeOwner"],
-        message: "Unesi na ciji racun lezu pare.",
-      });
-    }
-  });
-
-type OrderFormValues = z.infer<typeof orderSchema>;
-
-const defaultFormValues: DeepPartial<OrderFormValues> = {
-  stage: "poruceno",
-  customerName: "",
-  address: "",
-  phone: "",
-  transportCost: 0,
-  slanjeMode: "Aks",
-  slanjeOwner: undefined,
-  slanjeOwnerStartingAmount: undefined,
-  myProfitPercent: 100,
-  pickup: false,
-  note: "",
-};
-
-const orderFocusOrder: (keyof OrderFormValues)[] = [
-  "customerName",
-  "address",
-  "phone",
-  "transportCost",
-  "slanjeMode",
-  "slanjeOwner",
-  "slanjeOwnerStartingAmount",
-  "note",
-];
-
-const collectErrorPaths = (node: unknown, prefix = ""): string[] => {
-  if (!node) return [];
-  const paths: string[] = [];
-  const entries = Array.isArray(node) ? Array.from(node.entries()) : Object.entries(node as Record<string, unknown>);
-  for (const [rawKey, value] of entries) {
-    if (!value) continue;
-    const key = String(rawKey);
-    if (key === "ref" || key === "types") continue;
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      const hasMessage = "message" in (value as Record<string, unknown>) || "type" in (value as Record<string, unknown>);
-      const nested = collectErrorPaths(value, path);
-      if (hasMessage || nested.length === 0) {
-        paths.push(path);
-      }
-      paths.push(...nested);
-    } else {
-      paths.push(path);
-    }
-  }
-  return paths;
-};
-
-const findFirstErrorPath = (errors: FieldErrors | undefined, priority: string[] = []) => {
-  if (!errors) return null;
-  const paths = collectErrorPaths(errors);
-  if (paths.length === 0) return null;
-  const preferred = priority
-    .map((prefix) => paths.find((path) => path === prefix || path.startsWith(`${prefix}.`)))
-    .find((path): path is string => Boolean(path));
-  return preferred ?? paths[0];
-};
-
-const generateId = () => Math.random().toString(36).slice(2);
-
-type OrderItemDraft = {
-  id: string;
-  product: Product;
-  variant?: ProductVariant;
-  supplierId?: string;
-  kolicina: number;
-  nabavnaCena: number;
-  prodajnaCena: number;
-  manualProdajna?: boolean;
-  manualNabavna?: boolean;
-  variantLabel?: string;
-  title: string;
-};
-
-type QuickEditField = "address" | "contact" | "profit" | "transport";
-
-type QuickEditState =
-  | {
-      field: "address";
-      order: Order;
-      address: string;
-    }
-  | {
-      field: "contact";
-      order: Order;
-      customerName: string;
-      phone: string;
-    }
-  | {
-      field: "profit";
-      order: Order;
-      myProfitPercent: string;
-    }
-  | {
-      field: "transport";
-      order: Order;
-      transportCost: string;
-    };
-
-type ShipmentStageModalState = {
-  order: Order;
-  nextStage: OrderStage;
-};
-
-function RichTextSnippet({ text, className }: { text?: string | null; className?: string }) {
-  if (!text || text.trim().length === 0) return null;
-  const html = formatRichTextToHtml(text);
-  if (!html) return null;
-  return (
-    <div
-      className={cn(
-        richTextOutputClassNames,
-        "max-h-16 overflow-hidden text-xs text-slate-500 [&_p]:mb-0 [&_ul]:mb-0",
-        className,
-      )}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  );
-}
-
-const getProductVariants = (product?: Product): ProductVariant[] => {
-  if (!product) return [];
-  return product.variants ?? [];
-};
-
-const getProductDisplayName = (product?: Product | null) => {
-  if (!product) return "";
-  return product.kpName ?? product.name;
-};
-
-const composeVariantLabel = (product: Product, variant?: ProductVariant) => {
-  const displayName = getProductDisplayName(product);
-  if (!variant) return displayName;
-  return `${displayName} - ${variant.label}`;
-};
-
-const resolveSupplierOptions = (product?: Product, variantId?: string) => {
-  if (!product) return [];
-  const offers = product.supplierOffers ?? [];
-  if (!offers.length) return [];
-  const normalizedVariantId = variantId?.trim() || undefined;
-  const exact = offers.filter((offer) => (offer.variantId ?? null) === (normalizedVariantId ?? null));
-  const fallback = normalizedVariantId ? [] : offers.filter((offer) => !offer.variantId);
-  const pool = exact.length ? exact : fallback;
-  const seen = new Set<string>();
-  return pool
-    .filter((offer) => {
-      const key = String(offer.supplierId);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((offer) => ({ supplierId: String(offer.supplierId), price: offer.price }));
-};
-
-const pickBestSupplier = (options: { supplierId: string; price: number; supplierName?: string }[]) => {
-  if (!options.length) return null;
-  return options.reduce((best, option) => {
-    if (!best || option.price < best.price) return option;
-    return best;
-  }, null as { supplierId: string; price: number; supplierName?: string } | null);
-};
-
-const resolveVariantPurchasePrice = (product: Product, variant: ProductVariant) => {
-  const offers = product.supplierOffers ?? [];
-  const bestVariantOffer = offers
-    .filter((offer) => (offer.variantId ?? null) === variant.id)
-    .reduce((best, offer) => (best === null || offer.price < best ? offer.price : best), null as number | null);
-  return bestVariantOffer ?? variant.nabavnaCena;
-};
-
-const resolveProductImageUrl = (product?: Product, variantId?: string) => {
-  if (!product) return null;
-  const variantImages = variantId
-    ? product.variants?.find((variant) => variant.id === variantId)?.images
-    : undefined;
-  const images = (variantImages && variantImages.length > 0 ? variantImages : product.images) ?? [];
-  const mainImage = images.find((image) => image.isMain) ?? images[0];
-  return mainImage?.url ?? null;
-};
-
-const StageBadge = ({ stage }: { stage: OrderStage }) => {
-  const meta = STAGES[stage] ?? { label: stage, tone: "" };
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${
-        meta.tone || "border-slate-200 bg-slate-100 text-slate-800"
-      }`}
-    >
-      {meta.label}
-    </span>
-  );
-};
-
-const resolveProfitPercent = (value?: number) =>
-  typeof value === "number" && Number.isFinite(value) ? value : 100;
-
-const formatPercent = (value: number) =>
-  `${value.toLocaleString("sr-RS", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
-
-const formatRefundPeriodDate = (value: string) =>
-  new Intl.DateTimeFormat("sr-RS", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(`${value}T12:00:00`));
-
-const resolveOrderSortValue = (order: Order) => order.sortIndex ?? order.kreiranoAt;
-
-const buildOrderExportTitle = (order: Order, productMap: Map<string, Product>) => {
-  const itemNames = (order.items ?? [])
-    .map((item) => {
-      const product = item.productId ? productMap.get(item.productId) : undefined;
-      return product ? getProductDisplayName(product) : item.title;
-    })
-    .filter((name) => Boolean(name && name.trim().length > 0));
-  const primaryTitle = itemNames[0] ?? order.title;
-  const secondaryNames = itemNames.slice(1, 3);
-  const remainingCount = itemNames.length > 3 ? itemNames.length - 3 : 0;
-  const parts = [primaryTitle];
-  if (secondaryNames.length > 0) {
-    parts.push(secondaryNames.join(" / "));
-  }
-  if (remainingCount > 0) {
-    parts.push(`+${remainingCount}`);
-  }
-  if (order.items && order.items.length > 1) {
-    parts.push(`${order.items.length} proizvoda`);
-  }
-  return parts.filter(Boolean).join("\n");
-};
-
-const buildOrdersPdfRows = (
-  exportOrders: Order[],
-  productMap: Map<string, Product>,
-  refundPeriod?: OrderRefundPeriod | null,
-): OrdersTablePdfRow[] =>
-  exportOrders.map((order) => {
-    const totals = orderTotals(order);
-    const refund = calculateOrderRefund({
-      orderCreatedAt: order.kreiranoAt,
-      totalNabavno: totals.totalNabavno,
-      profit: totals.profit,
-      transport: totals.transport,
-      myProfitPercent: order.myProfitPercent,
-      refundPeriod,
-      povratVracen: order.povratVracen,
-      manualRefund100: order.manualRefund100,
-    });
-    const shipmentNumber = resolveShipmentNumber(order);
-    const contactParts = [order.customerName, order.phone];
-    if (order.pickup) contactParts.push("Licno");
-
-    return {
-      date: formatDate(order.kreiranoAt),
-      stage: STAGES[order.stage]?.label ?? order.stage,
-      title: buildOrderExportTitle(order, productMap),
-      contact: contactParts.filter(Boolean).join("\n"),
-      nabavno: formatCurrency(totals.totalNabavno, "EUR"),
-      transport: formatCurrency(totals.transport, "EUR"),
-      prodajno: formatCurrency(totals.totalProdajno, "EUR"),
-      profit: formatCurrency(refund.outstandingProfitForRefund, "EUR"),
-      povrat: formatCurrency(refund.outstandingRefundAmount, "EUR"),
-      shipmentNumber: shipmentNumber || order.napomena || "-",
-    };
-  });
+import {
+  slanjeModes,
+  slanjeSwitchModes,
+  deleteConfirmPhrase,
+  emptyOrderListTotals,
+  type OrderItemDraft,
+  type QuickEditField,
+  type QuickEditState,
+  type ShipmentStageModalState,
+} from "./_lib/types";
+import {
+  requiresDeleteConfirmation,
+  resolveOrderShippingMode,
+  resolveShipmentNumber,
+  normalizeStageFilters,
+  areArraysEqual,
+  normalizeDateInput,
+  resolveDateTimestamp,
+  resolveTodayEndTimestamp,
+  normalizeOwnerLookupKey,
+  generateId,
+  getProductVariants,
+  getProductDisplayName,
+  composeVariantLabel,
+  resolveSupplierOptions,
+  pickBestSupplier,
+  resolveVariantPurchasePrice,
+  resolveProductImageUrl,
+  resolveProfitPercent,
+  formatRefundPeriodDate,
+  resolveOrderSortValue,
+  buildOrdersPdfRows,
+} from "./_lib/helpers";
+import { orderSchema, type OrderFormValues, defaultFormValues, orderFocusOrder, findFirstErrorPath } from "./_lib/orderForm";
+import { RichTextSnippet } from "./_components/RichTextSnippet";
+import { StageBadge } from "./_components/LegacyStageBadge";
 
 export default function OrdersPage() {
   return (
