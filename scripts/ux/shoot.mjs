@@ -189,5 +189,9 @@ try {
   await browser.close();
 }
 
-fs.writeFileSync(path.join(outDir, "overflow", `${name}.json`), JSON.stringify(report, null, 2));
+// Spoji sa ranijim merenjem iste rute (npr. ponovo snimljen samo 390).
+const reportFile = path.join(outDir, "overflow", `${name}.json`);
+const previous = fs.existsSync(reportFile) ? JSON.parse(fs.readFileSync(reportFile, "utf8")) : null;
+if (previous?.overflow) report.overflow = { ...previous.overflow, ...report.overflow };
+fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
 console.log(JSON.stringify({ route: report.route, name, shots: report.shots.length, overflow: Object.fromEntries(Object.entries(report.overflow).map(([key, value]) => [key, `${value.scrollWidth}/${value.clientWidth}`])) }));
