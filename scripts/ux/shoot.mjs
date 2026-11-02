@@ -11,6 +11,7 @@
 //   --viewport-only        bez .full.png
 //   --storage "dashboard:period=sve"   localStorage pre učitavanja (ponovljivo)
 //   --measure "#profit-hero,#profit-grafikon"  dno elemenata (sekcija oko id-ja) prema visini ekrana
+//   --style "img{visibility:hidden!important}"  dodatni CSS (npr. za pikselsko poređenje bez slika)
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -34,6 +35,7 @@ const { values: args } = parseArgs({
     "viewport-only": { type: "boolean", default: false },
     storage: { type: "string", multiple: true, default: [] },
     measure: { type: "string" },
+    style: { type: "string" },
     wait: { type: "string", default: "1200" },
   },
 });
@@ -171,6 +173,7 @@ try {
       await settle(page, Number(args.wait));
       // Next.js dev indikator ("N" dole levo) nije deo aplikacije.
       await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      if (args.style) await page.addStyleTag({ content: args.style });
       if (args.click) {
         await page.locator(args.click).first().click();
         await page.waitForTimeout(700);
