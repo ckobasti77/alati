@@ -13,6 +13,7 @@ import type * as categories from "../categories.js";
 import type * as client from "../client.js";
 import type * as crons from "../crons.js";
 import type * as customers from "../customers.js";
+import type * as dashboard from "../dashboard.js";
 import type * as images from "../images.js";
 import type * as inboxImages from "../inboxImages.js";
 import type * as maintenance from "../maintenance.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   client: typeof client;
   crons: typeof crons;
   customers: typeof customers;
+  dashboard: typeof dashboard;
   images: typeof images;
   inboxImages: typeof inboxImages;
   maintenance: typeof maintenance;

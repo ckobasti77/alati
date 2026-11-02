@@ -11,6 +11,8 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
+    /* lib/calc.ts (koristi ga dashboard.ts) uvozi tipove preko "@/" aliasa iz root tsconfig-a. */
+    "paths": { "@/*": ["../*"] },
 
     /* These compiler options are required by Convex */
     "target": "ESNext",
