@@ -16,8 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { orderTotals } from "@/lib/calc";
-import { calculateOrderRefund } from "@/lib/refund-policy";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import { openTracking, resolveTrackingTarget } from "@/lib/tracking";
@@ -30,7 +28,7 @@ import type {
   Product,
   ShippingOwnerOption,
   ShippingOwnerOptions,
-  } from "@/types/order";
+} from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +65,7 @@ import { useRefundPeriod } from "./_hooks/useRefundPeriod";
 import { useOrderCatalog } from "./_hooks/useOrderCatalog";
 import { useRestock } from "./_hooks/useRestock";
 import { useOrdersPdf } from "./_hooks/useOrdersPdf";
+import { useOrderEntries } from "./_hooks/useOrderEntries";
 
 export default function OrdersPage() {
   return (
@@ -174,43 +173,7 @@ function OrdersContent() {
   });
   const { restockModalOpen, setRestockModalOpen, restockDeleteOpen, restockDeleteCandidate, isDeletingRestock, setRestockProductId, restockProductInput, setRestockProductInput, setRestockProductSearch, restockProductMenuOpen, setRestockProductMenuOpen, restockVariantId, setRestockVariantId, restockName, setRestockName, restockPhone, setRestockPhone, isCreatingRestock, restockProductInputRef, restockEntries, isRestockLoading, restockFilteredProducts, restockSelectedProduct, restockSelectedVariants, openRestockDeleteModal, closeRestockDeleteModal, handleRestockDeleteOpenChange, handleRestockDelete, resetRestockForm, handleCreateRestockRequest } = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
 
-  const orderEntries = useMemo(
-    () =>
-      orders.map((order) => {
-        const totals = orderTotals(order);
-        const refund = calculateOrderRefund({
-          orderCreatedAt: order.kreiranoAt,
-          totalNabavno: totals.totalNabavno,
-          profit: totals.profit,
-          transport: totals.transport,
-          myProfitPercent: order.myProfitPercent,
-          refundPeriod: refundPeriodOverview?.period,
-          povratVracen: order.povratVracen,
-          manualRefund100: order.manualRefund100,
-        });
-        const myProfitPercent = resolveProfitPercent(order.myProfitPercent);
-        const myProfit = totals.profit * (myProfitPercent / 100);
-        return {
-          order,
-          prodajnoUkupno: totals.totalProdajno,
-          nabavnoUkupno: totals.totalNabavno,
-          transport: totals.transport,
-          myProfit,
-          myProfitPercent,
-          profitShare: refund.outstandingProfitForRefund,
-          calculatedProfitShare: refund.profitForRefund,
-          profitSharePercent: refund.profitForRefundPercent,
-          povrat: refund.outstandingRefundAmount,
-          calculatedPovrat: refund.refundAmount,
-          isInRefundPeriod: refund.isInRefundPeriod,
-          isManualRefund100: refund.isManualRefund100,
-          isFullRefund100: refund.isFullRefund100,
-          isExcludedBecauseReturned: refund.isExcludedBecauseReturned,
-        };
-      }),
-    [orders, refundPeriodOverview?.period],
-  );
-  const visibleOrderIds = useMemo(() => orderEntries.map(({ order }) => order._id), [orderEntries]);
+  const { orderEntries, visibleOrderIds } = useOrderEntries({ orders, refundPeriodOverview });
   const selectedVisibleCount = visibleOrderIds.filter((id) => selectedOrderIds.has(id)).length;
   const allVisibleSelected = visibleOrderIds.length > 0 && selectedVisibleCount === visibleOrderIds.length;
   const filteredProducts = useMemo(() => {
