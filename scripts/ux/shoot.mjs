@@ -9,6 +9,8 @@
 //   --viewports 390        --themes dark
 //   --click "<selektor>"   --press "Control+k"   (otvaranje sheet-a/palete, bez mutacija)
 //   --viewport-only        bez .full.png
+//   --storage "dashboard:period=sve"   localStorage pre učitavanja (ponovljivo)
+//   --measure "#profit-hero,#profit-grafikon"  dno elemenata (sekcija oko id-ja) prema visini ekrana
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -30,6 +32,8 @@ const { values: args } = parseArgs({
     click: { type: "string" },
     press: { type: "string" },
     "viewport-only": { type: "boolean", default: false },
+    storage: { type: "string", multiple: true, default: [] },
+    measure: { type: "string" },
     wait: { type: "string", default: "1200" },
   },
 });
@@ -155,6 +159,10 @@ try {
         storageState: args.anon ? undefined : STATE,
       });
       await context.addInitScript((value) => window.localStorage.setItem("alati-theme", value), theme);
+      for (const entry of args.storage) {
+        const [key, ...rest] = entry.split("=");
+        await context.addInitScript(([k, v]) => window.localStorage.setItem(k, v), [key, rest.join("=")]);
+      }
       const page = await context.newPage();
       const consoleErrors = [];
       page.on("console", (msg) => msg.type() === "error" && consoleErrors.push(msg.text().slice(0, 200)));
@@ -181,6 +189,24 @@ try {
         report.shots.push(path.relative(process.cwd(), full));
       }
       const measured = await page.evaluate(measureOverflow);
+      if (args.measure) {
+        measured.fold = await page.evaluate((selectors) => {
+          const nav = document.querySelector('nav[aria-label="Donja navigacija"]');
+          const navTop = nav && getComputedStyle(nav).position === "fixed" ? nav.getBoundingClientRect().top : window.innerHeight;
+          return {
+            viewport: window.innerHeight,
+            visibleBottom: Math.round(navTop),
+            elements: Object.fromEntries(
+              selectors.split(",").map((selector) => {
+                const el = document.querySelector(selector);
+                const box = (el?.closest("section") ?? el)?.getBoundingClientRect();
+                return [selector, box ? Math.round(box.bottom + window.scrollY) : null];
+              }),
+            ),
+          };
+        }, args.measure);
+        console.log(`  ${vw}-${theme} fold`, JSON.stringify(measured.fold), "pageHeight", await page.evaluate(() => document.documentElement.scrollHeight));
+      }
       report.overflow[`${vw}-${theme}`] = { ...measured, pageHeight: await page.evaluate(() => document.documentElement.scrollHeight), consoleErrors };
       await context.close();
     }

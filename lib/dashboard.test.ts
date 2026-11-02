@@ -23,7 +23,7 @@ const order = (overrides: OrderOverrides = {}) => ({
   nabavnaCena: 60,
   prodajnaCena: 100,
   transportCost: 5,
-  stage: "legle_pare",
+  stage: "legle_pare" as const,
   kreiranoAt: Date.UTC(2026, 10, 2, 12),
   ...overrides,
 });
@@ -192,7 +192,8 @@ describe("toDashboardRow", () => {
   });
 
   it("nepoznat stage tretira kao Poruceno (kao orders.ts)", () => {
-    expect(toDashboardRow(order({ stage: "nesto" })).stage).toBe("poruceno");
+    const legacy = { ...order(), stage: "nesto" } as unknown as Parameters<typeof toDashboardRow>[0];
+    expect(toDashboardRow(legacy).stage).toBe("poruceno");
   });
 });
 

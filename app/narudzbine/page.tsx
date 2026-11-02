@@ -672,6 +672,7 @@ function OrdersContent() {
     params.delete("productId");
     params.delete("orderModal");
     params.delete("nova");
+    params.delete("restock");
     const suffix = params.toString();
     return `listState:${basePath}${suffix ? `?${suffix}` : ""}`;
   }, [basePath, searchParamsString]);
@@ -2163,6 +2164,20 @@ function OrdersContent() {
   useEffect(() => {
     if (isNewOrderRequested) handleNewOrderRequest();
   }, [isNewOrderRequested]);
+
+  // "Zahtevi za dopunu" sa kontrolne table vode na ?restock=1: otvori postojeći modal pa očisti parametar.
+  const isRestockRequested = searchParams?.get("restock") === "1";
+  const handleRestockRequest = useEffectEvent(() => {
+    setRestockModalOpen(true);
+    const params = new URLSearchParams(searchParamsString);
+    params.delete("restock");
+    const next = params.toString();
+    router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
+  });
+
+  useEffect(() => {
+    if (isRestockRequested) handleRestockRequest();
+  }, [isRestockRequested]);
 
   const handleSubmitOrder = async (values: OrderFormValues) => {
     if (draftItems.length === 0) {
