@@ -52,7 +52,7 @@ function ObracunContent() {
         <p className="text-sm text-slate-500">Pregled uplata koje su legle po racunima i posti.</p>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Ukupno leglo</CardTitle>
@@ -84,7 +84,7 @@ function ObracunContent() {
         </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Aks + Bex po racunima</CardTitle>

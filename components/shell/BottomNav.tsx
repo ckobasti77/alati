@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutGrid, Plus } from "lucide-react";
+import { Ellipsis, Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -83,7 +83,7 @@ export function BottomNav() {
               className={cn(tabClass)}
             >
               <span className={indicatorClass}>
-                <LayoutGrid aria-hidden />
+                <Ellipsis aria-hidden />
               </span>
               Više
             </button>
