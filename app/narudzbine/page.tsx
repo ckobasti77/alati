@@ -34,7 +34,6 @@ import type { Customer } from "@/types/customer";
 import type {
   Order,
   OrderListResponse,
-  OrderRefundPeriodOverview,
   OrderStage,
   Product,
   ShippingOwnerOption,
