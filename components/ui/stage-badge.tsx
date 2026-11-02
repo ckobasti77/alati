@@ -64,7 +64,11 @@ function StagePicker({
       disabled={disabled}
       aria-haspopup="dialog"
       aria-label={`Status: ${meta.label}. Promeni status`}
-      onClick={isDesktop ? undefined : () => setOpen(true)}
+      onClick={(event) => {
+        // Bedž je često u redu/kartici koja na klik otvara detalj.
+        event.stopPropagation();
+        if (!isDesktop) setOpen(true);
+      }}
       className={cn(
         badgeBase,
         meta.tone,
@@ -82,7 +86,7 @@ function StagePicker({
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-        <PopoverContent className="w-56" aria-label="Izbor statusa">
+        <PopoverContent className="w-56" aria-label="Izbor statusa" onClick={(event) => event.stopPropagation()}>
           <StageList current={meta.value} onSelect={select} compact />
         </PopoverContent>
       </Popover>

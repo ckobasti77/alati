@@ -636,6 +636,13 @@ h6 {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Sve CSS tranzicije na tokenima postaju trenutne (GSAP ide kroz lib/motion dur()). */
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+
   .skeleton {
     animation: none;
   }

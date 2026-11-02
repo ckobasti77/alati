@@ -2,7 +2,8 @@
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/ui/icon-button";
 import { animateSheetIn, animateSheetOut } from "@/lib/motion";
 import { useIsDesktop } from "@/lib/useMediaQuery";
@@ -51,14 +52,17 @@ export function Sheet({
   onOpenAutoFocus,
 }: SheetProps) {
   const isDesktop = useIsDesktop();
-  const panelRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  // Panel je u state-u: Radix Portal montira sadržaj tek u drugom prolazu, pa ref ne bi okinuo animaciju.
+  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const lastPathnameRef = useRef(pathname);
   // `present` drži sheet u DOM-u dok traje izlazna animacija.
   const [present, setPresent] = useState(open);
   if (open && !present) setPresent(true);
 
   useLayoutEffect(() => {
-    const panel = panelRef.current;
     if (!present || !panel) return;
     const targets = { panel, overlay: overlayRef.current, fromBottom: !isDesktop };
     if (open) {
@@ -71,7 +75,14 @@ export function Sheet({
     return () => {
       timeline?.kill();
     };
-  }, [open, present, isDesktop]);
+  }, [open, present, isDesktop, panel]);
+
+  // Navigacija ispod otvorenog sheet-a (back gest, link) ga zatvara.
+  useEffect(() => {
+    if (lastPathnameRef.current === pathname) return;
+    lastPathnameRef.current = pathname;
+    if (open) onOpenChange(false);
+  }, [pathname, open, onOpenChange]);
 
   const isFull = size === "full";
 
@@ -84,6 +95,8 @@ export function Sheet({
     >
       <DialogPrimitive.Portal>
         <div
+          // Portal i dalje propagira React događaje roditelju (npr. red koji vodi na detalj).
+          onClick={(event) => event.stopPropagation()}
           className={cn(
             "pointer-events-none fixed inset-0 z-(--z-modal) flex justify-center md:p-6",
             placement === "top" ? "items-end md:items-start md:pt-[12vh]" : "items-end md:items-center",
@@ -94,8 +107,16 @@ export function Sheet({
             className="pointer-events-auto absolute inset-0 bg-overlay backdrop-blur-[2px]"
           />
           <DialogPrimitive.Content
-            ref={panelRef}
-            onOpenAutoFocus={onOpenAutoFocus}
+            ref={setPanel}
+            onOpenAutoFocus={(event) => {
+              // Fokus se još nije pomerio: zapamti okidač da mu se fokus vrati pri zatvaranju.
+              returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+              onOpenAutoFocus?.(event);
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus();
+            }}
             className={cn(
               "pointer-events-auto relative flex w-full flex-col overflow-hidden bg-surface text-text shadow-(--shadow-sheet) outline-none",
               isFull ? "h-dvh max-h-dvh" : "max-h-[92dvh] rounded-t-(--radius-sheet)",

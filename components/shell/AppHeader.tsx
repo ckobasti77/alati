@@ -25,14 +25,28 @@ export function AppHeader() {
   const isAuthed = status === "authenticated";
   const isAdmin = user?.role === "admin";
 
-  // Broj navigacija unutar aplikacije: "nazad" ide kroz istoriju samo ako je bilo kuda.
-  const navigations = useRef(0);
+  // Dubina navigacije unutar aplikacije: "nazad" ide kroz istoriju samo kad postoji prethodna stranica
+  // iz aplikacije (deep link u PWA nema istoriju, pa ide na roditelja).
+  const depth = useRef(-1);
+  const popped = useRef(false);
   useEffect(() => {
-    navigations.current += 1;
+    const onPopState = () => {
+      popped.current = true;
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  useEffect(() => {
+    if (popped.current) {
+      popped.current = false;
+      depth.current = Math.max(0, depth.current - 1);
+    } else {
+      depth.current += 1;
+    }
   }, [pathname]);
 
   const goBack = () => {
-    if (navigations.current > 1 && window.history.length > 1) router.back();
+    if (depth.current > 0) router.back();
     else if (meta.backHref) router.push(meta.backHref);
   };
 
@@ -71,11 +85,12 @@ export function AppHeader() {
           <nav aria-label="Glavna navigacija" className="flex min-w-0 items-center gap-0.5 rounded-full bg-(--nav-pill-bg) p-1 ring-1 ring-(--nav-pill-border)">
             {visibleLinks(PRIMARY_NAV, isAdmin).map((link) => {
               const active = isNavActive(link.href, pathname);
+              const exact = pathname === link.href;
               return (
                 <Link
                   key={link.href}
                   href={link.href}
-                  aria-current={active ? "page" : undefined}
+                  aria-current={exact ? "page" : active ? "true" : undefined}
                   className={cn(
                     "inline-flex h-8 items-center rounded-full px-3 text-sm font-medium whitespace-nowrap transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
                     active ? "bg-(--nav-active-bg) text-text" : "text-text-muted hover:text-text",

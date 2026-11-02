@@ -38,8 +38,8 @@ function useDebouncedValue<T>(value: T, delay: number) {
 /** Poslednji stigli rezultat query-ja dok je pretraga aktivna (useQuery vraća undefined dok čeka nove argumente). */
 function useStickyResult<T>(value: T | undefined, active: boolean): T | undefined {
   const [last, setLast] = useState<T | undefined>(value);
-  if (value !== undefined && value !== last) setLast(value);
-  if (!active && last !== undefined) setLast(undefined);
+  if (active && value !== undefined && value !== last) setLast(value);
+  else if (!active && last !== undefined) setLast(undefined);
   return active ? (value ?? last) : undefined;
 }
 
@@ -53,6 +53,15 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  // Svako zatvaranje (Esc, izbor, Ctrl+K) vraća paletu na prazno.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (!open) {
+      setQuery("");
+      setActiveIndex(0);
+    }
+  }
   const term = useDebouncedValue(query.trim(), DEBOUNCE_MS);
   const searching = open && Boolean(token) && term.length >= MIN_QUERY;
 
@@ -93,13 +102,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   const safeIndex = Math.min(activeIndex, Math.max(items.length - 1, 0));
 
-  const close = (next: boolean) => {
-    onOpenChange(next);
-    if (!next) {
-      setQuery("");
-      setActiveIndex(0);
-    }
-  };
+  const close = (next: boolean) => onOpenChange(next);
 
   const go = (item: PaletteItem | undefined) => {
     if (!item) return;
@@ -108,10 +111,14 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "ArrowDown") setActiveIndex((index) => Math.min(index + 1, items.length - 1));
-    else if (event.key === "ArrowUp") setActiveIndex((index) => Math.max(index - 1, 0));
-    else if (event.key === "Enter") go(items[safeIndex]);
-    else return;
+    if (event.key === "ArrowDown") setActiveIndex(Math.max(0, Math.min(safeIndex + 1, items.length - 1)));
+    else if (event.key === "ArrowUp") setActiveIndex(Math.max(safeIndex - 1, 0));
+    else if (event.key === "Enter") {
+      const item = items[safeIndex];
+      // Rezultati prethodnog upita su još na ekranu dok novi stižu: ne otvaraj pogrešnu stavku.
+      if (loading && item?.kind !== "command") return event.preventDefault();
+      go(item);
+    } else return;
     event.preventDefault();
   };
 
@@ -169,7 +176,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         </IconButton>
       </div>
 
-      <div id={listId} role="listbox" aria-label="Rezultati" className="px-2 py-2">
+      <div id={listId} role="listbox" aria-label="Rezultati" className="px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {sections.map((section) => {
           const sectionItems = items
             .map((item, index) => ({ item, index }))

@@ -2,7 +2,7 @@
 
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export type ConfirmDialogProps = {
@@ -32,6 +32,7 @@ export function ConfirmDialog({
   onConfirm,
 }: ConfirmDialogProps) {
   const [pending, setPending] = useState(false);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   const confirm = async (event: React.MouseEvent) => {
     event.preventDefault();
@@ -49,9 +50,17 @@ export function ConfirmDialog({
   return (
     <AlertDialog.Root open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
       <AlertDialog.Portal>
-        <div className="pointer-events-none fixed inset-0 z-(--z-modal) flex items-center justify-center p-4">
+        <div onClick={(event) => event.stopPropagation()} className="pointer-events-none fixed inset-0 z-(--z-modal) flex items-center justify-center p-4">
           <AlertDialog.Overlay className="pointer-events-auto absolute inset-0 bg-overlay backdrop-blur-[2px]" />
-          <AlertDialog.Content className="pointer-events-auto relative w-full max-w-sm rounded-(--radius-sheet) bg-surface p-5 text-text shadow-(--shadow-sheet) ring-1 ring-border outline-none">
+          <AlertDialog.Content
+            onOpenAutoFocus={() => {
+              returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus();
+            }}
+            className="pointer-events-auto relative w-full max-w-sm rounded-(--radius-sheet) bg-surface p-5 text-text shadow-(--shadow-sheet) ring-1 ring-border outline-none">
             <AlertDialog.Title className="text-base font-semibold leading-6">{title}</AlertDialog.Title>
             {description ? (
               <AlertDialog.Description className="mt-1.5 text-sm leading-5 text-text-muted">{description}</AlertDialog.Description>

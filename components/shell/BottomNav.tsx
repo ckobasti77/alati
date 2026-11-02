@@ -40,7 +40,7 @@ export function BottomNav() {
         <Link
           href={item.href}
           data-active={active}
-          aria-current={pathname === item.href ? "page" : undefined}
+          aria-current={pathname === item.href ? "page" : active ? "true" : undefined}
           onClick={(event) => scrollTopIfCurrent(event, item.href)}
           className={tabClass}
         >

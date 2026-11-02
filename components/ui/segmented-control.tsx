@@ -33,11 +33,17 @@ export function SegmentedControl<T extends string>({
 }: SegmentedControlProps<T>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const enabled = options.filter((option) => !option.disabled);
+  // Tab stop: izabrana opcija, a ako je onemogućena ili nepoznata, prva dostupna.
+  const tabStop = enabled.some((option) => option.value === value) ? value : enabled[0]?.value;
 
   const move = (step: number | "first" | "last") => {
     const currentIndex = enabled.findIndex((option) => option.value === value);
     const nextIndex =
-      step === "first" ? 0 : step === "last" ? enabled.length - 1 : (currentIndex + step + enabled.length) % enabled.length;
+      step === "first" || (currentIndex === -1 && step === 1)
+        ? 0
+        : step === "last" || (currentIndex === -1 && step === -1)
+          ? enabled.length - 1
+          : (currentIndex + (step as number) + enabled.length) % enabled.length;
     const next = enabled[nextIndex];
     if (!next) return;
     onChange(next.value);
@@ -54,6 +60,8 @@ export function SegmentedControl<T extends string>({
         className,
       )}
       onKeyDown={(event) => {
+        // Alt+strelice su nazad/napred u browseru.
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
         if (event.key === "ArrowRight" || event.key === "ArrowDown") move(1);
         else if (event.key === "ArrowLeft" || event.key === "ArrowUp") move(-1);
         else if (event.key === "Home") move("first");
@@ -76,7 +84,7 @@ export function SegmentedControl<T extends string>({
             aria-checked={checked}
             aria-label={option.ariaLabel}
             disabled={option.disabled}
-            tabIndex={checked ? 0 : -1}
+            tabIndex={option.value === tabStop ? 0 : -1}
             onClick={() => onChange(option.value)}
             className={cn(
               "inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-1.5 rounded-[10px] px-3 text-sm font-medium whitespace-nowrap transition-colors duration-(--duration-fast) md:h-8 md:min-w-8 md:px-2.5",
