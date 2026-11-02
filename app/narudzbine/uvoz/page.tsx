@@ -27,18 +27,9 @@ import {
 } from "@/lib/receiptMatcher";
 import { decodeReceiptBarcode, downscaleForOcr, reconcileBroj, type BrojReconcile } from "@/lib/receiptBarcode";
 import type { ReceiptExtraction } from "@/lib/receiptExtract";
+import { isOrderStage, STAGES } from "@/lib/stages";
 
 const digitsOnly = (value?: string) => (value ?? "").replace(/\D/g, "");
-
-const stageShortLabels: Record<string, string> = {
-  poruceno: "Poruceno",
-  aks: "Aks",
-  na_stanju: "Na stanju",
-  poslato: "Poslato",
-  stiglo: "Stiglo",
-  legle_pare: "Legle pare",
-  vraceno: "Vraceno",
-};
 
 // Zavrsena stanja: i dalje se mogu izabrati u dropdownu, ali se ne racunaju u
 // badge "ceka slanje" (matcher ih salje na review sa upozorenjem).
@@ -539,7 +530,7 @@ function UvozContent() {
                           {dropdownCandidates.map((candidate) => (
                             <option key={candidate.id} value={candidate.id}>
                               {candidate.customerName} · {candidate.phone} ·{" "}
-                              {stageShortLabels[candidate.stage] ?? candidate.stage}
+                              {isOrderStage(candidate.stage) ? STAGES[candidate.stage].longLabel : candidate.stage}
                             </option>
                           ))}
                         </select>

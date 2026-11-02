@@ -21,18 +21,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { matchLegleBatch, type CandidateOrder, type LegleData, type MatchResult } from "@/lib/legleMatcher";
 import { downscaleForOcr } from "@/lib/receiptBarcode";
 import type { LegleExtraction, LegleRow } from "@/lib/legleExtract";
+import { isOrderStage, STAGES } from "@/lib/stages";
 
 const digitsOnly = (value?: string) => (value ?? "").replace(/\D/g, "");
-
-const stageShortLabels: Record<string, string> = {
-  poruceno: "Poruceno",
-  aks: "Aks",
-  na_stanju: "Na stanju",
-  poslato: "Poslato",
-  stiglo: "Stiglo",
-  legle_pare: "Legle pare",
-  vraceno: "Vraceno",
-};
 
 const matchBadge: Record<MatchResult["status"], { label: string; tone: string }> = {
   high: { label: "Pouzdano", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
@@ -456,7 +447,7 @@ function LegleContent() {
                             <option key={candidate.id} value={candidate.id}>
                               {candidate.customerName}
                               {candidate.brojPosiljke ? ` · ${candidate.brojPosiljke}` : ""} ·{" "}
-                              {stageShortLabels[candidate.stage] ?? candidate.stage}
+                              {isOrderStage(candidate.stage) ? STAGES[candidate.stage].longLabel : candidate.stage}
                             </option>
                           ))}
                         </select>

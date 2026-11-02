@@ -1,8 +1,137 @@
 @import "tailwindcss";
 
+/* `dark:` prati prekidač teme u aplikaciji (html[data-theme]), ne OS. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+/* ─── Semantički tokeni (docs/ux-overhaul/DESIGN_RULES.md) ───
+   Klase: bg-surface, text-text-muted, ring-border, bg-stage-poslato/12 …
+   Vrednosti dolaze iz :root / :root[data-theme="dark"] ispod. */
+@theme inline {
+  --color-bg: var(--page-bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--muted-surface);
+  --color-surface-3: var(--muted-strong);
+  --color-raised: var(--ui-raised);
+  --color-border: var(--border-soft);
+  --color-border-strong: var(--ui-border-strong);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-soft);
+  --color-accent: var(--ui-accent);
+  --color-accent-hover: var(--ui-accent-hover);
+  --color-accent-text: var(--ui-accent-text);
+  --color-accent-soft: var(--ui-accent-soft);
+  --color-accent-fg: #ffffff;
+  --color-ring: var(--ui-ring);
+  --color-success: var(--ui-success);
+  --color-success-soft: var(--ui-success-soft);
+  --color-warning: var(--ui-warning);
+  --color-warning-soft: var(--ui-warning-soft);
+  --color-danger: var(--ui-danger);
+  --color-danger-soft: var(--ui-danger-soft);
+  --color-danger-solid: #dc2626;
+  --color-overlay: var(--ui-overlay);
+
+  --color-stage-poruceno: var(--stage-poruceno);
+  --color-stage-aks: var(--stage-aks);
+  --color-stage-na-stanju: var(--stage-na-stanju);
+  --color-stage-poslato: var(--stage-poslato);
+  --color-stage-stiglo: var(--stage-stiglo);
+  --color-stage-leglo: var(--stage-leglo);
+  --color-stage-vraceno: var(--stage-vraceno);
+}
+
+:root {
+  /* Školjka */
+  --header-h: 52px;
+  --bottom-nav-h: 60px;
+  --radius-sheet: 20px;
+
+  /* z-index skala: koristi z-(--z-…), nikad proizvoljne brojeve */
+  --z-raised: 10;
+  --z-sticky: 20;
+  --z-header: 30;
+  --z-nav: 30;
+  --z-overlay: 40;
+  --z-modal: 50;
+  --z-popover: 60;
+  --z-toast: 70;
+
+  /* Motion (kopija lib/motion.ts) */
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
+  --ease-standard: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-emphasized: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-exit: cubic-bezier(0.32, 0, 0.67, 0);
+
+  /* Semantika (light) */
+  --ui-raised: #ffffff;
+  --ui-border-strong: #cbd5e1;
+  --ui-accent: #7c3aed;
+  --ui-accent-hover: #6d28d9;
+  --ui-accent-text: #6d28d9;
+  --ui-accent-soft: #ede9fe;
+  --ui-ring: #7c3aed;
+  --ui-success: #047857;
+  --ui-success-soft: #ecfdf5;
+  --ui-warning: #b45309;
+  --ui-warning-soft: #fffbeb;
+  --ui-danger: #dc2626;
+  --ui-danger-soft: #fef2f2;
+  --ui-overlay: rgba(15, 23, 42, 0.4);
+  --shadow-raised: 0 1px 2px rgba(15, 23, 42, 0.08);
+  --shadow-popover: 0 12px 32px -8px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --shadow-sheet: 0 -8px 40px -12px rgba(15, 23, 42, 0.25);
+  --shadow-fab: 0 4px 12px -2px rgba(15, 23, 42, 0.28);
+
+  /* Stage boje (light: tekst ≥ 4.5:1 i na 12% tintu) */
+  --stage-poruceno: #92400e;
+  --stage-aks: #9a3412;
+  --stage-na-stanju: #4338ca;
+  --stage-poslato: #1d4ed8;
+  --stage-stiglo: #047857;
+  --stage-leglo: #334155;
+  --stage-vraceno: #be123c;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --header-h: 60px;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ui-raised: #1f1f22;
+  --ui-border-strong: #3a3a3f;
+  --ui-accent: #7c3aed;
+  --ui-accent-hover: #6d28d9;
+  --ui-accent-text: #a78bfa;
+  --ui-accent-soft: #1e1530;
+  --ui-ring: #a78bfa;
+  --ui-success: #34d399;
+  --ui-success-soft: rgba(52, 211, 153, 0.12);
+  --ui-warning: #fbbf24;
+  --ui-warning-soft: rgba(251, 191, 36, 0.12);
+  --ui-danger: #f87171;
+  --ui-danger-soft: rgba(248, 113, 113, 0.12);
+  --ui-overlay: rgba(0, 0, 0, 0.6);
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-popover: 0 16px 40px -8px rgba(0, 0, 0, 0.7);
+  --shadow-sheet: 0 -8px 40px -12px rgba(0, 0, 0, 0.8);
+  --shadow-fab: 0 4px 12px -2px rgba(0, 0, 0, 0.6);
+
+  --stage-poruceno: #fcd34d;
+  --stage-aks: #fdba74;
+  --stage-na-stanju: #a5b4fc;
+  --stage-poslato: #93c5fd;
+  --stage-stiglo: #6ee7b7;
+  --stage-leglo: #cbd5e1;
+  --stage-vraceno: #fda4af;
 }
 
 :root {
@@ -25,9 +154,10 @@
   --text-soft: #475569;
   --text-faint: #64748b;
   --text-ghost: #cbd5e1;
-  --accent: #1d4ed8;
-  --accent-strong: #1e40af;
-  --accent-soft: #e0f2fe;
+  /* Ljubičasti akcenat i u light temi (ranije plavi #1d4ed8), isto kao dark. */
+  --accent: #7c3aed;
+  --accent-strong: #6d28d9;
+  --accent-soft: #ede9fe;
   --shadow-soft: 0 14px 45px -24px rgba(15, 23, 42, 0.25);
 
   /* Card / glass system */
@@ -451,4 +581,62 @@ h6 {
 @keyframes glow-pulse {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.8; }
+}
+
+/* ─── Globalna mobilna pravila (DESIGN_RULES §6) ─── */
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  :where(a, button, [role="button"], input, select, textarea, label, summary) {
+    touch-action: manipulation;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--ui-accent) 28%, transparent);
+  }
+}
+
+/* Van layer-a namerno: mora da pobedi `text-sm` utilitije, inače iOS zumira stranicu na fokus. */
+@media (max-width: 767.98px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [class*="text-lg"], [class*="text-xl"], [class*="text-2xl"], [class*="text-3xl"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Novac i količine: brojevi iste širine (kolone ne "plešu"). */
+@utility num {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .skeleton {
+    background-color: var(--muted-strong);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklab, var(--muted-strong), var(--text-primary) 7%) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: skeleton-sweep 1.4s var(--ease-standard) infinite;
+  }
+}
+
+@keyframes skeleton-sweep {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
 }

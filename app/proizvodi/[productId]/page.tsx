@@ -55,6 +55,7 @@ import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
+import { STAGES } from "@/lib/stages";
 import type {
   Category,
   Order,
@@ -117,23 +118,8 @@ const generateId = () => {
   return Math.random().toString(36).slice(2);
 };
 
-const orderStageOptions: { value: OrderStage; label: string; tone: string }[] = [
-  { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
-  { value: "aks", label: "Aks", tone: "border-orange-200 bg-orange-50 text-orange-800" },
-  { value: "na_stanju", label: "Na stanju", tone: "border-indigo-200 bg-indigo-50 text-indigo-800" },
-  { value: "poslato", label: "Poslato", tone: "border-blue-200 bg-blue-50 text-blue-800" },
-  { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
-  { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
-  { value: "vraceno", label: "Vraćeno", tone: "border-rose-200 bg-rose-50 text-rose-800" },
-];
-
-const orderStageLabels = orderStageOptions.reduce((acc, item) => {
-  acc[item.value] = { label: item.label, tone: item.tone };
-  return acc;
-}, {} as Record<OrderStage, { label: string; tone: string }>);
-
 const OrderStageBadge = ({ stage }: { stage: OrderStage }) => {
-  const meta = orderStageLabels[stage] ?? { label: stage, tone: "" };
+  const meta = STAGES[stage] ?? { label: stage, tone: "" };
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-1 text-[11px] font-semibold ${

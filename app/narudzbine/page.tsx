@@ -25,6 +25,7 @@ import { formatRichTextToHtml, richTextOutputClassNames } from "@/lib/richText";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
 import { openTracking, resolveTrackingTarget } from "@/lib/tracking";
+import { ORDER_STAGES, STAGES, STAGE_OPTIONS } from "@/lib/stages";
 import {
   createOrdersTablePdfFile,
   downloadPdfFile,
@@ -51,15 +52,6 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { Badge } from "@/components/ui/badge";
 
-const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
-  { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
-  { value: "aks", label: "Aks", tone: "border-orange-200 bg-orange-50 text-orange-800" },
-  { value: "na_stanju", label: "Na stanju", tone: "border-indigo-200 bg-indigo-50 text-indigo-800" },
-  { value: "poslato", label: "Poslato", tone: "border-blue-200 bg-blue-50 text-blue-800" },
-  { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
-  { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
-  { value: "vraceno", label: "Vraćeno", tone: "border-rose-200 bg-rose-50 text-rose-800" },
-];
 const slanjeModes = ["Posta", "Aks", "Bex"] as const;
 const slanjeSwitchModes = ["Aks", "Posta"] as const;
 const shippingModes = ["Posta", "Aks", "Bex"] as const;
@@ -89,21 +81,16 @@ const resolveOrderShippingMode = (order: Pick<Order, "slanjeMode" | "transportMo
 
 const resolveShipmentNumber = (order: Pick<Order, "brojPosiljke">) => order.brojPosiljke?.trim() ?? "";
 
-const stageLabels = stageOptions.reduce((acc, item) => {
-  acc[item.value] = { label: item.label, tone: item.tone };
-  return acc;
-}, {} as Record<OrderStage, { label: string; tone: string }>);
-
 const normalizeStageFilters = (values: string[]) => {
   if (!values.length) return [] as OrderStage[];
-  const allowed = new Set(stageOptions.map((option) => option.value));
+  const allowed = new Set(STAGE_OPTIONS.map((option) => option.value));
   const unique = new Set<string>();
   values.forEach((value) => {
     if (allowed.has(value as OrderStage)) {
       unique.add(value);
     }
   });
-  return stageOptions.map((option) => option.value).filter((value) => unique.has(value));
+  return STAGE_OPTIONS.map((option) => option.value).filter((value) => unique.has(value));
 };
 
 const areArraysEqual = <T,>(left: T[], right: T[]) =>
@@ -138,7 +125,7 @@ const normalizeOwnerLookupKey = (value?: string) => normalizeSearchText(value?.t
 
 const orderSchema = z
   .object({
-    stage: z.enum(["poruceno", "aks", "na_stanju", "poslato", "stiglo", "legle_pare", "vraceno"]),
+    stage: z.enum(ORDER_STAGES),
     customerName: z.string().trim().optional(),
     address: z.string().trim().optional(),
     phone: z.string().min(5, "Broj telefona je obavezan."),
@@ -441,7 +428,7 @@ const resolveProductImageUrl = (product?: Product, variantId?: string) => {
 };
 
 const StageBadge = ({ stage }: { stage: OrderStage }) => {
-  const meta = stageLabels[stage] ?? { label: stage, tone: "" };
+  const meta = STAGES[stage] ?? { label: stage, tone: "" };
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${
@@ -514,7 +501,7 @@ const buildOrdersPdfRows = (
 
     return {
       date: formatDate(order.kreiranoAt),
-      stage: stageLabels[order.stage]?.label ?? order.stage,
+      stage: STAGES[order.stage]?.label ?? order.stage,
       title: buildOrderExportTitle(order, productMap),
       contact: contactParts.filter(Boolean).join("\n"),
       nabavno: formatCurrency(totals.totalNabavno, "EUR"),
@@ -940,7 +927,7 @@ function OrdersContent() {
       const trimmedSearch = search.trim();
       if (trimmedSearch) filters.push(`Pretraga: ${trimmedSearch}`);
       if (stageFilters.length > 0) {
-        filters.push(`Stage: ${stageFilters.map((stage) => stageLabels[stage]?.label ?? stage).join(", ")}`);
+        filters.push(`Stage: ${stageFilters.map((stage) => STAGES[stage]?.label ?? stage).join(", ")}`);
       }
       if (showUnreturnedOnly) filters.push("Povrat: nepovraceni");
       if (showReturnedOnly) filters.push("Povrat: povraceno");
@@ -2898,7 +2885,7 @@ function OrdersContent() {
                 <FormItem>
                   <FormLabel>Stage</FormLabel>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {stageOptions.map((option) => (
+                    {STAGE_OPTIONS.map((option) => (
                       <button
                         key={option.value}
                         type="button"
@@ -3624,7 +3611,7 @@ function OrdersContent() {
                 <p className="font-semibold text-slate-900">{deleteCandidate.title}</p>
                 <p className="text-xs text-slate-500">
                   {deleteCandidate.customerName} · Stage:{" "}
-                  {stageLabels[deleteCandidate.stage]?.label ?? deleteCandidate.stage}
+                  {STAGES[deleteCandidate.stage]?.label ?? deleteCandidate.stage}
                 </p>
               </div>
             ) : (
@@ -4220,7 +4207,7 @@ function OrdersContent() {
                         <div className="space-y-2">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stage</p>
                           <div className="grid gap-2 sm:grid-cols-2">
-                            {stageOptions.map((option) => {
+                            {STAGE_OPTIONS.map((option) => {
                               const isActive = stageFilters.includes(option.value);
                               return (
                                 <label
@@ -4376,7 +4363,7 @@ function OrdersContent() {
                   className={cn(
                     "col-span-2 w-full gap-2 sm:col-span-1 sm:w-auto",
                     refundPeriodOverview?.period
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
+                      ? "border-0 bg-success-soft text-success ring-1 ring-inset ring-success/40 hover:bg-success-soft hover:brightness-105"
                       : "",
                   )}
                   onClick={openRefundPeriodModal}
@@ -4425,12 +4412,12 @@ function OrdersContent() {
         <CardContent className="space-y-4">
           {refundPeriodOverview &&
           (refundPeriodOverview.period || refundPeriodOverview.manualCount > 0) ? (
-            <div className="grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 sm:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))] sm:items-center">
+            <div className="grid gap-3 rounded-2xl bg-success-soft p-4 ring-1 ring-inset ring-success/25 sm:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))] sm:items-center">
               <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+                <p className="text-xs font-bold uppercase tracking-wide text-success">
                   {refundPeriodOverview.period ? "Aktivan period 100% povrata" : "Ručno izabrani 100% povrati"}
                 </p>
-                <p className="mt-1 text-sm font-semibold text-emerald-950">
+                <p className="mt-1 text-sm font-semibold text-text">
                   {refundPeriodOverview.period
                     ? `${formatRefundPeriodDate(refundPeriodOverview.period.startDate)} – ${formatRefundPeriodDate(
                         refundPeriodOverview.period.endDate,
@@ -4440,28 +4427,28 @@ function OrdersContent() {
                       }`}
                 </p>
                 {refundPeriodOverview.period && refundPeriodOverview.manualCount > 0 ? (
-                  <p className="mt-1 text-xs text-emerald-700">
+                  <p className="mt-1 text-xs text-success">
                     + {refundPeriodOverview.manualCount} ručno dodatih
                   </p>
                 ) : null}
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-emerald-700">Za povrat</p>
-                <p className="text-lg font-bold text-emerald-950">{refundPeriodOverview.pendingCount}</p>
+                <p className="text-[11px] uppercase tracking-wide text-success">Za povrat</p>
+                <p className="text-lg font-bold text-text">{refundPeriodOverview.pendingCount}</p>
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-emerald-700">Već vraćeno</p>
-                <p className="text-lg font-bold text-emerald-950">{refundPeriodOverview.returnedCount}</p>
+                <p className="text-[11px] uppercase tracking-wide text-success">Već vraćeno</p>
+                <p className="text-lg font-bold text-text">{refundPeriodOverview.returnedCount}</p>
               </div>
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-emerald-700">Preostali iznos</p>
-                <p className="text-lg font-bold text-emerald-950">
+                <p className="text-[11px] uppercase tracking-wide text-success">Preostali iznos</p>
+                <p className="text-lg font-bold text-text">
                   {formatCurrency(refundPeriodOverview.pendingAmount, "EUR")}
                 </p>
               </div>
             </div>
           ) : null}
-          <div className="flex flex-col gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 rounded-2xl bg-accent-soft p-4 ring-1 ring-inset ring-accent/20 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
                 <input
@@ -4485,11 +4472,11 @@ function OrdersContent() {
                 disabled={selectedVisibleCount === 0 || bulkAction !== null}
                 onChange={(event) => {
                   const stage = event.target.value as OrderStage;
-                  if (stage) void handleBulkAction({ stage, message: `Status promenjen u ${stageLabels[stage].label}` });
+                  if (stage) void handleBulkAction({ stage, message: `Status promenjen u ${STAGES[stage].label}` });
                 }}
               >
                 <option value="">Promeni status za izabrane...</option>
-                {stageOptions
+                {STAGE_OPTIONS
                   .filter((option) => option.value !== "poslato")
                   .map((option) => (
                     <option key={option.value} value={option.value}>
@@ -4870,7 +4857,7 @@ function OrdersContent() {
                           value={order.stage}
                           onChange={(event) => handleStageChange(order, event.target.value as OrderStage)}
                         >
-                          {stageOptions.map((option) => (
+                          {STAGE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
@@ -5305,7 +5292,7 @@ function OrdersContent() {
                               value={order.stage}
                               onChange={(event) => handleStageChange(order, event.target.value as OrderStage)}
                             >
-                              {stageOptions.map((option) => (
+                              {STAGE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
                                   {option.label}
                                 </option>

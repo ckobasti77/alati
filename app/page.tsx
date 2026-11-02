@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/StatCard";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { orderTotals } from "@/lib/calc";
+import { isOrderStage, STAGES } from "@/lib/stages";
 import type { ObracunSummary, Order, OrdersSummary } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -39,16 +40,6 @@ function DashboardContent() {
 
   const handleRowClick = (id: string) => {
     router.push(`/narudzbine/${id}`);
-  };
-
-  const stageLabels: Record<string, string> = {
-    poruceno: "Poruceno",
-    aks: "Aks",
-    na_stanju: "Na stanju",
-    poslato: "Poslato",
-    stiglo: "Stiglo",
-    legle_pare: "Leglo",
-    vraceno: "Vraćeno",
   };
 
   const {
@@ -290,7 +281,7 @@ function DashboardContent() {
                       <span
                         className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-500"
                       >
-                        {stageLabels[order.stage] ?? order.stage}
+                        {isOrderStage(order.stage) ? STAGES[order.stage].label : order.stage}
                       </span>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-3 text-sm">

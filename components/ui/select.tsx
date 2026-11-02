@@ -30,7 +30,7 @@ export const SelectTrigger = forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-10 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-inherit shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900",
+      "flex h-10 max-md:h-11 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-2 text-sm max-md:text-base text-inherit shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900",
       className,
     )}
     {...props}
@@ -54,7 +54,7 @@ export const SelectContent = forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "z-50 min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white text-inherit shadow-lg animate-in fade-in-80 data-[state=closed]:animate-out data-[state=open]:zoom-in-90 data-[state=closed]:zoom-out-95 dark:border-slate-700 dark:bg-slate-900",
+        "z-(--z-popover) min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white text-inherit shadow-lg animate-in fade-in-80 data-[state=closed]:animate-out data-[state=open]:zoom-in-90 data-[state=closed]:zoom-out-95 dark:border-slate-700 dark:bg-slate-900",
         className,
       )}
       position={position}
@@ -88,7 +88,7 @@ export const SelectItem = forwardRef<
     {...props}
   >
     <SelectPrimitive.ItemIndicator className="absolute left-2 inline-flex items-center">
-      <Check className="h-4 w-4 text-blue-600" />
+      <Check className="h-4 w-4 text-accent-text" />
     </SelectPrimitive.ItemIndicator>
     <SelectPrimitive.ItemText className="ml-6 flex w-full items-center justify-between gap-2">
       {children}

@@ -33,7 +33,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, Props>(
       <textarea
         ref={innerRef}
         className={cn(
-          "flex w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60",
+          "flex w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm max-md:text-base text-slate-900 shadow-sm transition placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60",
           className,
         )}
         onInput={handleInput}

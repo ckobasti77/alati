@@ -25,6 +25,7 @@ import {
 } from "@/lib/pdfExport";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import { openTracking, resolveTrackingTarget } from "@/lib/tracking";
+import { STAGES, STAGE_OPTIONS } from "@/lib/stages";
 import type {
   OrderEvent,
   OrderRefundPeriodOverview,
@@ -36,15 +37,6 @@ import type {
   Supplier,
 } from "@/types/order";
 
-const stageOptions: { value: OrderStage; label: string; tone: string }[] = [
-  { value: "poruceno", label: "Poruceno", tone: "border-amber-200 bg-amber-50 text-amber-800" },
-  { value: "aks", label: "Aks", tone: "border-orange-200 bg-orange-50 text-orange-800" },
-  { value: "na_stanju", label: "Na stanju", tone: "border-indigo-200 bg-indigo-50 text-indigo-800" },
-  { value: "poslato", label: "Poslato", tone: "border-blue-200 bg-blue-50 text-blue-800" },
-  { value: "stiglo", label: "Stiglo", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
-  { value: "legle_pare", label: "Leglo", tone: "border-slate-200 bg-slate-100 text-slate-900" },
-  { value: "vraceno", label: "Vraćeno", tone: "border-rose-200 bg-rose-50 text-rose-800" },
-];
 const slanjeModes = ["Posta", "Aks", "Bex"] as const;
 const shippingModes = ["Posta", "Aks", "Bex"] as const;
 type ShippingMode = (typeof shippingModes)[number];
@@ -70,13 +62,8 @@ const resolveOrderShippingMode = (
 const resolveShipmentNumber = (order?: Pick<OrderWithProduct, "brojPosiljke"> | null) => order?.brojPosiljke?.trim() ?? "";
 const normalizeOwnerLookupKey = (value?: string) => normalizeSearchText(value?.trim() ?? "");
 
-const stageLabels = stageOptions.reduce((acc, item) => {
-  acc[item.value] = { label: item.label, tone: item.tone };
-  return acc;
-}, {} as Record<OrderStage, { label: string; tone: string }>);
-
 const StageBadge = ({ stage }: { stage: OrderStage }) => {
-  const meta = stageLabels[stage] ?? { label: stage, tone: "" };
+  const meta = STAGES[stage] ?? { label: stage, tone: "" };
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${
@@ -100,9 +87,9 @@ const getOrderEventTitle = (event: OrderEvent) => {
     return event.povratVracen ? "Povrat je oznacen kao vracen" : "Oznaka povrata je uklonjena";
   }
 
-  const stageLabel = event.stage ? (stageLabels[event.stage]?.label ?? event.stage) : "Nepoznato stanje";
+  const stageLabel = event.stage ? (STAGES[event.stage]?.label ?? event.stage) : "Nepoznato stanje";
   if (!event.previousStage) return `Narudzbina je kreirana kao: ${stageLabel}`;
-  const previousLabel = stageLabels[event.previousStage]?.label ?? event.previousStage;
+  const previousLabel = STAGES[event.previousStage]?.label ?? event.previousStage;
   return `Status: ${previousLabel} → ${stageLabel}`;
 };
 
@@ -1280,7 +1267,7 @@ function OrderDetails({
             <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
               <p className="font-semibold text-slate-900">{order.title}</p>
               <p className="text-xs text-slate-500">
-                {order.customerName} · Stage: {stageLabels[order.stage]?.label ?? order.stage}
+                {order.customerName} · Stage: {STAGES[order.stage]?.label ?? order.stage}
               </p>
             </div>
             {deleteRequiresConfirmation ? (
@@ -1399,7 +1386,7 @@ function OrderDetails({
         </div>
         <div className="w-full -mx-2 overflow-x-auto pb-2 sm:mx-0 sm:pb-0">
             <div className="flex min-w-max gap-2 px-2 sm:px-0">
-              {stageOptions.map((option) => (
+              {STAGE_OPTIONS.map((option) => (
                 <Button
                   key={option.value}
                   type="button"
