@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type DragEvent, type MouseEvent, type TouchEvent } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useConvex } from "convex/react";
 import { useForm, type Resolver } from "react-hook-form";
@@ -67,6 +67,8 @@ import { useRestock } from "./_hooks/useRestock";
 import { useOrdersPdf } from "./_hooks/useOrdersPdf";
 import { useOrderEntries } from "./_hooks/useOrderEntries";
 import { useOrderSelection } from "./_hooks/useOrderSelection";
+import { useOrderReorder } from "./_hooks/useOrderReorder";
+import { useLongPress } from "./_hooks/useLongPress";
 
 export default function OrdersPage() {
   return (
@@ -120,8 +122,6 @@ function OrdersContent() {
   const previousSlanjeModeRef = useRef<(typeof slanjeModes)[number] | undefined>(undefined);
   const previousPickupValueRef = useRef<boolean | null>(null);
   const lastAutoSelectedOwnerRef = useRef<string | null>(null);
-  const longPressTimerRef = useRef<number | null>(null);
-  const longPressTriggeredRef = useRef(false);
   const modalSnapshotRef = useRef<string>("");
   const wasModalOpenRef = useRef(false);
   const preselectHandledRef = useRef<string | null>(null);
@@ -145,12 +145,6 @@ function OrdersContent() {
     value: string;
     startingAmount: number;
   }>("orders:upsertShippingAccount");
-  const reorderOrders = useConvexMutation<{
-    token: string;
-    scope: "default" | "kalaba";
-    orderIds: string[];
-    base: number;
-  }>("orders:reorder");
   const syncCustomers = useConvexMutation("customers:syncFromOrders");
   const { products, productMap, supplierMap, isProductsLoading } = useOrderCatalog({ sessionToken });
   const customers = useConvexQuery<Customer[]>("customers:list", {
@@ -347,59 +341,7 @@ function OrdersContent() {
     [productMap],
   );
 
-  const clearLongPressTimer = useCallback(() => {
-    if (longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearLongPressTimer();
-    };
-  }, [clearLongPressTimer]);
-
-  const consumeLongPressClick = useCallback((event: MouseEvent<HTMLElement>) => {
-    if (!longPressTriggeredRef.current) return false;
-    event.preventDefault();
-    event.stopPropagation();
-    longPressTriggeredRef.current = false;
-    return true;
-  }, []);
-
-  const createLongPressHandlers = useCallback(
-    (onLongPress: () => void) => ({
-      onTouchStart: (event: TouchEvent<HTMLElement>) => {
-        if (event.touches.length !== 1) return;
-        clearLongPressTimer();
-        longPressTriggeredRef.current = false;
-        longPressTimerRef.current = window.setTimeout(() => {
-          longPressTriggeredRef.current = true;
-          onLongPress();
-        }, 650);
-      },
-      onTouchEnd: () => {
-        clearLongPressTimer();
-      },
-      onTouchMove: () => {
-        clearLongPressTimer();
-      },
-      onTouchCancel: () => {
-        clearLongPressTimer();
-      },
-      onClick: (event: MouseEvent<HTMLElement>) => {
-        consumeLongPressClick(event);
-      },
-      onContextMenu: (event: MouseEvent<HTMLElement>) => {
-        if (longPressTriggeredRef.current) {
-          event.preventDefault();
-        }
-      },
-    }),
-    [clearLongPressTimer, consumeLongPressClick],
-  );
-
+  const { consumeLongPressClick, createLongPressHandlers } = useLongPress();
   const copyText = useCallback(async (value: string, successMessage: string) => {
     const text = value.trim();
     if (!text) {
@@ -1207,89 +1149,7 @@ function OrdersContent() {
     }
   };
 
-  const reorderOrdersList = useCallback((list: Order[], sourceId: string, targetId: string) => {
-    const sourceIndex = list.findIndex((entry) => entry._id === sourceId);
-    const targetIndex = list.findIndex((entry) => entry._id === targetId);
-    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return list;
-    const next = [...list];
-    const [moved] = next.splice(sourceIndex, 1);
-    next.splice(targetIndex, 0, moved);
-    return next;
-  }, []);
-
-  const handleOrderDragStart = useCallback(
-    (orderId: string) => (event: DragEvent<HTMLDivElement>) => {
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", orderId);
-      setDraggingOrderId(orderId);
-      setDragOverOrderId(null);
-    },
-    [setDragOverOrderId, setDraggingOrderId],
-  );
-
-  const handleOrderDragEnd = useCallback(() => {
-    setDraggingOrderId(null);
-    setDragOverOrderId(null);
-  }, [setDragOverOrderId, setDraggingOrderId]);
-
-  const handleOrderDragOver = useCallback(
-    (orderId: string) => (event: DragEvent<HTMLTableRowElement>) => {
-      if (!draggingOrderId || draggingOrderId === orderId) return;
-      event.preventDefault();
-      setDragOverOrderId(orderId);
-    },
-    [draggingOrderId, setDragOverOrderId],
-  );
-
-  const handleOrderDragLeave = useCallback(
-    (orderId: string) => () => {
-      if (dragOverOrderId === orderId) {
-        setDragOverOrderId(null);
-      }
-    },
-    [dragOverOrderId, setDragOverOrderId],
-  );
-
-  const handleOrderDrop = useCallback(
-    (orderId: string) => async (event: DragEvent<HTMLTableRowElement>) => {
-      event.preventDefault();
-      const sourceId = draggingOrderId ?? event.dataTransfer.getData("text/plain");
-      if (!sourceId || sourceId === orderId) {
-        setDraggingOrderId(null);
-        setDragOverOrderId(null);
-        return;
-      }
-      const nextOrders = reorderOrdersList(orders, sourceId, orderId);
-      if (nextOrders === orders) {
-        setDraggingOrderId(null);
-        setDragOverOrderId(null);
-        return;
-      }
-      const base = Date.now();
-      const nextOrdersWithSort = nextOrders.map((item, index) => ({
-        ...item,
-        sortIndex: base - index,
-      }));
-      setOrders(nextOrdersWithSort);
-      setDraggingOrderId(null);
-      setDragOverOrderId(null);
-      try {
-        await reorderOrders({
-          token: sessionToken,
-          scope: orderScope,
-          orderIds: nextOrders.map((item) => item._id),
-          base,
-        });
-        toast.success("Redosled narudzbina sacuvan.");
-      } catch (error) {
-        console.error(error);
-        toast.error("Nije moguce sacuvati novi redosled.");
-        setOrders(orders);
-      }
-    },
-    [draggingOrderId, orderScope, orders, reorderOrders, reorderOrdersList, sessionToken, setDragOverOrderId, setDraggingOrderId, setOrders],
-  );
-
+  const { handleOrderDragStart, handleOrderDragEnd, handleOrderDragOver, handleOrderDragLeave, handleOrderDrop } = useOrderReorder({ orderScope, sessionToken, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId });
   const handleRowClick = (id: string) => {
     router.push(`${basePath}/${id}`);
   };
