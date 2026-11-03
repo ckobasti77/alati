@@ -1,10 +1,8 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, } from "react";
+import { useCallback, useMemo, useState, } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useConvex } from "convex/react";
-import { useForm, type Resolver } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ArrowUpRight, BadgePercent, Banknote, CalendarRange, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
 import { LoadingDots } from "@/components/LoadingDots";
@@ -16,44 +14,31 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { useConvexMutation, useConvexQuery } from "@/lib/convex";
-import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
+import { useConvexMutation, } from "@/lib/convex";
 import { openTracking, resolveTrackingTarget } from "@/lib/tracking";
 import { STAGES, STAGE_OPTIONS } from "@/lib/stages";
 import { cn } from "@/lib/utils";
-import type { Customer } from "@/types/customer";
 import type {
   Order,
   OrderStage,
-  Product,
-  ShippingOwnerOption,
-  ShippingOwnerOptions,
-} from "@/types/order";
+  } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { Badge } from "@/components/ui/badge";
 import {
-  slanjeModes,
   slanjeSwitchModes,
   deleteConfirmPhrase,
-  type OrderItemDraft,
   } from "./_lib/types";
 import {
   requiresDeleteConfirmation,
   resolveOrderShippingMode,
   resolveShipmentNumber,
-  normalizeOwnerLookupKey,
-  generateId,
-  getProductVariants,
   getProductDisplayName,
   composeVariantLabel,
-  resolveSupplierOptions,
-  pickBestSupplier,
   resolveVariantPurchasePrice,
   resolveProductImageUrl,
   formatRefundPeriodDate,
   } from "./_lib/helpers";
-import { orderSchema, type OrderFormValues, defaultFormValues, orderFocusOrder, findFirstErrorPath } from "./_lib/orderForm";
 import { RichTextSnippet } from "./_components/RichTextSnippet";
 import { StageBadge } from "./_components/LegacyStageBadge";
 import { useOrdersFeed } from "./_hooks/useOrdersFeed";
@@ -66,6 +51,8 @@ import { useOrderSelection } from "./_hooks/useOrderSelection";
 import { useOrderReorder } from "./_hooks/useOrderReorder";
 import { useLongPress } from "./_hooks/useLongPress";
 import { useOrderRowActions } from "./_hooks/useOrderRowActions";
+import { useOrderForm } from "./_hooks/useOrderForm";
+import { useOrderFormActions } from "./_hooks/useOrderFormActions";
 
 export default function OrdersPage() {
   return (
@@ -85,225 +72,25 @@ function OrdersContent() {
   const { token } = useAuth();
   const sessionToken = token as string;
   const { search, setSearch, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, setFilterMenuMode, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId, ordersPagination, ordersTotals, isLoadingMoreOrders, ordersLoaderRef, orderListQueryArgs, isOrdersLoading, hasMoreOrders, dateFilterActive, activeFilterCount, isFilterMenuOpen, resetOrdersFeed, handleStageFilterToggle, handleUnreturnedToggle, handleReturnedToggle, handlePickupToggle, handleShippingToggle, handleLateToggle, handleDateFromChange, handleDateToChange, handleClearDateFilter, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle } = useOrdersFeed({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken });
-  const [productInput, setProductInput] = useState("");
-  const [productSearch, setProductSearch] = useState("");
-  const [productMenuOpen, setProductMenuOpen] = useState(false);
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const editingOrderId = editingOrder?._id ?? null;
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<Order | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
-  const [draftItems, setDraftItems] = useState<OrderItemDraft[]>([]);
-  const [itemProductId, setItemProductId] = useState("");
-  const [itemVariantId, setItemVariantId] = useState("");
-  const [itemSupplierId, setItemSupplierId] = useState("");
-  const [itemQuantity, setItemQuantity] = useState(1);
-  const [useManualSalePrice, setUseManualSalePrice] = useState(false);
-  const [manualSalePrice, setManualSalePrice] = useState("");
-  const [useManualPurchasePrice, setUseManualPurchasePrice] = useState(false);
-  const [manualPurchasePrice, setManualPurchasePrice] = useState("");
-  const [customerQuery, setCustomerQuery] = useState("");
-  const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
   const { refundPeriodModalOpen, setRefundPeriodModalOpen, refundPeriodStart, setRefundPeriodStart, refundPeriodEnd, setRefundPeriodEnd, isRefundPeriodSaving, refundPeriodOverview, openRefundPeriodModal, handleSaveRefundPeriod, handleClearRefundPeriod } = useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed });
-  const productInputRef = useRef<HTMLInputElement | null>(null);
-  const previousSlanjeModeRef = useRef<(typeof slanjeModes)[number] | undefined>(undefined);
-  const previousPickupValueRef = useRef<boolean | null>(null);
-  const lastAutoSelectedOwnerRef = useRef<string | null>(null);
-  const modalSnapshotRef = useRef<string>("");
-  const wasModalOpenRef = useRef(false);
-  const preselectHandledRef = useRef<string | null>(null);
-  const didSyncCustomersRef = useRef(false);
-  const preselectProductId = searchParams?.get("productId") ?? "";
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
-  const createOrder = useConvexMutation("orders:create");
   const updateOrder = useConvexMutation("orders:update");
-  const upsertShippingAccount = useConvexMutation<{
-    token: string;
-    scope: "default" | "kalaba";
-    value: string;
-    startingAmount: number;
-  }>("orders:upsertShippingAccount");
-  const syncCustomers = useConvexMutation("customers:syncFromOrders");
   const { products, productMap, supplierMap, isProductsLoading } = useOrderCatalog({ sessionToken });
-  const customers = useConvexQuery<Customer[]>("customers:list", {
-    token: sessionToken,
-    scope: orderScope,
-    search: customerQuery.trim() ? customerQuery.trim() : undefined,
-    limit: customerQuery.trim() ? 8 : 5,
-  });
-  const shippingOwners = useConvexQuery<ShippingOwnerOptions>("orders:shippingOwners", {
-    token: sessionToken,
-    scope: orderScope,
-  });
   const { restockModalOpen, setRestockModalOpen, restockDeleteOpen, restockDeleteCandidate, isDeletingRestock, setRestockProductId, restockProductInput, setRestockProductInput, setRestockProductSearch, restockProductMenuOpen, setRestockProductMenuOpen, restockVariantId, setRestockVariantId, restockName, setRestockName, restockPhone, setRestockPhone, isCreatingRestock, restockProductInputRef, restockEntries, isRestockLoading, restockFilteredProducts, restockSelectedProduct, restockSelectedVariants, openRestockDeleteModal, closeRestockDeleteModal, handleRestockDeleteOpenChange, handleRestockDelete, resetRestockForm, handleCreateRestockRequest } = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
 
   const { orderEntries, visibleOrderIds } = useOrderEntries({ orders, refundPeriodOverview });
   const { selectedOrderIds, bulkAction, selectedVisibleCount, allVisibleSelected, toggleOrderSelection, toggleAllVisibleOrders, handleBulkAction } = useOrderSelection({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, visibleOrderIds });
-  const filteredProducts = useMemo(() => {
-    const list = products ?? [];
-    const searchTokens = toSearchTokens(productSearch.trim());
-    if (!searchTokens.length) return list;
-    return list.filter((product) => {
-      const variantsText = (product.variants ?? [])
-        .map((variant) => `${variant.label ?? ""} ${variant.opis ?? ""}`)
-        .join(" ");
-      const searchableText = normalizeSearchText(
-        `${getProductDisplayName(product)} ${product.opisFbInsta ?? product.opis ?? ""} ${product.opisKp ?? ""} ${variantsText}`,
-      );
-      return matchesAllTokensInNormalizedText(searchableText, searchTokens);
-    });
-  }, [products, productSearch]);
   const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
   const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
   const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
 
   const { ordersPdfMode, isOrdersPdfBusy, handleOrdersPdf } = useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap });
-  const form = useForm<OrderFormValues>({
-    resolver: zodResolver(orderSchema) as Resolver<OrderFormValues>,
-    defaultValues: defaultFormValues,
-    mode: "onBlur",
-  });
-  const pickupValue = Boolean(form.watch("pickup"));
-  const slanjeModeValue = form.watch("slanjeMode");
-  const slanjeOwnerValue = form.watch("slanjeOwner");
-  const slanjeOwnerStartingAmountValue = form.watch("slanjeOwnerStartingAmount");
-  const showShippingFields = !pickupValue;
-  const slanjeOwnerLabel =
-    slanjeModeValue === "Posta"
-      ? "Posta - na ime"
-      : slanjeModeValue
-        ? "Aks - na ciji racun"
-        : "Slanje - na ciji racun";
-  const slanjeOwnerPlaceholder =
-    slanjeModeValue === "Posta"
-      ? "Unesi na ime"
-      : slanjeModeValue
-        ? "Unesi na ciji racun"
-        : "Izaberi slanje prvo";
-  const slanjeOwnerOptions = useMemo<ShippingOwnerOption[]>(() => {
-    if (pickupValue) return [];
-    if (!slanjeModeValue) return [];
-    if (slanjeModeValue === "Posta") {
-      return shippingOwners?.postaNames ?? [];
-    }
-    return shippingOwners?.aksBexAccounts ?? [];
-  }, [pickupValue, shippingOwners, slanjeModeValue]);
-  const slanjeOwnerQuickOptions = useMemo(
-    () => slanjeOwnerOptions.slice(0, 12),
-    [slanjeOwnerOptions],
-  );
-  const normalizedSlanjeOwnerValue = (slanjeOwnerValue ?? "").trim();
-  const normalizedSlanjeOwnerLookupKey = normalizeOwnerLookupKey(slanjeOwnerValue);
-  const isAksBexMode = !pickupValue && (slanjeModeValue === "Aks" || slanjeModeValue === "Bex");
-  const selectedAksBexAccount = useMemo(() => {
-    if (!isAksBexMode) return undefined;
-    if (!normalizedSlanjeOwnerLookupKey) return undefined;
-    const accounts = shippingOwners?.aksBexAccounts ?? [];
-    return accounts.find((option) => normalizeOwnerLookupKey(option.value) === normalizedSlanjeOwnerLookupKey);
-  }, [isAksBexMode, normalizedSlanjeOwnerLookupKey, shippingOwners?.aksBexAccounts]);
-  const shouldAskForNewAccountStartingAmount =
-    isAksBexMode &&
-    shippingOwners !== undefined &&
-    normalizedSlanjeOwnerLookupKey.length > 0 &&
-    !selectedAksBexAccount;
-  const lastAksBexOwnerValue = shippingOwners?.aksBexAccounts?.[0]?.value;
-  useEffect(() => {
-    if (!isModalOpen) {
-      previousPickupValueRef.current = null;
-      return;
-    }
-    const previousPickup = previousPickupValueRef.current;
-    previousPickupValueRef.current = pickupValue;
-    if (previousPickup === null || previousPickup === pickupValue) return;
-
-    if (pickupValue) {
-      if (form.getValues("address")) {
-        form.setValue("address", "", { shouldDirty: true, shouldTouch: true });
-      }
-      form.setValue("slanjeMode", undefined, { shouldDirty: true, shouldTouch: true });
-      form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
-      form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
-    } else {
-      form.setValue("slanjeMode", "Aks", { shouldDirty: true, shouldTouch: true });
-      form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
-      form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
-    }
-    previousSlanjeModeRef.current = undefined;
-    lastAutoSelectedOwnerRef.current = null;
-  }, [form, isModalOpen, pickupValue]);
-  useEffect(() => {
-    const previousMode = previousSlanjeModeRef.current;
-    const modeChanged = previousMode !== slanjeModeValue;
-    previousSlanjeModeRef.current = slanjeModeValue;
-    if (!slanjeModeValue || pickupValue) {
-      previousSlanjeModeRef.current = undefined;
-      if (form.getValues("slanjeOwner") !== undefined) {
-        form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
-      }
-      lastAutoSelectedOwnerRef.current = null;
-      return;
-    }
-
-    const isAccountMode = slanjeModeValue === "Aks" || slanjeModeValue === "Bex";
-    if (!isAccountMode) {
-      if (modeChanged && form.getValues("slanjeOwner") !== undefined) {
-        form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
-      }
-      lastAutoSelectedOwnerRef.current = null;
-      return;
-    }
-
-    if (!lastAksBexOwnerValue) {
-      if (modeChanged && form.getValues("slanjeOwner") !== undefined) {
-        form.setValue("slanjeOwner", undefined, { shouldDirty: true, shouldTouch: true });
-      }
-      lastAutoSelectedOwnerRef.current = null;
-      return;
-    }
-
-    const currentOwner = form.getValues("slanjeOwner")?.trim();
-    const autoSelectionKey = `${slanjeModeValue}:${lastAksBexOwnerValue}`;
-    if ((modeChanged || !currentOwner) && lastAutoSelectedOwnerRef.current !== autoSelectionKey) {
-      lastAutoSelectedOwnerRef.current = autoSelectionKey;
-      form.setValue("slanjeOwner", lastAksBexOwnerValue, { shouldDirty: true, shouldTouch: true });
-    }
-  }, [form, lastAksBexOwnerValue, pickupValue, slanjeModeValue]);
-  useEffect(() => {
-    if (shouldAskForNewAccountStartingAmount) return;
-    if (slanjeOwnerStartingAmountValue === undefined) return;
-    form.setValue("slanjeOwnerStartingAmount", undefined, { shouldDirty: true, shouldTouch: true });
-  }, [form, shouldAskForNewAccountStartingAmount, slanjeOwnerStartingAmountValue]);
-  const selectedProduct = useMemo(
-    () => (products ?? []).find((item) => item._id === itemProductId),
-    [products, itemProductId],
-  );
-  const selectedVariants = useMemo(() => getProductVariants(selectedProduct), [selectedProduct]);
-  const selectedVariantForPreview = useMemo(() => {
-    if (!selectedProduct) return undefined;
-    const variants = selectedProduct.variants ?? [];
-    if (variants.length === 0) return undefined;
-    if (itemVariantId) {
-      const match = variants.find((variant) => variant.id === itemVariantId);
-      if (match) return match;
-    }
-    return variants.find((variant) => variant.isDefault) ?? variants[0];
-  }, [selectedProduct, itemVariantId]);
-  const supplierOptions = useMemo(
-    () => resolveSupplierOptions(selectedProduct, itemVariantId || undefined),
-    [selectedProduct, itemVariantId],
-  );
-  const supplierOptionsWithNames = useMemo(
-    () =>
-      supplierOptions.map((option) => ({
-        ...option,
-        supplierName: supplierMap.get(option.supplierId)?.name,
-      })),
-    [supplierMap, supplierOptions],
-  );
-  const bestSupplierOption = useMemo(() => pickBestSupplier(supplierOptionsWithNames), [supplierOptionsWithNames]);
+  const orderForm = useOrderForm({ orderScope, searchParams, sessionToken, products, supplierMap });
+  const { productInput, setProductInput, setProductSearch, productMenuOpen, setProductMenuOpen, editingOrder, isModalOpen, setIsModalOpen, exitConfirmOpen, setExitConfirmOpen, draftItems, setItemProductId, itemVariantId, setItemVariantId, itemSupplierId, setItemSupplierId, itemQuantity, setItemQuantity, useManualSalePrice, setUseManualSalePrice, manualSalePrice, setManualSalePrice, useManualPurchasePrice, setUseManualPurchasePrice, manualPurchasePrice, setManualPurchasePrice, setCustomerQuery, customerMenuOpen, setCustomerMenuOpen, productInputRef, customers, filteredProducts, form, pickupValue, slanjeModeValue, showShippingFields, slanjeOwnerLabel, slanjeOwnerPlaceholder, slanjeOwnerOptions, slanjeOwnerQuickOptions, normalizedSlanjeOwnerValue, isAksBexMode, selectedAksBexAccount, shouldAskForNewAccountStartingAmount, selectedProduct, selectedVariants, selectedVariantForPreview, supplierOptionsWithNames, bestSupplierOption } = orderForm;
   const getOrderPreviewImages = useCallback(
     (order: Order) => {
       const items = order.items ?? [];
@@ -324,473 +111,7 @@ function OrdersContent() {
 
   const { consumeLongPressClick, createLongPressHandlers } = useLongPress();
   const { quickEdit, setQuickEdit, isQuickEditSaving, shipmentStageModal, shipmentNumberDraft, setShipmentNumberDraft, isShipmentStageSaving, manualRefundSavingId, kasniSavingId, copyText, openQuickEdit, closeQuickEdit, handleQuickEditSave, closeShipmentStageModal, handleShipmentStageSubmit, handleStageChange, handlePovratToggle, handleKasniToggle, handleManualRefund100Toggle } = useOrderRowActions({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, updateOrder });
-  const focusOrderField = useCallback(
-    (fieldName: keyof OrderFormValues | string) => {
-      const targetName = String(fieldName);
-      requestAnimationFrame(() => {
-        try {
-          form.setFocus(targetName as any, { shouldSelect: true });
-          return;
-        } catch {
-          // fall through to DOM query
-        }
-        const fromRef = productInputRef.current && productInputRef.current.name === targetName ? productInputRef.current : null;
-        const node =
-          fromRef ??
-          document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${targetName}"]`) ??
-          document.querySelector<HTMLElement>(`[data-focus-target="${targetName}"]`);
-        if (node) {
-          node.focus();
-          if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
-            node.select();
-          }
-        }
-      });
-    },
-    [form],
-  );
-
-  const getOrderErrorTarget = useCallback(() => {
-    return findFirstErrorPath(form.formState.errors, orderFocusOrder);
-  }, [form.formState.errors]);
-
-  const buildModalSnapshot = useCallback(() => {
-    const values = form.getValues();
-    return JSON.stringify({
-      editingOrderId,
-      form: {
-        stage: values.stage ?? "poruceno",
-        customerName: values.customerName?.trim() ?? "",
-        address: values.address?.trim() ?? "",
-        phone: values.phone?.trim() ?? "",
-        transportCost: values.transportCost ?? null,
-        slanjeMode: values.slanjeMode ?? null,
-        slanjeOwner: values.slanjeOwner ?? null,
-        slanjeOwnerStartingAmount:
-          typeof values.slanjeOwnerStartingAmount === "number" ? values.slanjeOwnerStartingAmount : null,
-        myProfitPercent: typeof values.myProfitPercent === "number" ? values.myProfitPercent : 100,
-        pickup: Boolean(values.pickup),
-        note: values.note?.trim() ?? "",
-      },
-      draftItems: draftItems.map((item) => ({
-        id: item.id,
-        productId: item.product?._id ?? "",
-        variantId: item.variant?.id ?? "",
-        supplierId: item.supplierId ?? "",
-        kolicina: Number(item.kolicina ?? 0),
-        nabavnaCena: Number(item.nabavnaCena ?? 0),
-        prodajnaCena: Number(item.prodajnaCena ?? 0),
-        manualProdajna: Boolean(item.manualProdajna),
-        manualNabavna: Boolean(item.manualNabavna),
-        variantLabel: item.variantLabel ?? "",
-        title: item.title ?? "",
-      })),
-      productInput: productInput ?? "",
-      itemProductId: itemProductId ?? "",
-      itemVariantId: itemVariantId ?? "",
-      itemSupplierId: itemSupplierId ?? "",
-      itemQuantity: Number(itemQuantity ?? 0),
-      useManualSalePrice: Boolean(useManualSalePrice),
-      manualSalePrice: manualSalePrice ?? "",
-      useManualPurchasePrice: Boolean(useManualPurchasePrice),
-      manualPurchasePrice: manualPurchasePrice ?? "",
-    });
-  }, [
-    draftItems,
-    editingOrderId,
-    form,
-    itemProductId,
-    itemQuantity,
-    itemSupplierId,
-    itemVariantId,
-    manualPurchasePrice,
-    manualSalePrice,
-    productInput,
-    useManualPurchasePrice,
-    useManualSalePrice,
-  ]);
-
-  useEffect(() => {
-    if (isModalOpen && !wasModalOpenRef.current) {
-      modalSnapshotRef.current = buildModalSnapshot();
-      setExitConfirmOpen(false);
-    }
-    if (!isModalOpen && wasModalOpenRef.current) {
-      modalSnapshotRef.current = "";
-    }
-    wasModalOpenRef.current = isModalOpen;
-  }, [buildModalSnapshot, isModalOpen]);
-
-  useEffect(() => {
-    if (!isModalOpen) {
-      setCustomerMenuOpen(false);
-    }
-  }, [isModalOpen]);
-
-  useEffect(() => {
-    didSyncCustomersRef.current = false;
-  }, [orderScope]);
-
-  useEffect(() => {
-    if (!isModalOpen) return;
-    if (didSyncCustomersRef.current) return;
-    if (customerQuery.trim()) return;
-    if (customers === undefined) return;
-    if (customers.length > 0) return;
-    didSyncCustomersRef.current = true;
-    void syncCustomers({ token: sessionToken, scope: orderScope });
-  }, [customerQuery, customers, isModalOpen, orderScope, sessionToken, syncCustomers]);
-
-  useEffect(() => {
-    if (!selectedProduct || selectedVariants.length === 0) {
-      if (itemVariantId) {
-        setItemVariantId("");
-      }
-      return;
-    }
-    const selectedExists = selectedVariants.some((variant) => variant.id === itemVariantId);
-    if (!selectedExists) {
-      const fallbackVariant = selectedVariants.find((variant) => variant.isDefault) ?? selectedVariants[0];
-      if (fallbackVariant) {
-        setItemVariantId(fallbackVariant.id);
-        setProductInput(composeVariantLabel(selectedProduct, fallbackVariant));
-      }
-    }
-  }, [itemVariantId, selectedProduct, selectedVariants, setProductInput]);
-
-  useEffect(() => {
-    if (supplierOptionsWithNames.length === 0) {
-      setItemSupplierId("");
-      return;
-    }
-    if (supplierOptionsWithNames.length === 1) {
-      setItemSupplierId(supplierOptionsWithNames[0].supplierId);
-      return;
-    }
-    const hasCurrent = supplierOptionsWithNames.some((option) => option.supplierId === itemSupplierId);
-    if (!hasCurrent) {
-      setItemSupplierId("");
-    }
-  }, [itemSupplierId, supplierOptionsWithNames]);
-
-  useEffect(() => {
-    if (!isModalOpen) return;
-    const timer = window.setTimeout(() => focusOrderField("productSearch"), 0);
-    return () => window.clearTimeout(timer);
-  }, [focusOrderField, isModalOpen]);
-
-  useEffect(() => {
-    if (!isModalOpen) return;
-    if (form.formState.submitCount === 0 && Object.keys(form.formState.errors).length === 0) return;
-    const target = getOrderErrorTarget();
-    if (!target) return;
-    const timer = window.setTimeout(() => focusOrderField(target), 0);
-    return () => window.clearTimeout(timer);
-  }, [focusOrderField, form.formState.errors, form.formState.submitCount, getOrderErrorTarget, isModalOpen]);
-
-  const resetOrderForm = (options?: { closeModal?: boolean }) => {
-    form.reset(defaultFormValues);
-    setProductInput("");
-    setProductSearch("");
-    setProductMenuOpen(false);
-    setEditingOrder(null);
-    setDraftItems([]);
-    setItemProductId("");
-    setItemVariantId("");
-    setItemSupplierId("");
-    setItemQuantity(1);
-    setUseManualSalePrice(false);
-    setManualSalePrice("");
-    setUseManualPurchasePrice(false);
-    setManualPurchasePrice("");
-    setCustomerQuery("");
-    setCustomerMenuOpen(false);
-    setExitConfirmOpen(false);
-    previousSlanjeModeRef.current = undefined;
-    previousPickupValueRef.current = null;
-    lastAutoSelectedOwnerRef.current = null;
-    if (options?.closeModal) {
-      modalSnapshotRef.current = "";
-      setIsModalOpen(false);
-    }
-  };
-
-  const requestCloseOrderModal = () => {
-    if (!isModalOpen || exitConfirmOpen) return;
-    const snapshot = modalSnapshotRef.current;
-    const hasChanges = Boolean(snapshot) && snapshot !== buildModalSnapshot();
-    if (hasChanges) {
-      setExitConfirmOpen(true);
-      return;
-    }
-    resetOrderForm({ closeModal: true });
-  };
-
-  const handleAddItem = () => {
-    if (!selectedProduct) {
-      toast.error("Izaberi proizvod koji dodajes u narudzbinu.");
-      focusOrderField("productSearch");
-      return;
-    }
-    const variantsList = selectedProduct.variants ?? [];
-    let variant = variantsList.find((item) => item.id === itemVariantId);
-    if (variantsList.length > 0 && !variant) {
-      variant = variantsList.find((item) => item.isDefault) ?? variantsList[0];
-    }
-    const supplierOptionsLocal = resolveSupplierOptions(selectedProduct, variant?.id);
-    const supplierOptionsWithNamesLocal = supplierOptionsLocal.map((option) => ({
-      ...option,
-      supplierName: supplierMap.get(option.supplierId)?.name,
-    }));
-    const bestSupplierLocal = pickBestSupplier(supplierOptionsWithNamesLocal);
-    const supplierId =
-      itemSupplierId || (supplierOptionsWithNamesLocal.length === 1 ? supplierOptionsWithNamesLocal[0].supplierId : undefined);
-    const supplierPrice =
-      supplierId
-        ? supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ?? bestSupplierLocal?.price
-        : bestSupplierLocal?.price;
-    let nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? selectedProduct.nabavnaCena;
-    if (useManualPurchasePrice) {
-      const manualInput = manualPurchasePrice.trim();
-      if (manualInput.length === 0) {
-        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
-        return;
-      }
-      const parsed = Number(manualInput.replace(",", "."));
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
-        return;
-      }
-      nabavnaCena = parsed;
-    }
-    let prodajnaCena = variant?.prodajnaCena ?? selectedProduct.prodajnaCena;
-    if (useManualSalePrice) {
-      const manualInput = manualSalePrice.trim();
-      if (manualInput.length === 0) {
-        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
-        return;
-      }
-      const parsed = Number(manualInput.replace(",", "."));
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
-        return;
-      }
-      prodajnaCena = parsed;
-    }
-    const variantLabel = variant ? composeVariantLabel(selectedProduct, variant) : undefined;
-    const title = variantLabel ?? getProductDisplayName(selectedProduct);
-    const qty = Math.max(itemQuantity, 1);
-    const draft: OrderItemDraft = {
-      id: generateId(),
-      product: selectedProduct,
-      variant,
-      supplierId: supplierId || undefined,
-      kolicina: qty,
-      nabavnaCena,
-      prodajnaCena,
-      manualProdajna: useManualSalePrice,
-      manualNabavna: useManualPurchasePrice,
-      variantLabel,
-      title,
-    };
-    setDraftItems((prev) => [...prev, draft]);
-    setItemProductId("");
-    setItemVariantId("");
-    setItemSupplierId("");
-    setItemQuantity(1);
-    setUseManualSalePrice(false);
-    setManualSalePrice("");
-    setUseManualPurchasePrice(false);
-    setManualPurchasePrice("");
-    setProductInput("");
-    setProductMenuOpen(false);
-  };
-
-  const handleRemoveItem = (id: string) => {
-    setDraftItems((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const draftTotals = useMemo(
-    () =>
-      draftItems.reduce(
-        (acc, item) => {
-          acc.totalQty += item.kolicina;
-          acc.totalProdajno += item.prodajnaCena * item.kolicina;
-          acc.totalNabavno += item.nabavnaCena * item.kolicina;
-          return acc;
-        },
-        { totalQty: 0, totalProdajno: 0, totalNabavno: 0 },
-      ),
-    [draftItems],
-  );
-
-  const openCreateModal = () => {
-    resetOrderForm();
-    setIsModalOpen(true);
-  };
-
-  const openCreateModalWithProduct = useCallback(
-    (product: Product) => {
-      resetOrderForm();
-      setIsModalOpen(true);
-      const variants = product.variants ?? [];
-      const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
-      setItemProductId(product._id);
-      setItemVariantId(defaultVariant?.id ?? "");
-      setItemSupplierId("");
-      setItemQuantity(1);
-      setUseManualSalePrice(false);
-      setManualSalePrice("");
-      setUseManualPurchasePrice(false);
-      setManualPurchasePrice("");
-      setProductSearch("");
-      setProductMenuOpen(false);
-      if (defaultVariant) {
-        setProductInput(composeVariantLabel(product, defaultVariant));
-      } else {
-        setProductInput(getProductDisplayName(product));
-      }
-    },
-    [resetOrderForm],
-  );
-
-  const handleCustomerSelect = useCallback(
-    (customer: Customer) => {
-      const nextPickup = typeof customer.pickup === "boolean" ? customer.pickup : Boolean(form.getValues("pickup"));
-      form.setValue("customerName", customer.name, { shouldDirty: true, shouldTouch: true });
-      form.setValue("phone", customer.phone, { shouldDirty: true, shouldTouch: true });
-      form.setValue("address", nextPickup ? "" : customer.address, { shouldDirty: true, shouldTouch: true });
-      if (typeof customer.pickup === "boolean") {
-        form.setValue("pickup", nextPickup, { shouldDirty: true, shouldTouch: true });
-      }
-      setCustomerQuery(customer.name);
-      setCustomerMenuOpen(false);
-    },
-    [form],
-  );
-
-  const clearPreselectQuery = useCallback(() => {
-    if (!searchParams) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("productId");
-    params.delete("orderModal");
-    const next = params.toString();
-    router.replace(next ? `${basePath}?${next}` : basePath);
-  }, [searchParams, router, basePath]);
-
-  useEffect(() => {
-    if (!preselectProductId) return;
-    if (!products || products.length === 0) return;
-    if (preselectHandledRef.current === preselectProductId) return;
-    const selected = products.find((product) => product._id === preselectProductId);
-    preselectHandledRef.current = preselectProductId;
-    if (!selected) {
-      clearPreselectQuery();
-      return;
-    }
-    openCreateModalWithProduct(selected);
-    clearPreselectQuery();
-  }, [preselectProductId, products, openCreateModalWithProduct, clearPreselectQuery]);
-
-  // [+] iz donje navigacije / headera vodi na ?nova=1: otvori formu pa očisti parametar.
-  const isNewOrderRequested = searchParams?.get("nova") === "1";
-  const handleNewOrderRequest = useEffectEvent(() => {
-    // Već otvorena forma se ne briše (npr. + dok je unos u toku).
-    if (!isModalOpen) openCreateModal();
-    const params = new URLSearchParams(searchParamsString);
-    params.delete("nova");
-    const next = params.toString();
-    router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
-  });
-
-  useEffect(() => {
-    if (isNewOrderRequested) handleNewOrderRequest();
-  }, [isNewOrderRequested]);
-
-  const handleSubmitOrder = async (values: OrderFormValues) => {
-    if (draftItems.length === 0) {
-      toast.error("Dodaj bar jedan proizvod u narudzbinu.");
-      focusOrderField("productSearch");
-      return;
-    }
-
-    try {
-      const pickup = Boolean(values.pickup);
-      const customerName = values.customerName?.trim() ?? "";
-      const address = pickup ? "" : values.address?.trim() ?? "";
-      const slanjeMode = pickup ? undefined : values.slanjeMode;
-      const ownerInput = pickup ? undefined : values.slanjeOwner?.trim();
-      const ownerLookupKey = normalizeOwnerLookupKey(ownerInput);
-      const isAksBexAccount = slanjeMode === "Aks" || slanjeMode === "Bex";
-      const existingAksBexAccount =
-        isAksBexAccount && ownerLookupKey
-          ? (shippingOwners?.aksBexAccounts ?? []).find(
-              (option) => normalizeOwnerLookupKey(option.value) === ownerLookupKey,
-            )
-          : undefined;
-      const shouldCreateAksBexAccount =
-        isAksBexAccount &&
-        shippingOwners !== undefined &&
-        ownerLookupKey.length > 0 &&
-        !existingAksBexAccount;
-      if (shouldCreateAksBexAccount) {
-        if (values.slanjeOwnerStartingAmount === undefined) {
-          toast.error("Unesi pocetni iznos za novi racun.");
-          focusOrderField("slanjeOwnerStartingAmount");
-          return;
-        }
-        await upsertShippingAccount({
-          token: sessionToken,
-          scope: orderScope,
-          value: ownerInput ?? "",
-          startingAmount: values.slanjeOwnerStartingAmount,
-        });
-      }
-      const payloadItems = draftItems.map((item) => ({
-        id: item.id,
-        productId: item.product._id,
-        supplierId: item.supplierId || undefined,
-        variantId: item.variant?.id,
-        variantLabel: item.variant ? composeVariantLabel(item.product, item.variant) : undefined,
-        title: item.title,
-        kolicina: item.kolicina,
-        nabavnaCena: item.nabavnaCena,
-        prodajnaCena: item.prodajnaCena,
-        manualProdajna: Boolean(item.manualProdajna),
-        manualNabavna: Boolean(item.manualNabavna),
-      }));
-      const payload = {
-        stage: values.stage,
-        title: payloadItems[0]?.title ?? "Narudzbina",
-        transportCost: values.transportCost,
-        slanjeMode,
-        slanjeOwner: ownerInput,
-        brojPosiljke: editingOrder?.brojPosiljke,
-        myProfitPercent: values.myProfitPercent ?? 100,
-        customerName,
-        address,
-        phone: values.phone.trim(),
-        pickup,
-        napomena: values.note?.trim() || undefined,
-        items: payloadItems,
-        token: sessionToken,
-        scope: orderScope,
-      };
-
-      if (editingOrder) {
-        await updateOrder({ id: editingOrder._id, ...payload });
-        toast.success("Narudzbina je azurirana.");
-        resetOrdersFeed();
-      } else {
-        await createOrder(payload);
-        toast.success("Narudzbina je dodata.");
-      }
-      resetOrderForm({ closeModal: true });
-    } catch (error) {
-      console.error(error);
-      toast.error("Nije moguce sacuvati narudzbinu.");
-    }
-  };
+  const { resetOrderForm, requestCloseOrderModal, handleAddItem, handleRemoveItem, draftTotals, openCreateModal, handleCustomerSelect, handleSubmitOrder } = useOrderFormActions({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, resetOrdersFeed, updateOrder, products, supplierMap, orderForm });
 
   const openDeleteModal = (order: Order) => {
     setDeleteCandidate(order);
