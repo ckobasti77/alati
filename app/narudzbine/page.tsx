@@ -70,16 +70,23 @@ function OrdersContent() {
   const searchParamsString = useMemo(() => searchParams?.toString() ?? "", [searchParams]);
   const { token } = useAuth();
   const sessionToken = token as string;
-  const { search, setSearch, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, setFilterMenuMode, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId, ordersPagination, ordersTotals, isLoadingMoreOrders, ordersLoaderRef, orderListQueryArgs, isOrdersLoading, hasMoreOrders, dateFilterActive, activeFilterCount, isFilterMenuOpen, resetOrdersFeed, handleStageFilterToggle, handleUnreturnedToggle, handleReturnedToggle, handlePickupToggle, handleShippingToggle, handleLateToggle, handleDateFromChange, handleDateToChange, handleClearDateFilter, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle } = useOrdersFeed({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken });
-  const { refundPeriodModalOpen, setRefundPeriodModalOpen, refundPeriodStart, setRefundPeriodStart, refundPeriodEnd, setRefundPeriodEnd, isRefundPeriodSaving, refundPeriodOverview, openRefundPeriodModal, handleSaveRefundPeriod, handleClearRefundPeriod } = useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed });
+  const feed = useOrdersFeed({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken });
+  const { search, setSearch, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, setFilterMenuMode, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId, ordersPagination, ordersTotals, isLoadingMoreOrders, ordersLoaderRef, orderListQueryArgs, isOrdersLoading, hasMoreOrders, dateFilterActive, activeFilterCount, isFilterMenuOpen, resetOrdersFeed, handleStageFilterToggle, handleUnreturnedToggle, handleReturnedToggle, handlePickupToggle, handleShippingToggle, handleLateToggle, handleDateFromChange, handleDateToChange, handleClearDateFilter, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle } = feed;
+  const refund = useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed });
+  const { refundPeriodModalOpen, setRefundPeriodModalOpen, refundPeriodStart, setRefundPeriodStart, refundPeriodEnd, setRefundPeriodEnd, isRefundPeriodSaving, refundPeriodOverview, openRefundPeriodModal, handleSaveRefundPeriod, handleClearRefundPeriod } = refund;
   const updateOrder = useConvexMutation("orders:update");
-  const { products, productMap, supplierMap, isProductsLoading } = useOrderCatalog({ sessionToken });
-  const { restockModalOpen, setRestockModalOpen, restockDeleteOpen, restockDeleteCandidate, isDeletingRestock, setRestockProductId, restockProductInput, setRestockProductInput, setRestockProductSearch, restockProductMenuOpen, setRestockProductMenuOpen, restockVariantId, setRestockVariantId, restockName, setRestockName, restockPhone, setRestockPhone, isCreatingRestock, restockProductInputRef, restockEntries, isRestockLoading, restockFilteredProducts, restockSelectedProduct, restockSelectedVariants, openRestockDeleteModal, closeRestockDeleteModal, handleRestockDeleteOpenChange, handleRestockDelete, resetRestockForm, handleCreateRestockRequest } = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
+  const catalog = useOrderCatalog({ sessionToken });
+  const { products, productMap, supplierMap, isProductsLoading } = catalog;
+  const restock = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
+  const { restockModalOpen, setRestockModalOpen, restockDeleteOpen, restockDeleteCandidate, isDeletingRestock, setRestockProductId, restockProductInput, setRestockProductInput, setRestockProductSearch, restockProductMenuOpen, setRestockProductMenuOpen, restockVariantId, setRestockVariantId, restockName, setRestockName, restockPhone, setRestockPhone, isCreatingRestock, restockProductInputRef, restockEntries, isRestockLoading, restockFilteredProducts, restockSelectedProduct, restockSelectedVariants, openRestockDeleteModal, closeRestockDeleteModal, handleRestockDeleteOpenChange, handleRestockDelete, resetRestockForm, handleCreateRestockRequest } = restock;
 
-  const { orderEntries, visibleOrderIds } = useOrderEntries({ orders, refundPeriodOverview });
-  const { selectedOrderIds, bulkAction, selectedVisibleCount, allVisibleSelected, toggleOrderSelection, toggleAllVisibleOrders, handleBulkAction } = useOrderSelection({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, visibleOrderIds });
+  const entries = useOrderEntries({ orders, refundPeriodOverview });
+  const { orderEntries, visibleOrderIds } = entries;
+  const selection = useOrderSelection({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, visibleOrderIds });
+  const { selectedOrderIds, bulkAction, selectedVisibleCount, allVisibleSelected, toggleOrderSelection, toggleAllVisibleOrders, handleBulkAction } = selection;
 
-  const { ordersPdfMode, isOrdersPdfBusy, handleOrdersPdf } = useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap });
+  const pdf = useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap });
+  const { ordersPdfMode, isOrdersPdfBusy, handleOrdersPdf } = pdf;
   const orderForm = useOrderForm({ orderScope, searchParams, sessionToken, products, supplierMap });
   const { productInput, setProductInput, setProductSearch, productMenuOpen, setProductMenuOpen, editingOrder, isModalOpen, setIsModalOpen, exitConfirmOpen, setExitConfirmOpen, draftItems, setItemProductId, itemVariantId, setItemVariantId, itemSupplierId, setItemSupplierId, itemQuantity, setItemQuantity, useManualSalePrice, setUseManualSalePrice, manualSalePrice, setManualSalePrice, useManualPurchasePrice, setUseManualPurchasePrice, manualPurchasePrice, setManualPurchasePrice, setCustomerQuery, customerMenuOpen, setCustomerMenuOpen, productInputRef, customers, filteredProducts, form, pickupValue, slanjeModeValue, showShippingFields, slanjeOwnerLabel, slanjeOwnerPlaceholder, slanjeOwnerOptions, slanjeOwnerQuickOptions, normalizedSlanjeOwnerValue, isAksBexMode, selectedAksBexAccount, shouldAskForNewAccountStartingAmount, selectedProduct, selectedVariants, selectedVariantForPreview, supplierOptionsWithNames, bestSupplierOption } = orderForm;
   const getOrderPreviewImages = useCallback(
@@ -100,12 +107,17 @@ function OrdersContent() {
     [productMap],
   );
 
-  const { consumeLongPressClick, createLongPressHandlers } = useLongPress();
-  const { quickEdit, setQuickEdit, isQuickEditSaving, shipmentStageModal, shipmentNumberDraft, setShipmentNumberDraft, isShipmentStageSaving, manualRefundSavingId, kasniSavingId, copyText, openQuickEdit, closeQuickEdit, handleQuickEditSave, closeShipmentStageModal, handleShipmentStageSubmit, handleStageChange, handlePovratToggle, handleKasniToggle, handleManualRefund100Toggle } = useOrderRowActions({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, updateOrder });
-  const { resetOrderForm, requestCloseOrderModal, handleAddItem, handleRemoveItem, draftTotals, openCreateModal, handleCustomerSelect, handleSubmitOrder } = useOrderFormActions({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, resetOrdersFeed, updateOrder, products, supplierMap, orderForm });
+  const longPress = useLongPress();
+  const { consumeLongPressClick, createLongPressHandlers } = longPress;
+  const rowActions = useOrderRowActions({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, updateOrder });
+  const { quickEdit, setQuickEdit, isQuickEditSaving, shipmentStageModal, shipmentNumberDraft, setShipmentNumberDraft, isShipmentStageSaving, manualRefundSavingId, kasniSavingId, copyText, openQuickEdit, closeQuickEdit, handleQuickEditSave, closeShipmentStageModal, handleShipmentStageSubmit, handleStageChange, handlePovratToggle, handleKasniToggle, handleManualRefund100Toggle } = rowActions;
+  const formActions = useOrderFormActions({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, resetOrdersFeed, updateOrder, products, supplierMap, orderForm });
+  const { resetOrderForm, requestCloseOrderModal, handleAddItem, handleRemoveItem, draftTotals, openCreateModal, handleCustomerSelect, handleSubmitOrder } = formActions;
 
-  const { deleteModalOpen, deleteCandidate, deleteConfirmText, setDeleteConfirmText, isDeletingOrder, deleteRequiresConfirmation, isDeleteDisabled, openDeleteModal, closeDeleteModal, handleDeleteModalOpenChange, handleDelete } = useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, editingOrder, resetOrderForm });
-  const { handleOrderDragStart, handleOrderDragEnd, handleOrderDragOver, handleOrderDragLeave, handleOrderDrop } = useOrderReorder({ orderScope, sessionToken, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId });
+  const orderDelete = useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, editingOrder, resetOrderForm });
+  const { deleteModalOpen, deleteCandidate, deleteConfirmText, setDeleteConfirmText, isDeletingOrder, deleteRequiresConfirmation, isDeleteDisabled, openDeleteModal, closeDeleteModal, handleDeleteModalOpenChange, handleDelete } = orderDelete;
+  const reorder = useOrderReorder({ orderScope, sessionToken, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId });
+  const { handleOrderDragStart, handleOrderDragEnd, handleOrderDragOver, handleOrderDragLeave, handleOrderDrop } = reorder;
   const handleRowClick = (id: string) => {
     router.push(`${basePath}/${id}`);
   };
