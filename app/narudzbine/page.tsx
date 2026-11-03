@@ -66,6 +66,7 @@ import { useOrderCatalog } from "./_hooks/useOrderCatalog";
 import { useRestock } from "./_hooks/useRestock";
 import { useOrdersPdf } from "./_hooks/useOrdersPdf";
 import { useOrderEntries } from "./_hooks/useOrderEntries";
+import { useOrderSelection } from "./_hooks/useOrderSelection";
 
 export default function OrdersPage() {
   return (
@@ -85,8 +86,6 @@ function OrdersContent() {
   const { token } = useAuth();
   const sessionToken = token as string;
   const { search, setSearch, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, setFilterMenuMode, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId, ordersPagination, ordersTotals, isLoadingMoreOrders, ordersLoaderRef, orderListQueryArgs, isOrdersLoading, hasMoreOrders, dateFilterActive, activeFilterCount, isFilterMenuOpen, resetOrdersFeed, handleStageFilterToggle, handleUnreturnedToggle, handleReturnedToggle, handlePickupToggle, handleShippingToggle, handleLateToggle, handleDateFromChange, handleDateToChange, handleClearDateFilter, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle } = useOrdersFeed({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken });
-  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<"stage" | "povrat" | null>(null);
   const [productInput, setProductInput] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [productMenuOpen, setProductMenuOpen] = useState(false);
@@ -140,13 +139,6 @@ function OrdersContent() {
     enabled: boolean;
     changedAt: number | null;
   }>("orders:setManualRefund100");
-  const bulkUpdateOrders = useConvexMutation<{
-    token: string;
-    scope: "default" | "kalaba";
-    orderIds: string[];
-    stage?: OrderStage;
-    povratVracen?: boolean;
-  }>("orders:bulkUpdate");
   const upsertShippingAccount = useConvexMutation<{
     token: string;
     scope: "default" | "kalaba";
@@ -174,8 +166,7 @@ function OrdersContent() {
   const { restockModalOpen, setRestockModalOpen, restockDeleteOpen, restockDeleteCandidate, isDeletingRestock, setRestockProductId, restockProductInput, setRestockProductInput, setRestockProductSearch, restockProductMenuOpen, setRestockProductMenuOpen, restockVariantId, setRestockVariantId, restockName, setRestockName, restockPhone, setRestockPhone, isCreatingRestock, restockProductInputRef, restockEntries, isRestockLoading, restockFilteredProducts, restockSelectedProduct, restockSelectedVariants, openRestockDeleteModal, closeRestockDeleteModal, handleRestockDeleteOpenChange, handleRestockDelete, resetRestockForm, handleCreateRestockRequest } = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
 
   const { orderEntries, visibleOrderIds } = useOrderEntries({ orders, refundPeriodOverview });
-  const selectedVisibleCount = visibleOrderIds.filter((id) => selectedOrderIds.has(id)).length;
-  const allVisibleSelected = visibleOrderIds.length > 0 && selectedVisibleCount === visibleOrderIds.length;
+  const { selectedOrderIds, bulkAction, selectedVisibleCount, allVisibleSelected, toggleOrderSelection, toggleAllVisibleOrders, handleBulkAction } = useOrderSelection({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, visibleOrderIds });
   const filteredProducts = useMemo(() => {
     const list = products ?? [];
     const searchTokens = toSearchTokens(productSearch.trim());
@@ -1215,80 +1206,6 @@ function OrdersContent() {
       setManualRefundSavingId(null);
     }
   };
-
-  const toggleOrderSelection = useCallback((orderId: string, checked: boolean) => {
-    setSelectedOrderIds((previous) => {
-      const next = new Set(previous);
-      if (checked) next.add(orderId);
-      else next.delete(orderId);
-      return next;
-    });
-  }, []);
-
-  const toggleAllVisibleOrders = useCallback(() => {
-    setSelectedOrderIds((previous) => {
-      const next = new Set(previous);
-      if (allVisibleSelected) visibleOrderIds.forEach((id) => next.delete(id));
-      else visibleOrderIds.forEach((id) => next.add(id));
-      return next;
-    });
-  }, [allVisibleSelected, visibleOrderIds]);
-
-  const handleBulkAction = useCallback(
-    async (action: { stage?: OrderStage; povratVracen?: boolean; message: string }) => {
-      const orderIds = visibleOrderIds.filter((id) => selectedOrderIds.has(id));
-      if (orderIds.length === 0 || bulkAction) return;
-      setBulkAction(action.stage ? "stage" : "povrat");
-      try {
-        await bulkUpdateOrders({
-          token: sessionToken,
-          scope: orderScope,
-          orderIds,
-          stage: action.stage,
-          povratVracen: action.povratVracen,
-        });
-        setOrders((previous) =>
-          previous.flatMap((order) => {
-            if (!orderIds.includes(order._id)) return [order];
-            const next = {
-              ...order,
-              ...(action.stage ? { stage: action.stage, stageChangedAt: Date.now() } : {}),
-              ...(action.povratVracen !== undefined
-                ? { povratVracen: action.povratVracen, povratVracenAt: action.povratVracen ? Date.now() : undefined }
-                : {}),
-            };
-            if (stageFilters.length > 0 && action.stage && !stageFilters.includes(action.stage)) return [];
-            if (showUnreturnedOnly && action.povratVracen) return [];
-            if (showReturnedOnly && action.povratVracen === false) return [];
-            return [next];
-          }),
-        );
-        setSelectedOrderIds((previous) => {
-          const next = new Set(previous);
-          orderIds.forEach((id) => next.delete(id));
-          return next;
-        });
-        toast.success(`${action.message} (${orderIds.length}).`);
-      } catch (error) {
-        console.error(error);
-        toast.error("Grupna akcija nije uspela.");
-      } finally {
-        setBulkAction(null);
-      }
-    },
-    [
-      bulkAction,
-      bulkUpdateOrders,
-      orderScope,
-      sessionToken,
-      selectedOrderIds,
-      showReturnedOnly,
-      showUnreturnedOnly,
-      stageFilters,
-      visibleOrderIds,
-      setOrders,
-    ],
-  );
 
   const reorderOrdersList = useCallback((list: Order[], sourceId: string, targetId: string) => {
     const sourceIndex = list.findIndex((entry) => entry._id === sourceId);
