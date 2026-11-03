@@ -1,9 +1,8 @@
 ﻿"use client";
 
-import { useCallback, useMemo, useState, } from "react";
+import { useCallback, useMemo, } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useConvex } from "convex/react";
-import { toast } from "sonner";
 import { ArrowUpRight, BadgePercent, Banknote, CalendarRange, Copy, Download, GripVertical, PhoneCall, Plus, Share2, Trash2, UserRound } from "lucide-react";
 import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,6 @@ import {
   deleteConfirmPhrase,
   } from "./_lib/types";
 import {
-  requiresDeleteConfirmation,
   resolveOrderShippingMode,
   resolveShipmentNumber,
   getProductDisplayName,
@@ -53,6 +51,7 @@ import { useLongPress } from "./_hooks/useLongPress";
 import { useOrderRowActions } from "./_hooks/useOrderRowActions";
 import { useOrderForm } from "./_hooks/useOrderForm";
 import { useOrderFormActions } from "./_hooks/useOrderFormActions";
+import { useOrderDelete } from "./_hooks/useOrderDelete";
 
 export default function OrdersPage() {
   return (
@@ -72,21 +71,13 @@ function OrdersContent() {
   const { token } = useAuth();
   const sessionToken = token as string;
   const { search, setSearch, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, setFilterMenuMode, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId, ordersPagination, ordersTotals, isLoadingMoreOrders, ordersLoaderRef, orderListQueryArgs, isOrdersLoading, hasMoreOrders, dateFilterActive, activeFilterCount, isFilterMenuOpen, resetOrdersFeed, handleStageFilterToggle, handleUnreturnedToggle, handleReturnedToggle, handlePickupToggle, handleShippingToggle, handleLateToggle, handleDateFromChange, handleDateToChange, handleClearDateFilter, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle } = useOrdersFeed({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken });
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteCandidate, setDeleteCandidate] = useState<Order | null>(null);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
-  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const { refundPeriodModalOpen, setRefundPeriodModalOpen, refundPeriodStart, setRefundPeriodStart, refundPeriodEnd, setRefundPeriodEnd, isRefundPeriodSaving, refundPeriodOverview, openRefundPeriodModal, handleSaveRefundPeriod, handleClearRefundPeriod } = useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed });
-  const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const updateOrder = useConvexMutation("orders:update");
   const { products, productMap, supplierMap, isProductsLoading } = useOrderCatalog({ sessionToken });
   const { restockModalOpen, setRestockModalOpen, restockDeleteOpen, restockDeleteCandidate, isDeletingRestock, setRestockProductId, restockProductInput, setRestockProductInput, setRestockProductSearch, restockProductMenuOpen, setRestockProductMenuOpen, restockVariantId, setRestockVariantId, restockName, setRestockName, restockPhone, setRestockPhone, isCreatingRestock, restockProductInputRef, restockEntries, isRestockLoading, restockFilteredProducts, restockSelectedProduct, restockSelectedVariants, openRestockDeleteModal, closeRestockDeleteModal, handleRestockDeleteOpenChange, handleRestockDelete, resetRestockForm, handleCreateRestockRequest } = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
 
   const { orderEntries, visibleOrderIds } = useOrderEntries({ orders, refundPeriodOverview });
   const { selectedOrderIds, bulkAction, selectedVisibleCount, allVisibleSelected, toggleOrderSelection, toggleAllVisibleOrders, handleBulkAction } = useOrderSelection({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, visibleOrderIds });
-  const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
-  const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
-  const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
 
   const { ordersPdfMode, isOrdersPdfBusy, handleOrdersPdf } = useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap });
   const orderForm = useOrderForm({ orderScope, searchParams, sessionToken, products, supplierMap });
@@ -113,45 +104,7 @@ function OrdersContent() {
   const { quickEdit, setQuickEdit, isQuickEditSaving, shipmentStageModal, shipmentNumberDraft, setShipmentNumberDraft, isShipmentStageSaving, manualRefundSavingId, kasniSavingId, copyText, openQuickEdit, closeQuickEdit, handleQuickEditSave, closeShipmentStageModal, handleShipmentStageSubmit, handleStageChange, handlePovratToggle, handleKasniToggle, handleManualRefund100Toggle } = useOrderRowActions({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, updateOrder });
   const { resetOrderForm, requestCloseOrderModal, handleAddItem, handleRemoveItem, draftTotals, openCreateModal, handleCustomerSelect, handleSubmitOrder } = useOrderFormActions({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, resetOrdersFeed, updateOrder, products, supplierMap, orderForm });
 
-  const openDeleteModal = (order: Order) => {
-    setDeleteCandidate(order);
-    setDeleteConfirmText("");
-    setDeleteModalOpen(true);
-  };
-
-  const closeDeleteModal = () => {
-    setDeleteModalOpen(false);
-    setDeleteCandidate(null);
-    setDeleteConfirmText("");
-  };
-
-  const handleDeleteModalOpenChange = (open: boolean) => {
-    if (open) {
-      setDeleteModalOpen(true);
-    } else {
-      closeDeleteModal();
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (isDeletingOrder) return;
-    setIsDeletingOrder(true);
-    try {
-      await deleteOrder({ id, token: sessionToken, scope: orderScope });
-      toast.success("Narudzbina je obrisana.");
-      resetOrdersFeed();
-      if (editingOrder?._id === id) {
-        resetOrderForm({ closeModal: true });
-      }
-      closeDeleteModal();
-    } catch (error) {
-      console.error(error);
-      toast.error("Brisanje nije uspelo.");
-    } finally {
-      setIsDeletingOrder(false);
-    }
-  };
-
+  const { deleteModalOpen, deleteCandidate, deleteConfirmText, setDeleteConfirmText, isDeletingOrder, deleteRequiresConfirmation, isDeleteDisabled, openDeleteModal, closeDeleteModal, handleDeleteModalOpenChange, handleDelete } = useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, editingOrder, resetOrderForm });
   const { handleOrderDragStart, handleOrderDragEnd, handleOrderDragOver, handleOrderDragLeave, handleOrderDrop } = useOrderReorder({ orderScope, sessionToken, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId });
   const handleRowClick = (id: string) => {
     router.push(`${basePath}/${id}`);
