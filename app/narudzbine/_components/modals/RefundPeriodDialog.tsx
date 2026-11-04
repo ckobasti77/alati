@@ -1,8 +1,9 @@
 "use client";
 
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Sheet } from "@/components/ui/sheet";
 import type { useRefundPeriod } from "../../_hooks/useRefundPeriod";
 
 type RefundPeriodDialogProps = {
@@ -12,75 +13,66 @@ type RefundPeriodDialogProps = {
 export function RefundPeriodDialog({ refund }: RefundPeriodDialogProps) {
   const { refundPeriodModalOpen, setRefundPeriodModalOpen, refundPeriodStart, setRefundPeriodStart, refundPeriodEnd, setRefundPeriodEnd, isRefundPeriodSaving, refundPeriodOverview, handleSaveRefundPeriod, handleClearRefundPeriod } = refund;
   return (
-    <Dialog open={refundPeriodModalOpen} onOpenChange={setRefundPeriodModalOpen}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Period 100% povrata</DialogTitle>
-          <DialogDescription>
-            Sve nevraćene porudžbine kreirane u ovom rasponu računaju se po posebnom pravilu. Datumi su uključivi.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1.5 text-sm font-medium text-slate-700">
-              <span>Od</span>
-              <Input
-                type="date"
-                value={refundPeriodStart}
-                onChange={(event) => setRefundPeriodStart(event.target.value)}
-              />
+    <Sheet
+      open={refundPeriodModalOpen}
+      onOpenChange={setRefundPeriodModalOpen}
+      title="Period 100% povrata"
+      size="auto"
+      desktopWidth="sm"
+      footer={
+        <div className="flex items-center gap-2">
+          {refundPeriodOverview?.period ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-danger"
+              onClick={() => void handleClearRefundPeriod()}
+              disabled={isRefundPeriodSaving}
+            >
+              Ukloni period
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            className="ml-auto flex-1 md:flex-none"
+            onClick={() => void handleSaveRefundPeriod()}
+            disabled={isRefundPeriodSaving}
+          >
+            {isRefundPeriodSaving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+            Sačuvaj
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="refund-period-start" className="text-[13px] text-text-muted">
+              Od
             </label>
-            <label className="space-y-1.5 text-sm font-medium text-slate-700">
-              <span>Do</span>
-              <Input
-                type="date"
-                value={refundPeriodEnd}
-                onChange={(event) => setRefundPeriodEnd(event.target.value)}
-              />
-            </label>
+            <Input
+              id="refund-period-start"
+              type="date"
+              value={refundPeriodStart}
+              onChange={(event) => setRefundPeriodStart(event.target.value)}
+            />
           </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
-            <p className="font-semibold">Poseban obračun</p>
-            <p className="mt-1 text-emerald-800">Nabavna cena + 100% ukupnog profita − transport.</p>
-            <p className="mt-2 text-xs text-emerald-700">
-              Porudžbine kojima je povrat već označen kao vraćen ostaju vidljive, ali se ne računaju u iznos za vraćanje.
-            </p>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="refund-period-end" className="text-[13px] text-text-muted">
+              Do
+            </label>
+            <Input
+              id="refund-period-end"
+              type="date"
+              value={refundPeriodEnd}
+              onChange={(event) => setRefundPeriodEnd(event.target.value)}
+            />
           </div>
         </div>
-        <DialogFooter className="gap-2 sm:justify-between">
-          <div>
-            {refundPeriodOverview?.period ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-red-700 hover:bg-red-50 hover:text-red-800"
-                onClick={() => void handleClearRefundPeriod()}
-                disabled={isRefundPeriodSaving}
-              >
-                Ukloni period
-              </Button>
-            ) : null}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setRefundPeriodModalOpen(false)}
-              disabled={isRefundPeriodSaving}
-            >
-              Otkaži
-            </Button>
-            <Button
-              type="button"
-              className="bg-emerald-800 text-white hover:bg-emerald-900"
-              onClick={() => void handleSaveRefundPeriod()}
-              disabled={isRefundPeriodSaving}
-            >
-              {isRefundPeriodSaving ? "Čuvanje..." : "Sačuvaj period"}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <p className="text-[13px] text-text-muted">
+          Nevraćene porudžbine iz ovog perioda (datumi su uključivi) računaju se kao nabavna cena + 100% profita − transport.
+        </p>
+      </div>
+    </Sheet>
   );
 }

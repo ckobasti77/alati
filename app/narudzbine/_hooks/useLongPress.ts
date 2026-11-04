@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, type MouseEvent, type TouchEvent } from
 export function useLongPress() {
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
+  const lastTriggeredAtRef = useRef(0);
   const clearLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current !== null) {
       window.clearTimeout(longPressTimerRef.current);
@@ -35,6 +36,7 @@ export function useLongPress() {
         longPressTriggeredRef.current = false;
         longPressTimerRef.current = window.setTimeout(() => {
           longPressTriggeredRef.current = true;
+          lastTriggeredAtRef.current = Date.now();
           onLongPress();
         }, delay);
       },
@@ -60,6 +62,9 @@ export function useLongPress() {
   );
 
 
-  return { consumeLongPressClick, createLongPressHandlers };
+  /** Long-press se upravo desio (klik posle podizanja prsta treba ignorisati). */
+  const wasRecentLongPress = useCallback((windowMs = 600) => Date.now() - lastTriggeredAtRef.current < windowMs, []);
+
+  return { consumeLongPressClick, createLongPressHandlers, wasRecentLongPress };
 }
 

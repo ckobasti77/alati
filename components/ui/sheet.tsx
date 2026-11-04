@@ -29,6 +29,8 @@ export type SheetProps = {
   /** Bez trake sa naslovom (naslov ostaje za čitače ekrana); sadržaj sam nudi zatvaranje. */
   hideHeader?: boolean;
   headerActions?: React.ReactNode;
+  /** Gde je ✕: `end` (podrazumevano) ili `start` (forme preko celog ekrana: ✕ levo, Sačuvaj desno). */
+  closeSide?: "start" | "end";
   /** Sticky dno: primarna akcija. */
   footer?: React.ReactNode;
   children?: React.ReactNode;
@@ -46,6 +48,7 @@ export function Sheet({
   placement = "center",
   hideHeader = false,
   headerActions,
+  closeSide = "end",
   footer,
   children,
   bodyClassName,
@@ -136,6 +139,13 @@ export function Sheet({
                   isFull && "pt-[max(0.375rem,env(safe-area-inset-top))] md:pt-1.5",
                 )}
               >
+                {closeSide === "start" ? (
+                  <DialogPrimitive.Close asChild>
+                    <IconButton aria-label="Zatvori" size="lg" className="-ml-2 md:size-9">
+                      <X />
+                    </IconButton>
+                  </DialogPrimitive.Close>
+                ) : null}
                 <div className="min-w-0 flex-1">
                   <DialogPrimitive.Title className="truncate text-base font-semibold leading-6">{title}</DialogPrimitive.Title>
                   {description ? (
@@ -145,11 +155,13 @@ export function Sheet({
                   ) : null}
                 </div>
                 {headerActions}
-                <DialogPrimitive.Close asChild>
-                  <IconButton aria-label="Zatvori" size="lg" className="md:size-9">
-                    <X />
-                  </IconButton>
-                </DialogPrimitive.Close>
+                {closeSide === "end" ? (
+                  <DialogPrimitive.Close asChild>
+                    <IconButton aria-label="Zatvori" size="lg" className="md:size-9">
+                      <X />
+                    </IconButton>
+                  </DialogPrimitive.Close>
+                ) : null}
               </header>
             )}
             {!description && <DialogPrimitive.Description className="sr-only">{title}</DialogPrimitive.Description>}

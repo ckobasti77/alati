@@ -1,11 +1,11 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { ChevronDown, Minus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormLabel } from "@/components/ui/form";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
-import { formatCurrency } from "@/lib/format";
+import { Money } from "@/components/ui/money";
 import type { useOrderCatalog } from "../../_hooks/useOrderCatalog";
 import type { useOrderForm } from "../../_hooks/useOrderForm";
 import type { useOrderFormActions } from "../../_hooks/useOrderFormActions";
@@ -18,177 +18,156 @@ type OrderItemsSectionProps = {
   catalog: ReturnType<typeof useOrderCatalog>;
 };
 
+/** Proizvod: pretraga → tip/dobavljač → količina → Dodaj. Dodate stavke su ispod. */
 export function OrderItemsSection({ orderForm, formActions, catalog }: OrderItemsSectionProps) {
   const { setProductInput, draftItems, setItemProductId, setItemVariantId, setItemSupplierId, itemQuantity, setItemQuantity, useManualSalePrice, setUseManualSalePrice, manualSalePrice, setManualSalePrice, useManualPurchasePrice, setUseManualPurchasePrice, manualPurchasePrice, setManualPurchasePrice, selectedProduct } = orderForm;
   const { handleAddItem, handleRemoveItem, draftTotals } = formActions;
+
+  const resetSelection = () => {
+    setItemProductId("");
+    setItemVariantId("");
+    setItemSupplierId("");
+    setProductInput("");
+    setUseManualSalePrice(false);
+    setManualSalePrice("");
+    setUseManualPurchasePrice(false);
+    setManualPurchasePrice("");
+    setItemQuantity(1);
+  };
+
   return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <FormLabel className="text-base">Stavke narudzbine</FormLabel>
-          <p className="text-xs text-slate-500">Dodaj jedan ili vise proizvoda i tip.</p>
-        </div>
-        <Badge variant="secondary" className="shrink-0">
-          {draftItems.length} stavki
-        </Badge>
+    <section aria-labelledby="order-items-title" className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <FormLabel id="order-items-title" htmlFor="order-product">
+          Proizvod
+        </FormLabel>
+        {draftItems.length > 0 ? (
+          <span className="text-[13px] text-text-muted">
+            {draftItems.length} {draftItems.length === 1 ? "stavka" : draftItems.length < 5 ? "stavke" : "stavki"}
+          </span>
+        ) : null}
       </div>
+
+      {draftItems.length > 0 ? (
+        <ul className="divide-y divide-border rounded-xl ring-1 ring-border" aria-label="Dodate stavke">
+          {draftItems.map((item) => (
+            <li key={item.id} className="flex items-center gap-2 py-1.5 pr-1 pl-3">
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm font-medium text-text">{item.title}</p>
+                <p className="text-xs text-text-muted">
+                  <span className="num">{item.kolicina}×</span> · Prodajna <Money value={item.prodajnaCena} trimZeroCents /> · Nabavna{" "}
+                  <Money value={item.nabavnaCena} trimZeroCents />
+                  {item.manualNabavna || item.manualProdajna ? " · ručno" : ""}
+                </p>
+              </div>
+              <IconButton aria-label={`Ukloni ${item.title}`} variant="danger" onClick={() => handleRemoveItem(item.id)}>
+                <Trash2 />
+              </IconButton>
+            </li>
+          ))}
+          {draftItems.length > 1 ? (
+            <li className="flex justify-between px-3 py-2 text-[13px] text-text-muted">
+              <span>Ukupno</span>
+              <span>
+                Prodajno <Money value={draftTotals.totalProdajno} trimZeroCents className="font-medium text-text" /> · Nabavno{" "}
+                <Money value={draftTotals.totalNabavno} trimZeroCents />
+              </span>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+
       <OrderProductPicker orderForm={orderForm} catalog={catalog} />
       <OrderVariantSupplierFields orderForm={orderForm} />
 
       {selectedProduct ? (
-        <div className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-3 md:items-end">
-            <div>
-              <FormLabel>Kolicina</FormLabel>
-              <Input
-                name="itemQuantity"
-                type="number"
-                min={1}
-                required
-                value={itemQuantity}
-                onChange={(event) => {
-                  const next = Number(event.target.value);
-                  if (Number.isNaN(next)) {
-                    setItemQuantity(1);
-                    return;
-                  }
-                  setItemQuantity(Math.max(Math.round(next), 1));
-                }}
-              />
-            </div>
-            <div>
-              <FormLabel className="flex items-center gap-2">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-end gap-3">
+            <div className="flex flex-col gap-1.5">
+              <FormLabel htmlFor="order-qty">Količina</FormLabel>
+              <div className="inline-flex items-center rounded-xl ring-1 ring-inset ring-border-strong">
+                <IconButton aria-label="Manje" onClick={() => setItemQuantity(Math.max(itemQuantity - 1, 1))} disabled={itemQuantity <= 1}>
+                  <Minus />
+                </IconButton>
                 <input
-                  type="checkbox"
-                  checked={useManualPurchasePrice}
+                  id="order-qty"
+                  name="itemQuantity"
+                  type="text"
+                  inputMode="numeric"
+                  enterKeyHint="done"
+                  value={itemQuantity}
                   onChange={(event) => {
-                    setUseManualPurchasePrice(event.target.checked);
-                    if (!event.target.checked) {
-                      setManualPurchasePrice("");
+                    const next = Number(event.target.value.replace(/\D/g, ""));
+                    setItemQuantity(Number.isFinite(next) && next > 0 ? Math.round(next) : 1);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleAddItem();
                     }
                   }}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  className="num h-11 w-12 bg-transparent text-center text-base text-text outline-none md:h-10 md:text-sm"
                 />
-                Rucno unosim nabavnu cenu
-              </FormLabel>
-              <Input
-                name="manualPurchasePrice"
-                type="number"
-                step="0.01"
-                min={0}
-                disabled={!useManualPurchasePrice}
-                required={useManualPurchasePrice}
-                value={manualPurchasePrice}
-                onChange={(event) => setManualPurchasePrice(event.target.value)}
-                placeholder="npr. 80"
-                className={!useManualPurchasePrice ? "bg-slate-100" : undefined}
-              />
-            </div>
-            <div>
-              <FormLabel className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={useManualSalePrice}
-                  onChange={(event) => {
-                    setUseManualSalePrice(event.target.checked);
-                    if (!event.target.checked) {
-                      setManualSalePrice("");
-                    }
-                  }}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                Rucno unosim prodajnu cenu
-              </FormLabel>
-              <Input
-                name="manualSalePrice"
-                type="number"
-                step="0.01"
-                min={0}
-                disabled={!useManualSalePrice}
-                required={useManualSalePrice}
-                value={manualSalePrice}
-                onChange={(event) => setManualSalePrice(event.target.value)}
-                placeholder="npr. 120"
-                className={!useManualSalePrice ? "bg-slate-100" : undefined}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" onClick={handleAddItem} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Dodaj u narudzbinu
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setItemProductId("");
-                setItemVariantId("");
-                setItemSupplierId("");
-                setProductInput("");
-                setUseManualSalePrice(false);
-                setManualSalePrice("");
-                setUseManualPurchasePrice(false);
-                setManualPurchasePrice("");
-                setItemQuantity(1);
-              }}
-            >
-              Ponisti izbor
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      {draftItems.length > 0 ? (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-800">Dodate stavke</p>
-            <div className="text-center text-xs text-slate-500">
-              <p>Prodajno: {formatCurrency(draftTotals.totalProdajno, "EUR")}</p>
-              <p>Nabavno: {formatCurrency(draftTotals.totalNabavno, "EUR")}</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            {draftItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-start justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm"
-              >
-                <div className="space-y-0.5">
-                  <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                  {item.variantLabel ? <p className="text-xs text-slate-500">{item.variantLabel}</p> : null}
-                  <p className="text-xs text-slate-500">
-                    Kolicina: {item.kolicina} / Nabavna {formatCurrency(item.nabavnaCena, "EUR")} / Prodajna {formatCurrency(item.prodajnaCena, "EUR")}
-                  </p>
-                  {item.manualNabavna || item.manualProdajna ? (
-                    <div className="flex flex-wrap gap-1">
-                      {item.manualNabavna ? (
-                        <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                          Rucno uneta nabavna
-                        </span>
-                      ) : null}
-                      {item.manualProdajna ? (
-                        <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-                          Rucno uneta prodajna
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleRemoveItem(item.id)}
-                  aria-label="Ukloni stavku"
-                >
-                  <Trash2 className="h-4 w-4 text-slate-500" />
-                </Button>
+                <IconButton aria-label="Više" onClick={() => setItemQuantity(itemQuantity + 1)}>
+                  <Plus />
+                </IconButton>
               </div>
-            ))}
+            </div>
+            <Button type="button" onClick={handleAddItem} className="flex-1 gap-2">
+              <Plus className="size-4" aria-hidden />
+              Dodaj u narudžbinu
+            </Button>
           </div>
+
+          <details className="group rounded-xl ring-1 ring-border" open={useManualPurchasePrice || useManualSalePrice || undefined}>
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm text-text-muted [&::-webkit-details-marker]:hidden">
+              Ručne cene
+              <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden />
+            </summary>
+            <div className="grid gap-3 px-3 pb-3 sm:grid-cols-2">
+              {(
+                [
+                  ["nabavnu", useManualPurchasePrice, setUseManualPurchasePrice, manualPurchasePrice, setManualPurchasePrice, "manualPurchasePrice", "npr. 80"],
+                  ["prodajnu", useManualSalePrice, setUseManualSalePrice, manualSalePrice, setManualSalePrice, "manualSalePrice", "npr. 120"],
+                ] as const
+              ).map(([kind, enabled, setEnabled, value, setValue, name, placeholder]) => (
+                <div key={name} className="flex flex-col gap-1.5">
+                  <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm text-text md:min-h-8">
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={(event) => {
+                        setEnabled(event.target.checked);
+                        if (!event.target.checked) setValue("");
+                      }}
+                      className="size-5 cursor-pointer accent-accent md:size-4"
+                    />
+                    Ručno unosim {kind} cenu
+                  </label>
+                  <Input
+                    name={name}
+                    type="text"
+                    inputMode="decimal"
+                    aria-label={`Ručna ${kind === "nabavnu" ? "nabavna" : "prodajna"} cena`}
+                    disabled={!enabled}
+                    value={value}
+                    onChange={(event) => setValue(event.target.value)}
+                    placeholder={placeholder}
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
+
+          <button
+            type="button"
+            onClick={resetSelection}
+            className="inline-flex min-h-11 cursor-pointer items-center self-start text-[13px] font-medium text-text-muted hover:text-text md:min-h-8"
+          >
+            Poništi izbor
+          </button>
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }

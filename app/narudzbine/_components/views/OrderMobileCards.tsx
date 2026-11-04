@@ -31,7 +31,12 @@ function CardTarget({ entry, title, longPress, className }: { entry: OrderEntry;
         data-card-target
         aria-pressed={selected}
         disabled={ctx.selectionLocked}
-        onClick={() => ctx.toggleSelected(order._id, !selected)}
+        onClick={() => {
+          // Posle long-press-a browser pošalje i "click" kad se prst podigne; kartica je tada već u modu
+          // izbora i taj klik bi odmah poništio izbor.
+          if (longPress.wasRecentLongPress()) return;
+          ctx.toggleSelected(order._id, !selected);
+        }}
         className={cn("text-left", stretched, className)}
       >
         {title}

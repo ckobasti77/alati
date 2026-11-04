@@ -1,29 +1,78 @@
 "use client";
 
-import { RichTextSnippet } from "../RichTextSnippet";
+import { Package, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { formatCurrency } from "@/lib/format";
+import { Money } from "@/components/ui/money";
+import { cn } from "@/lib/utils";
 import { getProductDisplayName } from "../../_lib/helpers";
 import type { useOrderCatalog } from "../../_hooks/useOrderCatalog";
 import type { useOrderForm } from "../../_hooks/useOrderForm";
+import type { Product } from "@/types/order";
 
 type OrderProductPickerProps = {
   orderForm: ReturnType<typeof useOrderForm>;
   catalog: ReturnType<typeof useOrderCatalog>;
 };
 
+function ProductImage({ product, className }: { product: Product; className?: string }) {
+  const images = product.images ?? [];
+  const main = images.find((image) => image.isMain) ?? images[0];
+  return main?.url ? (
+    // eslint-disable-next-line @next/next/no-img-element -- Convex storage URL
+    <img src={main.url} alt="" loading="lazy" className={cn("shrink-0 rounded-lg bg-surface-2 object-cover ring-1 ring-border", className)} />
+  ) : (
+    <span className={cn("inline-flex shrink-0 items-center justify-center rounded-lg bg-surface-2 text-text-muted ring-1 ring-border", className)}>
+      <Package className="size-4" aria-hidden />
+    </span>
+  );
+}
+
+/** Pretraga proizvoda (combobox) i izabrani proizvod. Logika izbora je ista kao ranije. */
 export function OrderProductPicker({ orderForm, catalog }: OrderProductPickerProps) {
   const { productInput, setProductInput, setProductSearch, productMenuOpen, setProductMenuOpen, setItemProductId, setItemVariantId, setItemSupplierId, setItemQuantity, setUseManualSalePrice, setManualSalePrice, productInputRef, filteredProducts, selectedProduct, selectedVariantForPreview } = orderForm;
   const { products, isProductsLoading } = catalog;
+
+  const selectProduct = (product: Product) => {
+    const variants = product.variants ?? [];
+    const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
+    setItemProductId(product._id);
+    setProductInput(getProductDisplayName(product));
+    setItemVariantId(defaultVariant?.id ?? "");
+    setItemSupplierId("");
+    setUseManualSalePrice(false);
+    setManualSalePrice("");
+    setItemQuantity(1);
+    setProductMenuOpen(false);
+  };
+
+  const clear = () => {
+    setProductInput("");
+    setProductSearch("");
+    setItemProductId("");
+    setItemVariantId("");
+    setItemSupplierId("");
+    productInputRef.current?.focus();
+  };
+
   return (
     <>
       <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
         <Input
+          id="order-product"
           ref={productInputRef}
           name="productSearch"
           value={productInput}
-          placeholder={isProductsLoading ? "Ucitavanje..." : "Pretrazi proizvod"}
+          type="search"
+          enterKeyHint="search"
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={productMenuOpen}
+          aria-controls="order-product-options"
+          aria-autocomplete="list"
+          placeholder={isProductsLoading ? "Učitavanje…" : "Pretraži proizvod"}
           disabled={isProductsLoading || (products?.length ?? 0) === 0}
+          className="pr-11 pl-9 [&::-webkit-search-cancel-button]:hidden"
           onChange={(event) => {
             const value = event.target.value;
             setProductInput(value);
@@ -34,6 +83,12 @@ export function OrderProductPicker({ orderForm, catalog }: OrderProductPickerPro
               setItemVariantId("");
               setItemSupplierId("");
             }
+          }}
+          onKeyDown={(event) => {
+            // Enter ne šalje formu: bira prvi rezultat.
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            if (productMenuOpen && filteredProducts[0]) selectProduct(filteredProducts[0]);
           }}
           onFocus={() => {
             setProductMenuOpen(true);
@@ -47,121 +102,70 @@ export function OrderProductPicker({ orderForm, catalog }: OrderProductPickerPro
             setTimeout(() => setProductMenuOpen(false), 150);
           }}
         />
-        {productMenuOpen && (
-          <div className="absolute left-0 right-0 z-10 mt-1 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        {productInput ? (
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={clear}
+            aria-label="Obriši izbor proizvoda"
+            className="absolute top-0 right-0 inline-flex size-11 cursor-pointer items-center justify-center rounded-xl text-text-muted hover:text-text md:size-10"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
+        ) : null}
+        {productMenuOpen ? (
+          <div
+            id="order-product-options"
+            role="listbox"
+            aria-label="Proizvodi"
+            className="absolute inset-x-0 top-full z-(--z-raised) mt-1 max-h-80 overflow-y-auto rounded-xl bg-raised p-1 shadow-(--shadow-popover) ring-1 ring-border"
+          >
             {isProductsLoading ? (
-              <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Ucitavanje...</div>
+              <p className="px-3 py-2.5 text-sm text-text-muted">Učitavanje…</p>
             ) : filteredProducts.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Nema rezultata</div>
+              <p className="px-3 py-2.5 text-sm text-text-muted">Nema rezultata</p>
             ) : (
-              filteredProducts.map((product, productIndex) => {
+              filteredProducts.map((product) => {
                 const variants = product.variants ?? [];
-                const hasVariants = variants.length > 0;
                 const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
-                const displayPrice = defaultVariant?.prodajnaCena ?? product.prodajnaCena;
                 return (
-                  <div
+                  <button
                     key={product._id}
-                    className={`border-b border-slate-100 last:border-b-0 dark:border-slate-800 ${
-                      productIndex % 2 === 0 ? "bg-white dark:bg-slate-900" : "bg-slate-50/50 dark:bg-slate-900/70"
-                    }`}
+                    type="button"
+                    role="option"
+                    aria-selected={selectedProduct?._id === product._id}
+                    className="flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-surface-2"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      selectProduct(product);
+                    }}
                   >
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-blue-50 hover:text-blue-700 dark:text-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-50"
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        setItemProductId(product._id);
-                        setProductInput(getProductDisplayName(product));
-                        setItemVariantId(defaultVariant?.id ?? "");
-                        setItemSupplierId("");
-                        setUseManualSalePrice(false);
-                        setManualSalePrice("");
-                        setItemQuantity(1);
-                        setProductMenuOpen(false);
-                      }}
-                    >
-                      {(() => {
-                        const images = product.images ?? [];
-                        const mainImage = images.find((image) => image.isMain) ?? images[0];
-                        const displayName = getProductDisplayName(product);
-                        if (mainImage?.url) {
-                          return (
-                            <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={mainImage.url} alt={displayName} className="h-full w-full object-cover" />
-                            </div>
-                          );
-                        }
-                        return <div className="h-12 w-12 flex-shrink-0 rounded-md border border-dashed border-slate-200 dark:border-slate-700/70" />;
-                      })()}
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-slate-800 dark:text-slate-100">{getProductDisplayName(product)}</p>
-                          {hasVariants ? (
-                            <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-200">
-                              Tipski
-                            </span>
-                          ) : null}
-                        </div>
-                        {hasVariants ? (
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {variants.length} tip{variants.length === 1 ? "" : "a"} dostupno
-                          </p>
-                        ) : (
-                          <RichTextSnippet
-                            text={product.opisFbInsta || product.opisKp || product.opis}
-                            className="text-[11px] text-slate-500 dark:text-slate-400"
-                          />
-                        )}
-                      </div>
-                      <div className="text-center">
-                        <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Cena</p>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
-                          {formatCurrency(displayPrice, "EUR")}
-                        </p>
-                      </div>
-                    </button>
-                  </div>
+                    <ProductImage product={product} className="size-10" />
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-2 text-sm font-medium text-text">{getProductDisplayName(product)}</span>
+                      {variants.length > 0 ? (
+                        <span className="text-xs text-text-muted">
+                          {variants.length} {variants.length === 1 ? "tip" : "tipa"}
+                        </span>
+                      ) : null}
+                    </span>
+                    <Money value={defaultVariant?.prodajnaCena ?? product.prodajnaCena} trimZeroCents className="shrink-0 text-sm font-medium" />
+                  </button>
                 );
               })
             )}
           </div>
-        )}
+        ) : null}
       </div>
 
       {selectedProduct ? (
-        <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
-          <div className="flex items-center gap-3">
-            {(() => {
-              const images = selectedProduct.images ?? [];
-              const mainImage = images.find((image) => image.isMain) ?? images[0];
-              const displayName = getProductDisplayName(selectedProduct);
-              if (mainImage?.url) {
-                return (
-                  <div className="h-12 w-12 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={mainImage.url} alt={displayName} className="h-full w-full object-cover" />
-                  </div>
-                );
-              }
-              return (
-                <div className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-300 text-[10px] uppercase text-slate-400 dark:border-slate-600 dark:text-slate-300">
-                  N/A
-                </div>
-              );
-            })()}
-            <div>
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{getProductDisplayName(selectedProduct)}</p>
-              {selectedVariantForPreview ? <p className="text-xs text-slate-600 dark:text-slate-300">{selectedVariantForPreview.label}</p> : null}
-            </div>
+        <div className="flex items-center gap-3 rounded-xl bg-surface-2 p-2 pr-3">
+          <ProductImage product={selectedProduct} className="size-12" />
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-2 text-sm font-medium text-text">{getProductDisplayName(selectedProduct)}</p>
+            {selectedVariantForPreview ? <p className="truncate text-xs text-text-muted">{selectedVariantForPreview.label}</p> : null}
           </div>
-          <div className="text-center">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Prodajna cena</p>
-            <p className="text-base font-semibold text-slate-900 dark:text-slate-50">
-              {formatCurrency(selectedVariantForPreview?.prodajnaCena ?? selectedProduct.prodajnaCena, "EUR")}
-            </p>
-          </div>
+          <Money value={selectedVariantForPreview?.prodajnaCena ?? selectedProduct.prodajnaCena} trimZeroCents className="shrink-0 font-semibold" />
         </div>
       ) : null}
     </>

@@ -27,7 +27,7 @@ import { useOrderDelete } from "./_hooks/useOrderDelete";
 import { useOrdersView } from "./_hooks/useOrdersView";
 import { useListKeyboard } from "./_hooks/useListKeyboard";
 import { RefundPeriodDialog } from "./_components/modals/RefundPeriodDialog";
-import { OrderFormDialog } from "./_components/order-form/OrderFormDialog";
+import { OrderFormSheet } from "./_components/order-form/OrderFormSheet";
 import { ExitConfirmDialog } from "./_components/modals/ExitConfirmDialog";
 import { DeleteOrderDialog } from "./_components/modals/DeleteOrderDialog";
 import { QuickEditDialog } from "./_components/modals/QuickEditDialog";
@@ -178,7 +178,7 @@ function OrdersContent() {
   return (
     <div className="relative flex flex-col gap-3 md:gap-4">
       <RefundPeriodDialog refund={refund} />
-      <OrderFormDialog orderForm={orderForm} formActions={formActions} catalog={catalog} />
+      <OrderFormSheet orderForm={orderForm} formActions={formActions} catalog={catalog} />
       <ExitConfirmDialog orderForm={orderForm} formActions={formActions} />
       <DeleteOrderDialog orderDelete={orderDelete} />
       <QuickEditDialog rowActions={rowActions} />

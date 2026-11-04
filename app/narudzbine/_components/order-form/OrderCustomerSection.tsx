@@ -10,20 +10,33 @@ type OrderCustomerSectionProps = {
   formActions: ReturnType<typeof useOrderFormActions>;
 };
 
+/** Ime → telefon → adresa (adresa se ne prikazuje za lično preuzimanje). */
 export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSectionProps) {
   const { setCustomerQuery, customerMenuOpen, setCustomerMenuOpen, customers, pickupValue } = orderForm;
   const { handleCustomerSelect } = formActions;
+  const showSuggestions = customerMenuOpen && (customers?.length ?? 0) > 0;
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="flex flex-col gap-4">
       <FormField
         name="customerName"
         render={({ field, fieldState }) => (
-          <FormItem>
-            <FormLabel>Ime i prezime porucioca{pickupValue ? " (neobavezno)" : ""}</FormLabel>
+          <FormItem className="gap-1.5">
+            <FormLabel htmlFor="order-customer-name">
+              Ime i prezime{pickupValue ? <span className="font-normal text-text-muted"> (neobavezno)</span> : null}
+            </FormLabel>
             <div className="relative">
               <Input
-                placeholder="npr. Marko Markovic"
-                required={!pickupValue}
+                id="order-customer-name"
+                autoComplete="name"
+                autoCapitalize="words"
+                enterKeyHint="next"
+                placeholder="npr. Marko Marković"
+                role="combobox"
+                aria-expanded={showSuggestions}
+                aria-controls="order-customer-suggestions"
+                aria-autocomplete="list"
+                aria-invalid={fieldState.error ? true : undefined}
+                aria-describedby={fieldState.error ? "order-customer-name-error" : undefined}
                 {...field}
                 onChange={(event) => {
                   field.onChange(event);
@@ -31,44 +44,61 @@ export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSe
                   setCustomerMenuOpen(true);
                 }}
                 onFocus={() => setCustomerMenuOpen(true)}
-                onBlur={(event) => {
+                onBlur={() => {
                   field.onBlur();
                   setCustomerMenuOpen(false);
                 }}
               />
-              {customerMenuOpen && (customers?.length ?? 0) > 0 ? (
-                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+              {showSuggestions ? (
+                <div
+                  id="order-customer-suggestions"
+                  role="listbox"
+                  aria-label="Raniji kupci"
+                  className="absolute inset-x-0 top-full z-(--z-raised) mt-1 max-h-64 overflow-y-auto rounded-xl bg-raised p-1 shadow-(--shadow-popover) ring-1 ring-border"
+                >
                   {customers?.map((customer) => (
                     <button
                       key={customer._id}
                       type="button"
-                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm transition hover:bg-slate-50"
+                      role="option"
+                      aria-selected={false}
+                      className="flex min-h-11 w-full cursor-pointer flex-col items-start justify-center gap-0.5 rounded-lg px-3 py-1.5 text-left hover:bg-surface-2"
                       onMouseDown={(event) => {
                         event.preventDefault();
                         handleCustomerSelect(customer);
                       }}
                     >
-                      <span className="font-medium text-slate-900">{customer.name}</span>
-                      <span className="text-xs text-slate-500">
+                      <span className="text-sm font-medium text-text">{customer.name}</span>
+                      <span className="text-[13px] text-text-muted">
                         {customer.phone}
-                        {customer.address ? ` - ${customer.address}` : ""}
+                        {customer.address ? ` · ${customer.address}` : ""}
                       </span>
                     </button>
                   ))}
                 </div>
               ) : null}
             </div>
-            <FormMessage>{fieldState.error?.message}</FormMessage>
+            <FormMessage id="order-customer-name-error">{fieldState.error?.message}</FormMessage>
           </FormItem>
         )}
       />
       <FormField
         name="phone"
         render={({ field, fieldState }) => (
-          <FormItem>
-            <FormLabel>Broj telefona</FormLabel>
-            <Input placeholder="npr. +381 6x xxx xxxx" required {...field} />
-            <FormMessage>{fieldState.error?.message}</FormMessage>
+          <FormItem className="gap-1.5">
+            <FormLabel htmlFor="order-phone">Telefon</FormLabel>
+            <Input
+              id="order-phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              enterKeyHint="next"
+              placeholder="npr. 064 123 4567"
+              aria-invalid={fieldState.error ? true : undefined}
+              aria-describedby={fieldState.error ? "order-phone-error" : undefined}
+              {...field}
+            />
+            <FormMessage id="order-phone-error">{fieldState.error?.message}</FormMessage>
           </FormItem>
         )}
       />
@@ -76,10 +106,18 @@ export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSe
         <FormField
           name="address"
           render={({ field, fieldState }) => (
-            <FormItem className="md:col-span-2">
-              <FormLabel>Adresa</FormLabel>
-              <Input placeholder="Ulica, broj, mesto" required {...field} />
-              <FormMessage>{fieldState.error?.message}</FormMessage>
+            <FormItem className="gap-1.5">
+              <FormLabel htmlFor="order-address">Adresa</FormLabel>
+              <Input
+                id="order-address"
+                autoComplete="street-address"
+                enterKeyHint="next"
+                placeholder="Ulica i broj, mesto"
+                aria-invalid={fieldState.error ? true : undefined}
+                aria-describedby={fieldState.error ? "order-address-error" : undefined}
+                {...field}
+              />
+              <FormMessage id="order-address-error">{fieldState.error?.message}</FormMessage>
             </FormItem>
           )}
         />

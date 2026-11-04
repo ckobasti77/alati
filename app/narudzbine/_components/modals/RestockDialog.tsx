@@ -1,10 +1,10 @@
 "use client";
 
-import { PhoneCall } from "lucide-react";
+import { Loader2, PhoneCall, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FormLabel } from "@/components/ui/form";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
+import { Sheet } from "@/components/ui/sheet";
 import { formatCurrency } from "@/lib/format";
 import { composeVariantLabel, getProductDisplayName, resolveProductImageUrl, resolveVariantPurchasePrice } from "../../_lib/helpers";
 import { RichTextSnippet } from "../RichTextSnippet";
@@ -16,23 +16,25 @@ type RestockDialogProps = {
   restock: ReturnType<typeof useRestock>;
 };
 
+const labelClass = "text-[13px] text-text-muted";
+
 export function RestockDialog({ catalog, restock }: RestockDialogProps) {
   const { isProductsLoading, products, productMap } = catalog;
   const { restockModalOpen, setRestockModalOpen, restockProductInputRef, restockProductInput, setRestockProductInput, setRestockProductSearch, setRestockProductMenuOpen, setRestockProductId, setRestockVariantId, restockProductMenuOpen, restockFilteredProducts, restockSelectedVariants, restockVariantId, restockSelectedProduct, restockName, setRestockName, restockPhone, setRestockPhone, resetRestockForm, isCreatingRestock, handleCreateRestockRequest, isRestockLoading, restockEntries, openRestockDeleteModal } = restock;
   return (
-    <Dialog open={restockModalOpen} onOpenChange={setRestockModalOpen}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Zahtevi za nedostupne proizvode</DialogTitle>
-          <DialogDescription>Lista kupaca koje treba kontaktirati kada se proizvod vrati.</DialogDescription>
-        </DialogHeader>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label
-                htmlFor="restockProduct"
-                className="text-[11px] font-semibold uppercase tracking-wide text-slate-500"
-              >
+    <Sheet
+      open={restockModalOpen}
+      onOpenChange={setRestockModalOpen}
+      title="Zahtevi za dopunu"
+      description="Kupci koje treba kontaktirati kada se proizvod vrati."
+      size="full"
+      desktopWidth="lg"
+    >
+      <div className="flex flex-col gap-4">
+        <div className="rounded-2xl bg-surface-2 p-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="restockProduct" className={labelClass}>
                 Proizvod
               </label>
               <div className="relative">
@@ -41,7 +43,7 @@ export function RestockDialog({ catalog, restock }: RestockDialogProps) {
                   id="restockProduct"
                   name="restockProductSearch"
                   value={restockProductInput}
-                  placeholder={isProductsLoading ? "Ucitavanje..." : "Pretrazi proizvod"}
+                  placeholder={isProductsLoading ? "Učitavanje..." : "Pretraži proizvod"}
                   disabled={isProductsLoading || (products?.length ?? 0) === 0}
                   onChange={(event) => {
                     const value = event.target.value;
@@ -66,83 +68,69 @@ export function RestockDialog({ catalog, restock }: RestockDialogProps) {
                   }}
                 />
                 {restockProductMenuOpen && (
-                  <div className="absolute left-0 right-0 z-10 mt-1 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                  <div className="absolute left-0 right-0 z-(--z-raised) mt-1 max-h-72 divide-y divide-border overflow-y-auto rounded-xl bg-raised shadow-(--shadow-sheet) ring-1 ring-border">
                     {isProductsLoading ? (
-                      <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Ucitavanje...</div>
+                      <div className="px-3 py-2 text-sm text-text-muted">Učitavanje...</div>
                     ) : restockFilteredProducts.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">Nema rezultata</div>
+                      <div className="px-3 py-2 text-sm text-text-muted">Nema rezultata</div>
                     ) : (
-                      restockFilteredProducts.map((product, productIndex) => {
+                      restockFilteredProducts.map((product) => {
                         const variants = product.variants ?? [];
                         const hasVariants = variants.length > 0;
                         const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
                         const displayPrice = defaultVariant?.prodajnaCena ?? product.prodajnaCena;
                         return (
-                          <div
+                          <button
                             key={product._id}
-                            className={`border-b border-slate-100 last:border-b-0 dark:border-slate-800 ${
-                              productIndex % 2 === 0
-                                ? "bg-white dark:bg-slate-900"
-                                : "bg-slate-50/50 dark:bg-slate-900/70"
-                            }`}
+                            type="button"
+                            className="flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-surface-2"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              setRestockProductId(product._id);
+                              setRestockProductInput(getProductDisplayName(product));
+                              setRestockVariantId(defaultVariant?.id ?? "");
+                              setRestockProductMenuOpen(false);
+                            }}
                           >
-                            <button
-                              type="button"
-                              className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-blue-50 hover:text-blue-700 dark:text-slate-100 dark:hover:bg-slate-800 dark:hover:text-slate-50"
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                setRestockProductId(product._id);
-                                setRestockProductInput(getProductDisplayName(product));
-                                setRestockVariantId(defaultVariant?.id ?? "");
-                                setRestockProductMenuOpen(false);
-                              }}
-                            >
-                              {(() => {
-                                const images = product.images ?? [];
-                                const mainImage = images.find((image) => image.isMain) ?? images[0];
-                                const displayName = getProductDisplayName(product);
-                                if (mainImage?.url) {
-                                  return (
-                                    <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img src={mainImage.url} alt={displayName} className="h-full w-full object-cover" />
-                                    </div>
-                                  );
-                                }
+                            {(() => {
+                              const images = product.images ?? [];
+                              const mainImage = images.find((image) => image.isMain) ?? images[0];
+                              const displayName = getProductDisplayName(product);
+                              if (mainImage?.url) {
                                 return (
-                                  <div className="h-12 w-12 flex-shrink-0 rounded-md border border-dashed border-slate-200 dark:border-slate-700/70" />
+                                  <div className="size-12 shrink-0 overflow-hidden rounded-lg ring-1 ring-border">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={mainImage.url} alt={displayName} className="h-full w-full object-cover" />
+                                  </div>
                                 );
-                              })()}
-                              <div className="flex-1 space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <p className="font-medium text-slate-800 dark:text-slate-100">
-                                    {getProductDisplayName(product)}
-                                  </p>
-                                  {hasVariants ? (
-                                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-200">
-                                      Tipski
-                                    </span>
-                                  ) : null}
-                                </div>
+                              }
+                              return <div className="size-12 shrink-0 rounded-lg bg-surface-2 ring-1 ring-border" />;
+                            })()}
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-text">{getProductDisplayName(product)}</p>
                                 {hasVariants ? (
-                                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                    {variants.length} tip{variants.length === 1 ? "" : "a"} dostupno
-                                  </p>
-                                ) : (
-                                  <RichTextSnippet
-                                    text={product.opisFbInsta || product.opisKp || product.opis}
-                                    className="text-[11px] text-slate-500 dark:text-slate-400"
-                                  />
-                                )}
+                                  <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-text">
+                                    Tipski
+                                  </span>
+                                ) : null}
                               </div>
-                              <div className="text-center">
-                                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Cena</p>
-                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
-                                  {formatCurrency(displayPrice, "EUR")}
+                              {hasVariants ? (
+                                <p className="text-xs text-text-muted">
+                                  {variants.length} tip{variants.length === 1 ? "" : "a"} dostupno
                                 </p>
-                              </div>
-                            </button>
-                          </div>
+                              ) : (
+                                <RichTextSnippet
+                                  text={product.opisFbInsta || product.opisKp || product.opis}
+                                  className="text-xs text-text-muted"
+                                />
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-text-muted">Cena</p>
+                              <p className="num text-sm font-semibold text-text">{formatCurrency(displayPrice, "EUR")}</p>
+                            </div>
+                          </button>
                         );
                       })
                     )}
@@ -151,10 +139,10 @@ export function RestockDialog({ catalog, restock }: RestockDialogProps) {
               </div>
             </div>
             {restockSelectedVariants.length > 0 ? (
-              <div className="space-y-2">
-                <FormLabel>Tip / varijanta</FormLabel>
-                <p className="text-xs text-slate-500">
-                  Odaberi tacno koji tip proizvoda trazis. Podrazumevani tip je unapred izabran.
+              <div className="flex flex-col gap-2">
+                <span className={labelClass}>Tip / varijanta</span>
+                <p className="text-xs text-text-muted">
+                  Odaberi tačno koji tip proizvoda traži. Podrazumevani tip je unapred izabran.
                 </p>
                 <div className="grid gap-2 md:grid-cols-2">
                   {restockSelectedVariants.map((variant) => {
@@ -168,10 +156,8 @@ export function RestockDialog({ catalog, restock }: RestockDialogProps) {
                     return (
                       <label
                         key={variant.id}
-                        className={`cursor-pointer rounded-md border px-3 py-2 text-sm transition ${
-                          isActive
-                            ? "border-blue-500 bg-blue-50 shadow-sm dark:border-blue-400 dark:bg-blue-500/10"
-                            : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:border-slate-500"
+                        className={`flex min-h-11 cursor-pointer flex-col gap-0.5 rounded-xl px-3 py-2 text-sm transition-colors ring-1 ring-inset ${
+                          isActive ? "bg-accent-soft ring-accent" : "bg-surface ring-border hover:bg-surface-2"
                         }`}
                       >
                         <input
@@ -188,32 +174,16 @@ export function RestockDialog({ catalog, restock }: RestockDialogProps) {
                           }}
                           className="sr-only"
                         />
-                        <span
-                          className={`font-medium ${
-                            isActive ? "text-blue-800 dark:text-blue-50" : "text-slate-800 dark:text-slate-100"
-                          }`}
-                        >
-                          {composedLabel}
-                        </span>
-                        <span
-                          className={`text-xs ${
-                            isActive ? "text-blue-700 dark:text-blue-200" : "text-slate-500 dark:text-slate-400"
-                          }`}
-                        >
+                        <span className={`font-medium ${isActive ? "text-accent-text" : "text-text"}`}>{composedLabel}</span>
+                        <span className="num text-xs text-text-muted">
                           Nabavna {formatCurrency(purchasePrice, "EUR")} / Prodajna {formatCurrency(variant.prodajnaCena, "EUR")}
                         </span>
                         <RichTextSnippet
                           text={variant.opis || restockSelectedProduct?.opisFbInsta || restockSelectedProduct?.opisKp || restockSelectedProduct?.opis}
-                          className="text-[11px] text-slate-500 dark:text-slate-400"
+                          className="text-xs text-text-muted"
                         />
                         {variant.isDefault ? (
-                          <span
-                            className={`text-[11px] font-semibold ${
-                              isActive ? "text-emerald-600 dark:text-emerald-300" : "text-emerald-600 dark:text-emerald-400"
-                            }`}
-                          >
-                            Podrazumevano
-                          </span>
+                          <span className="text-xs font-medium text-success">Podrazumevano</span>
                         ) : null}
                       </label>
                     );
@@ -221,12 +191,9 @@ export function RestockDialog({ catalog, restock }: RestockDialogProps) {
                 </div>
               </div>
             ) : null}
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label
-                  htmlFor="restockName"
-                  className="text-[11px] font-semibold uppercase tracking-wide text-slate-500"
-                >
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="restockName" className={labelClass}>
                   Ime
                 </label>
                 <Input
@@ -234,94 +201,89 @@ export function RestockDialog({ catalog, restock }: RestockDialogProps) {
                   value={restockName}
                   onChange={(event) => setRestockName(event.target.value)}
                   placeholder="Ime i prezime"
+                  autoComplete="name"
+                  enterKeyHint="next"
                 />
               </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="restockPhone"
-                  className="text-[11px] font-semibold uppercase tracking-wide text-slate-500"
-                >
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="restockPhone" className={labelClass}>
                   Telefon
                 </label>
                 <Input
                   id="restockPhone"
+                  type="tel"
                   value={restockPhone}
                   onChange={(event) => setRestockPhone(event.target.value)}
                   placeholder="+381..."
                   inputMode="tel"
+                  autoComplete="tel"
+                  enterKeyHint="done"
                 />
               </div>
             </div>
           </div>
-          <div className="mt-3 flex items-center justify-end gap-2">
+          <div className="mt-4 flex gap-2 md:justify-end">
             <Button type="button" variant="ghost" onClick={resetRestockForm} disabled={isCreatingRestock}>
               Odbaci
             </Button>
             <Button
               type="button"
+              className="flex-1 md:flex-none"
               onClick={handleCreateRestockRequest}
               disabled={isCreatingRestock || isProductsLoading}
             >
-              {isCreatingRestock ? "Cuvanje..." : "Sacuvaj"}
+              {isCreatingRestock ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+              Sačuvaj
             </Button>
           </div>
         </div>
         {isRestockLoading ? (
-          <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
-            Ucitavanje...
-          </div>
+          <div className="rounded-2xl p-4 text-center text-sm text-text-muted ring-1 ring-border">Učitavanje...</div>
         ) : restockEntries.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
+          <div className="rounded-2xl p-4 text-center text-sm text-text-muted ring-1 ring-border">
             Trenutno nema zahteva.
           </div>
         ) : (
-          <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+          <ul className="flex flex-col gap-3">
             {restockEntries.map((entry) => {
               const product = entry.productId ? productMap.get(entry.productId) : undefined;
-              const productTitle =
-                entry.productTitle || (product ? getProductDisplayName(product) : "Proizvod");
+              const productTitle = entry.productTitle || (product ? getProductDisplayName(product) : "Proizvod");
               const imageUrl = product ? resolveProductImageUrl(product) : null;
               return (
-                <div
-                  key={entry._id}
-                  className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm"
-                >
-                  <div className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                <li key={entry._id} className="flex items-center gap-3 rounded-2xl bg-surface p-3 ring-1 ring-border">
+                  <div className="size-16 shrink-0 overflow-hidden rounded-lg bg-surface-2 ring-1 ring-border">
                     {imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={imageUrl} alt={productTitle} className="h-full w-full object-cover" />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase text-slate-400">
-                        N/A
+                      <div className="flex h-full w-full items-center justify-center text-xs font-medium text-text-muted">
+                        —
                       </div>
                     )}
-                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/70 px-2 text-center text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
-                      <div className="space-y-1">
-                        <div>{productTitle}</div>
-                        {entry.variantLabel ? (
-                          <div className="text-[10px] font-medium text-slate-100">{entry.variantLabel}</div>
-                        ) : null}
-                      </div>
-                    </div>
                   </div>
                   <a
                     href={`tel:${entry.phone.replace(/[^+\d]/g, "")}`}
-                    className="flex min-w-0 flex-1 flex-col gap-1 rounded-md border border-transparent px-2 py-1 transition hover:border-blue-200 hover:bg-blue-50"
+                    className="flex min-h-11 min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-lg px-2 py-1 transition-colors hover:bg-surface-2"
                   >
-                    <span className="truncate text-sm font-semibold text-slate-800">{entry.name}</span>
-                    <span className="flex items-center gap-1 text-xs text-slate-500">
-                      <PhoneCall className="h-4 w-4 text-blue-500" />
+                    <span className="truncate text-sm font-semibold text-text">{productTitle}</span>
+                    {entry.variantLabel ? (
+                      <span className="truncate text-xs text-text-muted">{entry.variantLabel}</span>
+                    ) : null}
+                    <span className="truncate text-sm text-text">{entry.name}</span>
+                    <span className="num flex items-center gap-1 text-xs text-text-muted">
+                      <PhoneCall className="size-4 text-accent-text" aria-hidden />
                       {entry.phone}
                     </span>
                   </a>
-                  <Button type="button" variant="destructive" size="sm" onClick={() => openRestockDeleteModal(entry)}>
-                    Obrisi
-                  </Button>
-                </div>
+                  <IconButton variant="danger" aria-label={`Obriši zahtev: ${entry.name}`} onClick={() => openRestockDeleteModal(entry)}>
+                    <Trash2 />
+                  </IconButton>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </Sheet>
   );
 }

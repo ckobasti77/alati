@@ -94,7 +94,7 @@ export function FormLabel({
   ...props
 }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
-    <label className={cn("text-sm font-medium text-slate-700", className)} {...props} />
+    <label className={cn("text-sm font-medium text-text", className)} {...props} />
   );
 }
 
@@ -105,7 +105,7 @@ export function FormMessage({
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   if (!children) return null;
   return (
-    <p className={cn("text-sm text-red-600", className)} {...props}>
+    <p role="alert" className={cn("text-[13px] leading-5 text-danger", className)} {...props}>
       {children}
     </p>
   );

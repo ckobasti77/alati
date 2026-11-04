@@ -1,7 +1,6 @@
 "use client";
 
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { useOrderForm } from "../../_hooks/useOrderForm";
 import type { useOrderFormActions } from "../../_hooks/useOrderFormActions";
 
@@ -14,28 +13,18 @@ export function ExitConfirmDialog({ orderForm, formActions }: ExitConfirmDialogP
   const { exitConfirmOpen, setExitConfirmOpen } = orderForm;
   const { resetOrderForm } = formActions;
   return (
-    <Dialog open={exitConfirmOpen} onOpenChange={setExitConfirmOpen}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Napusti formu?</DialogTitle>
-          <DialogDescription>Imas nesacuvane izmene. Ako izadjes, izgubices uneto.</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => setExitConfirmOpen(false)}>
-            Ostani
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => {
-              setExitConfirmOpen(false);
-              resetOrderForm({ closeModal: true });
-            }}
-          >
-            Napusti
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ConfirmDialog
+      open={exitConfirmOpen}
+      onOpenChange={setExitConfirmOpen}
+      tone="danger"
+      title="Napusti formu?"
+      description="Nesačuvane izmene će biti izgubljene."
+      confirmLabel="Napusti"
+      cancelLabel="Nastavi unos"
+      onConfirm={() => {
+        setExitConfirmOpen(false);
+        resetOrderForm({ closeModal: true });
+      }}
+    />
   );
 }

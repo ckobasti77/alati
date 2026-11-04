@@ -198,9 +198,9 @@ function probeList([selector, checkSave]) {
       if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) continue;
       const style = getComputedStyle(el);
       if (style.visibility === "hidden" || style.pointerEvents === "none") continue;
-      // Input unutar labele: meta je labela.
+      // Kontrola unutar labele (checkbox, switch): meta je cela labela.
       const label = el.closest("label");
-      const box = label && el.matches("input") ? label.getBoundingClientRect() : rect;
+      const box = label ? label.getBoundingClientRect() : rect;
       let width = box.width;
       let height = box.height;
       const after = getComputedStyle(el, "::after");
@@ -238,15 +238,8 @@ function probeList([selector, checkSave]) {
   }
 
   let save = null;
-  if (checkSave) {
-    for (const el of document.querySelectorAll("body *")) {
-      const style = getComputedStyle(el);
-      if ((style.overflowY === "auto" || style.overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
-        el.scrollTop = el.scrollHeight;
-      }
-    }
-    window.scrollTo(0, document.documentElement.scrollHeight);
-    save = [...document.querySelectorAll("button")]
+  const saveButtons = () =>
+    [...document.querySelectorAll("button")]
       .filter((el) => /Sa(č|c)uvaj/.test(el.textContent ?? ""))
       .map((el) => {
         const rect = el.getBoundingClientRect();
@@ -257,6 +250,16 @@ function probeList([selector, checkSave]) {
           visible: rect.top >= 0 && rect.bottom <= window.innerHeight && Boolean(hit && (hit === el || el.contains(hit))),
         };
       });
+  if (checkSave) {
+    const atTopSave = saveButtons();
+    for (const el of document.querySelectorAll("body *")) {
+      const style = getComputedStyle(el);
+      if ((style.overflowY === "auto" || style.overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    save = { atTop: atTopSave, atBottom: saveButtons() };
   }
 
   return {
