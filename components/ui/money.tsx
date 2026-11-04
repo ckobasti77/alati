@@ -8,14 +8,17 @@ export type MoneyProps = {
   tone?: "default" | "muted" | "profit";
   /** Dodaje "+" ispred pozitivnih iznosa. */
   signed?: boolean;
+  /** Ceo iznos bez ",00" (uže kolone u tabeli). Tačan iznos ostaje u `title`. */
+  trimZeroCents?: boolean;
   className?: string;
 };
 
-export function Money({ value, currency = "EUR", tone = "default", signed = false, className }: MoneyProps) {
+export function Money({ value, currency = "EUR", tone = "default", signed = false, trimZeroCents = false, className }: MoneyProps) {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return <span className={cn("num text-text-muted", className)}>—</span>;
   }
-  const formatted = formatCurrency(value, currency);
+  const full = formatCurrency(value, currency);
+  const formatted = trimZeroCents ? full.replace(/,00(?=\s|$)/, "") : full;
   const toneClass =
     tone === "muted"
       ? "text-text-muted"
@@ -27,7 +30,7 @@ export function Money({ value, currency = "EUR", tone = "default", signed = fals
             : "text-text-muted"
         : undefined;
   return (
-    <span className={cn("num whitespace-nowrap", toneClass, className)}>
+    <span className={cn("num whitespace-nowrap", toneClass, className)} title={formatted !== full ? full : undefined}>
       {signed && value > 0 ? "+" : ""}
       {formatted}
     </span>

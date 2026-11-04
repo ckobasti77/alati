@@ -18,6 +18,8 @@ interface FormProps<TFieldValues extends FieldValues> {
   form: UseFormReturn<TFieldValues>;
   children: React.ReactNode;
   className?: string;
+  /** Za dugmad van forme (`form="…"`, npr. Sačuvaj u headeru sheet-a). */
+  id?: string;
   onSubmit?: Parameters<UseFormReturn<TFieldValues>["handleSubmit"]>[0];
 }
 
@@ -25,12 +27,15 @@ export function Form<TFieldValues extends FieldValues>({
   form,
   children,
   className,
+  id,
   onSubmit,
 }: FormProps<TFieldValues>) {
   const providerValue = form as unknown as UseFormReturn<FieldValues>;
   return (
     <FormProvider {...form}>
       <form
+        id={id}
+        noValidate={Boolean(id)}
         onSubmit={form.handleSubmit(onSubmit ?? (() => undefined))}
         className={className}
       >

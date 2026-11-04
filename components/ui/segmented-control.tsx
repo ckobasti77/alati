@@ -20,6 +20,8 @@ export type SegmentedControlProps<T extends string> = {
   ariaLabel: string;
   /** Rastegni opcije preko cele širine (npr. u sheet-u). */
   fullWidth?: boolean;
+  /** Grid sa N kolona (više redova) kad opcije ne staju u jedan red. */
+  columns?: number;
   className?: string;
 };
 
@@ -29,6 +31,7 @@ export function SegmentedControl<T extends string>({
   options,
   ariaLabel,
   fullWidth = false,
+  columns,
   className,
 }: SegmentedControlProps<T>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -57,8 +60,10 @@ export function SegmentedControl<T extends string>({
       className={cn(
         "inline-flex gap-0.5 rounded-xl bg-surface-2 p-0.5 ring-1 ring-inset ring-border",
         fullWidth && "flex w-full",
+        columns && "grid w-full",
         className,
       )}
+      style={columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}
       onKeyDown={(event) => {
         // Alt+strelice su nazad/napred u browseru.
         if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -89,7 +94,7 @@ export function SegmentedControl<T extends string>({
             className={cn(
               "inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-1.5 rounded-[10px] px-3 text-sm font-medium whitespace-nowrap transition-colors duration-(--duration-fast) md:h-8 md:min-w-8 md:px-2.5",
               "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
-              fullWidth && "flex-1",
+              (fullWidth || columns) && "flex-1",
               checked
                 ? "bg-raised text-text shadow-(--shadow-raised) ring-1 ring-inset ring-border"
                 : "text-text-muted hover:text-text",

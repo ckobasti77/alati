@@ -12,6 +12,9 @@
 //   --storage "dashboard:period=sve"   localStorage pre učitavanja (ponovljivo)
 //   --measure "#profit-hero,#profit-grafikon"  dno elemenata (sekcija oko id-ja) prema visini ekrana
 //   --style "img{visibility:hidden!important}"  dodatni CSS (npr. za pikselsko poređenje bez slika)
+//   --probe "[data-flip-id]"  lista: firstTop, vidljivih na vrhu i posle skrola do liste, tap mete < 44 (ispod md),
+//                            najmanji font inputa; --probe-save: skroluj sve skrol-kontejnere do dna i proveri da je
+//                            dugme "Sačuvaj" vidljivo (forma u sheet-u)
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -35,6 +38,8 @@ const { values: args } = parseArgs({
     "viewport-only": { type: "boolean", default: false },
     storage: { type: "string", multiple: true, default: [] },
     measure: { type: "string" },
+    probe: { type: "string" },
+    "probe-save": { type: "boolean", default: false },
     style: { type: "string" },
     wait: { type: "string", default: "1200" },
   },
@@ -144,6 +149,131 @@ function measureOverflow() {
   };
 }
 
+function probeList([selector, checkSave]) {
+  const isPhone = window.innerWidth < 768;
+  const nav = document.querySelector('nav[aria-label="Donja navigacija"]');
+  const navRect = nav?.getBoundingClientRect();
+  const navTop = nav && navRect.height > 0 && getComputedStyle(nav).position === "fixed" ? navRect.top : window.innerHeight;
+  // Fiksni/sticky elementi na dnu (npr. traka selekcije) skraćuju vidljivi deo.
+  const bottomBars = [...document.querySelectorAll("[data-probe-bottom-bar]")]
+    .map((el) => el.getBoundingClientRect())
+    .filter((rect) => rect.height > 0);
+  const visibleBottom = Math.min(navTop, ...bottomBars.map((rect) => rect.top));
+  const stickyBottom = () => {
+    let bottom = 0;
+    for (const el of document.querySelectorAll("body *")) {
+      const style = getComputedStyle(el);
+      if (style.position !== "sticky" && style.position !== "fixed") continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.height === 0 || rect.top > 260 || rect.bottom > window.innerHeight / 2) continue;
+      if (style.visibility === "hidden" || Number(style.opacity) === 0) continue;
+      bottom = Math.max(bottom, rect.bottom);
+    }
+    return Math.round(bottom);
+  };
+  const items = () => [...document.querySelectorAll(selector)].filter((el) => el.getBoundingClientRect().height > 0);
+  const countVisible = (top) =>
+    items().filter((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.top >= top - 1 && rect.bottom <= visibleBottom + 1;
+    }).length;
+
+  window.scrollTo(0, 0);
+  const list = items();
+  const first = list[0]?.getBoundingClientRect();
+  const firstTop = first ? Math.round(first.top + window.scrollY) : null;
+  const firstHeight = first ? Math.round(first.height) : null;
+  const atTop = { stickyBottom: stickyBottom(), visible: countVisible(stickyBottom()) };
+
+  // Tap mete (samo telefon): uključuje ::after proširenje (npr. StageBadge).
+  const tapOffenders = [];
+  let minTap = null;
+  if (isPhone) {
+    const interactive = document.querySelectorAll(
+      'a[href], button, input:not([type="hidden"]), select, textarea, [role="button"], [role="radio"], [role="checkbox"], [role="switch"], [role="tab"]',
+    );
+    for (const el of interactive) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 1 || rect.height <= 1) continue;
+      if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) continue;
+      const style = getComputedStyle(el);
+      if (style.visibility === "hidden" || style.pointerEvents === "none") continue;
+      // Input unutar labele: meta je labela.
+      const label = el.closest("label");
+      const box = label && el.matches("input") ? label.getBoundingClientRect() : rect;
+      let width = box.width;
+      let height = box.height;
+      const after = getComputedStyle(el, "::after");
+      if (after.content !== "none" && after.position === "absolute") {
+        // ::after je pozicioniran prema elementu (relative) ili prema najbližem pozicioniranom pretku ("rastegnut" link).
+        const px = (value) => (value.endsWith("px") ? Number.parseFloat(value) : 0);
+        const host = style.position === "static" ? el.offsetParent ?? el : el;
+        const hostRect = host.getBoundingClientRect();
+        width = Math.max(width, hostRect.width - px(after.left) - px(after.right));
+        height = Math.max(height, hostRect.height - px(after.top) - px(after.bottom));
+      }
+      const size = Math.round(Math.min(width, height));
+      minTap = minTap === null ? size : Math.min(minTap, size);
+      if (size < 44) {
+        tapOffenders.push({
+          size: `${Math.round(width)}x${Math.round(height)}`,
+          el: `${el.tagName.toLowerCase()}${el.getAttribute("role") ? `[role=${el.getAttribute("role")}]` : ""}`,
+          label: (el.getAttribute("aria-label") || el.textContent || el.getAttribute("placeholder") || "").trim().slice(0, 40),
+        });
+      }
+    }
+  }
+  const fonts = [...document.querySelectorAll("input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea, select")]
+    .filter((el) => el.getBoundingClientRect().width > 1)
+    .map((el) => Number.parseFloat(getComputedStyle(el).fontSize));
+  const minInputFont = fonts.length ? Math.min(...fonts) : null;
+
+  // Posle skrola: prva stavka tik ispod sticky elemenata.
+  let scrolled = null;
+  if (first) {
+    window.scrollTo(0, Math.max(0, firstTop - atTop.stickyBottom - 4));
+    const sticky = stickyBottom();
+    scrolled = { stickyBottom: sticky, visible: countVisible(sticky) };
+    window.scrollTo(0, 0);
+  }
+
+  let save = null;
+  if (checkSave) {
+    for (const el of document.querySelectorAll("body *")) {
+      const style = getComputedStyle(el);
+      if ((style.overflowY === "auto" || style.overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    save = [...document.querySelectorAll("button")]
+      .filter((el) => /Sa(č|c)uvaj/.test(el.textContent ?? ""))
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return {
+          text: el.textContent.trim().slice(0, 30),
+          top: Math.round(rect.top),
+          visible: rect.top >= 0 && rect.bottom <= window.innerHeight && Boolean(hit && (hit === el || el.contains(hit))),
+        };
+      });
+  }
+
+  return {
+    count: list.length,
+    firstTop,
+    firstHeight,
+    visibleBottom: Math.round(visibleBottom),
+    atTop,
+    scrolled,
+    minTap,
+    tapOffenders: tapOffenders.slice(0, 12),
+    tapOffenderCount: tapOffenders.length,
+    minInputFont,
+    save,
+  };
+}
+
 const route = await resolveRoute(args.route);
 const name = args.name ?? slugFor(args.route);
 const outDir = path.resolve(args.out);
@@ -209,6 +339,10 @@ try {
           };
         }, args.measure);
         console.log(`  ${vw}-${theme} fold`, JSON.stringify(measured.fold), "pageHeight", await page.evaluate(() => document.documentElement.scrollHeight));
+      }
+      if (args.probe || args["probe-save"]) {
+        measured.probe = await page.evaluate(probeList, [args.probe ?? "[data-flip-id]", args["probe-save"]]);
+        console.log(`  ${vw}-${theme} probe`, JSON.stringify(measured.probe));
       }
       report.overflow[`${vw}-${theme}`] = { ...measured, pageHeight: await page.evaluate(() => document.documentElement.scrollHeight), consoleErrors };
       await context.close();

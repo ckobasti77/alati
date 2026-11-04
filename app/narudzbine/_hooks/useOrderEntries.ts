@@ -54,3 +54,5 @@ export function useOrderEntries({ orders, refundPeriodOverview }: UseOrderEntrie
   return { orderEntries, visibleOrderIds };
 }
 
+export type OrderEntry = ReturnType<typeof useOrderEntries>["orderEntries"][number];
+

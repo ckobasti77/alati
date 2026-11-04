@@ -20,6 +20,8 @@ type UseOrderSelectionParams = {
 export function useOrderSelection({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, visibleOrderIds }: UseOrderSelectionParams) {
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<"stage" | "povrat" | null>(null);
+  // Telefon: mod izbora (dugme "Izaberi" ili long-press); tap na karticu tada bira umesto da otvara detalj.
+  const [selectionMode, setSelectionMode] = useState(false);
   const bulkUpdateOrders = useConvexMutation<{
     token: string;
     scope: "default" | "kalaba";
@@ -36,6 +38,18 @@ export function useOrderSelection({ orderScope, sessionToken, stageFilters, show
       else next.delete(orderId);
       return next;
     });
+  }, []);
+
+  const enterSelection = useCallback((orderId?: string) => {
+    setSelectionMode(true);
+    if (orderId) {
+      setSelectedOrderIds((previous) => new Set(previous).add(orderId));
+    }
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedOrderIds(new Set());
   }, []);
 
   const toggleAllVisibleOrders = useCallback(() => {
@@ -104,6 +118,6 @@ export function useOrderSelection({ orderScope, sessionToken, stageFilters, show
   );
 
 
-  return { selectedOrderIds, bulkAction, selectedVisibleCount, allVisibleSelected, toggleOrderSelection, toggleAllVisibleOrders, handleBulkAction };
+  return { selectedOrderIds, bulkAction, selectedVisibleCount, allVisibleSelected, selectionMode, enterSelection, clearSelection, toggleOrderSelection, toggleAllVisibleOrders, handleBulkAction };
 }
 

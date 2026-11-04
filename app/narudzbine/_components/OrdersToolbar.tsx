@@ -1,275 +1,179 @@
 "use client";
 
-import { CalendarRange, Download, Share2 } from "lucide-react";
+import { BadgePercent, CalendarRange, Clock, SlidersHorizontal } from "lucide-react";
+import { useRef, useState, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
-import { CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Chip } from "@/components/ui/chip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet } from "@/components/ui/sheet";
+import { ViewToggle } from "@/components/ui/view-toggle";
 import { STAGE_OPTIONS } from "@/lib/stages";
 import { cn } from "@/lib/utils";
-import { formatRefundPeriodDate } from "../_lib/helpers";
-import type { useOrdersFeed } from "../_hooks/useOrdersFeed";
-import type { useRefundPeriod } from "../_hooks/useRefundPeriod";
-import type { useOrdersPdf } from "../_hooks/useOrdersPdf";
+import { formatPeriodLabel, pluralOrders } from "../_lib/orderView";
+import type { OrdersViewState } from "../_hooks/useOrdersView";
+import { FilterPanel, type FeedState } from "./filters/FilterPanel";
+import { SearchField } from "./filters/SearchField";
+import { ViewSettingsMenu } from "./ViewSettingsMenu";
 
 type OrdersToolbarProps = {
-  feed: ReturnType<typeof useOrdersFeed>;
-  refund: ReturnType<typeof useRefundPeriod>;
-  pdf: ReturnType<typeof useOrdersPdf>;
+  feed: FeedState;
+  ordersView: OrdersViewState;
+  refundPendingCount: number | undefined;
+  searchRef: RefObject<HTMLInputElement | null>;
+  now: number;
 };
 
-export function OrdersToolbar({ feed, refund, pdf }: OrdersToolbarProps) {
-  const { search, setSearch, resetOrdersFeed, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle, isFilterMenuOpen, activeFilterCount, setFilterMenuMode, stageFilters, handleStageFilterToggle, showUnreturnedOnly, handleUnreturnedToggle, showReturnedOnly, handleReturnedToggle, showPickupOnly, handlePickupToggle, showShippingOnly, handleShippingToggle, showLateOnly, handleLateToggle, dateFrom, handleDateFromChange, dateTo, handleDateToChange, dateFilterActive, handleClearDateFilter, isOrdersLoading, ordersPagination, orders, hasMoreOrders } = feed;
-  const { refundPeriodOverview, openRefundPeriodModal } = refund;
-  const { handleOrdersPdf, isOrdersPdfBusy, ordersPdfMode } = pdf;
+function CountBadge({ count, inverted = false }: { count: number; inverted?: boolean }) {
+  if (count === 0) return null;
   return (
-    <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div>
-        <CardTitle>Lista narudzbina</CardTitle>
-        <p className="text-sm text-slate-500">Klikni na red za pregled. Stage se moze menjati direktno iz tabele.</p>
-      </div>
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Input
-            placeholder="Pretraga (naslov, kupac, telefon...)"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              resetOrdersFeed();
-            }}
-            className="sm:w-72"
-          />
-          <div className="grid w-full grid-cols-2 gap-2 sm:ml-auto sm:flex sm:w-auto sm:items-center">
-            <div className="relative" onMouseEnter={handleFilterMenuEnter} onMouseLeave={handleFilterMenuLeave}>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full gap-2 sm:w-auto"
-                onClick={handleFilterMenuToggle}
-                aria-expanded={isFilterMenuOpen}
-              >
-                Filteri
-                {activeFilterCount > 0 ? (
-                  <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
-                    {activeFilterCount}
-                  </span>
-                ) : null}
-              </Button>
-              <div
-                className={cn(
-                  "fixed inset-0 z-40 flex items-start justify-center bg-slate-900/30 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+5rem)] transition md:absolute md:inset-auto md:right-0 md:top-full md:z-30 md:block md:w-72 md:bg-transparent md:p-0 md:pt-2",
-                  isFilterMenuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
-                )}
-                onClick={() => setFilterMenuMode("closed")}
-              >
-                <div
-                  className="max-h-[calc(100dvh-6rem)] w-[min(96vw,40rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-lg md:max-h-none md:w-72"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stage</p>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {STAGE_OPTIONS.map((option) => {
-                          const isActive = stageFilters.includes(option.value);
-                          return (
-                            <label
-                              key={option.value}
-                              className={cn(
-                                "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                                isActive
-                                  ? option.tone
-                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                              )}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isActive}
-                                onChange={() => handleStageFilterToggle(option.value)}
-                                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              {option.label}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Povrat</p>
-                      <div className="flex flex-col gap-2">
-                        <label
-                          className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                            showUnreturnedOnly
-                              ? "border-rose-200 bg-rose-50 text-rose-700"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={showUnreturnedOnly}
-                            onChange={(event) => handleUnreturnedToggle(event.target.checked)}
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          Nepovraceni
-                        </label>
-                        <label
-                          className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                            showReturnedOnly
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={showReturnedOnly}
-                            onChange={(event) => handleReturnedToggle(event.target.checked)}
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          Povraceno
-                        </label>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Preuzimanje</p>
-                      <div className="flex flex-col gap-2">
-                        <label
-                          className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                            showPickupOnly
-                              ? "border-amber-200 bg-amber-50 text-amber-700"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={showPickupOnly}
-                            onChange={(event) => handlePickupToggle(event.target.checked)}
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          Samo licno preuzimanje
-                        </label>
-                        <label
-                          className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                            showShippingOnly
-                              ? "border-sky-200 bg-sky-50 text-sky-700"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={showShippingOnly}
-                            onChange={(event) => handleShippingToggle(event.target.checked)}
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          Samo slanje
-                        </label>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Isporuka</p>
-                      <label
-                        className={cn(
-                          "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1 text-xs font-semibold transition",
-                          showLateOnly
-                            ? "border-orange-300 bg-orange-100 text-orange-800"
-                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={showLateOnly}
-                          onChange={(event) => handleLateToggle(event.target.checked)}
-                          className="h-3.5 w-3.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
-                        />
-                        Samo oni koji kasne
-                      </label>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Datum</p>
-                      <div className="grid gap-2">
-                        <label className="space-y-1 text-xs text-slate-600">
-                          <span className="font-semibold uppercase tracking-wide text-[10px] text-slate-400">Od</span>
-                          <Input
-                            type="date"
-                            value={dateFrom}
-                            onChange={(event) => handleDateFromChange(event.target.value)}
-                          />
-                        </label>
-                        <label className="space-y-1 text-xs text-slate-600">
-                          <span className="font-semibold uppercase tracking-wide text-[10px] text-slate-400">Do</span>
-                          <Input type="date" value={dateTo} onChange={(event) => handleDateToChange(event.target.value)} />
-                        </label>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
-                          <span>Prazno = od pocetka / do danas</span>
-                          {dateFilterActive ? (
-                            <button
-                              type="button"
-                              className="text-xs font-semibold text-blue-700 hover:underline"
-                              onClick={handleClearDateFilter}
-                            >
-                              Resetuj
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+    <span className={cn("num inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold", inverted ? "bg-accent text-accent-fg" : "bg-accent-soft text-accent-text")}>
+      {count}
+    </span>
+  );
+}
+
+function ResultCount({ feed, className }: { feed: FeedState; className?: string }) {
+  const total = feed.ordersPagination.total;
+  return (
+    <span className={cn("num text-[13px] text-text-muted", className)} aria-live="polite">
+      {feed.isOrdersLoading ? "Učitavanje…" : total === 0 ? "Nema narudžbina" : `${feed.orders.length.toLocaleString("sr-RS")} od ${total.toLocaleString("sr-RS")}`}
+    </span>
+  );
+}
+
+export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef, now }: OrdersToolbarProps) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const periodRequestRef = useRef(false);
+  const searchInput = (
+    <SearchField
+      ref={searchRef}
+      value={feed.search}
+      onChange={(value) => {
+        feed.setSearch(value);
+        feed.resetOrdersFeed();
+      }}
+      showShortcut={ordersView.isDesktop}
+      className={ordersView.isDesktop ? "w-72" : "min-w-0 flex-1"}
+    />
+  );
+  const refundChip = (
+    <Chip
+      label="100% povrat"
+      icon={BadgePercent}
+      count={refundPendingCount || undefined}
+      selected={feed.showRefund100Only}
+      onClick={() => feed.handleRefund100Toggle(!feed.showRefund100Only)}
+    />
+  );
+  const lateChip = <Chip label="Kasni" icon={Clock} selected={feed.showLateOnly} onClick={() => feed.handleLateToggle(!feed.showLateOnly)} />;
+
+  if (ordersView.isDesktop) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        {searchInput}
+        <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="h-9 gap-2 rounded-xl">
+              <SlidersHorizontal className="size-4" aria-hidden />
+              Filteri
+              <CountBadge count={feed.activeFilterCount} inverted />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="max-h-[min(80dvh,640px)] w-[380px] overflow-y-auto p-4" align="start" aria-label="Filteri">
+            <FilterPanel feed={feed} now={now} />
+            {feed.activeFilterCount > 0 ? (
+              <div className="mt-4 flex justify-end border-t border-border pt-3">
+                <Button type="button" variant="ghost" size="sm" onClick={feed.clearAllFilters}>
+                  Očisti sve
+                </Button>
               </div>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className={cn(
-                "col-span-2 w-full gap-2 sm:col-span-1 sm:w-auto",
-                refundPeriodOverview?.period
-                  ? "border-0 bg-success-soft text-success ring-1 ring-inset ring-success/40 hover:bg-success-soft hover:brightness-105"
-                  : "",
-              )}
-              onClick={openRefundPeriodModal}
-            >
-              <CalendarRange className="h-4 w-4" />
-              {refundPeriodOverview?.period
-                ? `${formatRefundPeriodDate(refundPeriodOverview.period.startDate)} – ${formatRefundPeriodDate(refundPeriodOverview.period.endDate)}`
-                : "Period 100%"}
+            ) : null}
+          </PopoverContent>
+        </Popover>
+        {lateChip}
+        {refundChip}
+        {feed.activeFilterCount > 0 ? (
+          <button
+            type="button"
+            onClick={feed.clearAllFilters}
+            className="inline-flex h-8 cursor-pointer items-center rounded-lg px-2 text-[13px] font-medium text-accent-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            Očisti filtere
+          </button>
+        ) : null}
+        <ResultCount feed={feed} className="ml-auto" />
+        <ViewToggle value={ordersView.view === "kartice" ? "kartice" : "tabela"} onChange={ordersView.setView} showLabels />
+        {ordersView.view === "tabela" ? <ViewSettingsMenu ordersView={ordersView} /> : null}
+      </div>
+    );
+  }
+
+  const periodActive = feed.dateFilterActive;
+  return (
+    <>
+      <div className="sticky top-[calc(var(--header-h)+env(safe-area-inset-top))] z-(--z-sticky) -mx-4 -mt-4 border-b border-border bg-(--header-bg) pt-2 pb-2 backdrop-blur-xl">
+        <div className="flex gap-2 px-4">
+          {searchInput}
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 shrink-0 gap-1.5 rounded-xl px-3"
+            onClick={() => setFiltersOpen(true)}
+            aria-label={feed.activeFilterCount ? `Filteri, aktivno ${feed.activeFilterCount}` : "Filteri"}
+          >
+            <SlidersHorizontal className="size-4" aria-hidden />
+            Filteri
+            <CountBadge count={feed.activeFilterCount} inverted />
+          </Button>
+        </div>
+        <div className="mt-2 flex snap-x scroll-px-4 gap-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Brzi filteri">
+          {STAGE_OPTIONS.map((stage) => (
+            <Chip
+              key={stage.value}
+              label={stage.label}
+              selected={feed.stageFilters.includes(stage.value)}
+              onClick={() => feed.handleStageFilterToggle(stage.value)}
+              className="snap-start"
+            />
+          ))}
+          <Chip
+            label={formatPeriodLabel(feed.dateFrom, feed.dateTo, now)}
+            icon={CalendarRange}
+            selected={periodActive}
+            onClick={() => {
+              periodRequestRef.current = true;
+              setFiltersOpen(true);
+            }}
+            className="snap-start"
+          />
+          {lateChip}
+          {refundChip}
+        </div>
+      </div>
+      <Sheet
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        title="Filteri"
+        description={feed.activeFilterCount ? `Aktivno: ${feed.activeFilterCount}` : undefined}
+        onOpenAutoFocus={(event) => {
+          if (!periodRequestRef.current) return;
+          periodRequestRef.current = false;
+          event.preventDefault();
+          requestAnimationFrame(() => document.getElementById("filter-period-section")?.scrollIntoView({ block: "start" }));
+        }}
+        footer={
+          <div className="grid grid-cols-[auto_1fr] gap-2">
+            <Button type="button" variant="ghost" className="px-4" disabled={feed.activeFilterCount === 0} onClick={feed.clearAllFilters}>
+              Očisti
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full gap-2 sm:w-auto"
-              onClick={() => void handleOrdersPdf("download")}
-              disabled={isOrdersPdfBusy || isOrdersLoading}
-            >
-              <Download className="h-4 w-4" />
-              {ordersPdfMode === "download" ? "Izvoz..." : "PDF"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="col-span-2 w-full gap-2 sm:w-auto"
-              onClick={() => void handleOrdersPdf("share")}
-              disabled={isOrdersPdfBusy || isOrdersLoading}
-            >
-              <Share2 className="h-4 w-4" />
-              {ordersPdfMode === "share" ? "Deljenje..." : "Podeli PDF"}
+            <Button type="button" onClick={() => setFiltersOpen(false)}>
+              {feed.isOrdersLoading ? "Prikaži" : `Prikaži ${feed.ordersPagination.total.toLocaleString("sr-RS")} ${pluralOrders(feed.ordersPagination.total, "akuzativ")}`}
             </Button>
           </div>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <span>
-            {ordersPagination.total === 0
-              ? "Nema podataka"
-              : `Prikazano ${orders.length} od ${ordersPagination.total}`}
-          </span>
-          {hasMoreOrders ? (
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
-              Skroluj do dna za jos 10
-            </span>
-          ) : null}
-        </div>
-      </div>
-    </CardHeader>
+        }
+      >
+        <FilterPanel feed={feed} now={now} />
+      </Sheet>
+    </>
   );
 }

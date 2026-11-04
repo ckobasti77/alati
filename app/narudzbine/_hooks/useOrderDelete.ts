@@ -45,20 +45,23 @@ export function useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, edit
     }
   };
 
+  /** Vraća true kad je obrisano (ConfirmDialog ostaje otvoren na grešku). */
   const handleDelete = async (id: string) => {
-    if (isDeletingOrder) return;
+    if (isDeletingOrder) return false;
     setIsDeletingOrder(true);
     try {
       await deleteOrder({ id, token: sessionToken, scope: orderScope });
-      toast.success("Narudzbina je obrisana.");
+      toast.success("Narudžbina je obrisana.");
       resetOrdersFeed();
       if (editingOrder?._id === id) {
         resetOrderForm({ closeModal: true });
       }
       closeDeleteModal();
+      return true;
     } catch (error) {
       console.error(error);
       toast.error("Brisanje nije uspelo.");
+      return false;
     } finally {
       setIsDeletingOrder(false);
     }

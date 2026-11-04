@@ -16,6 +16,10 @@ export type ConfirmDialogProps = {
   tone?: "danger" | "default";
   /** Ako vrati Promise, dugmad su zaključana dok traje. Greška ostavlja dijalog otvoren. */
   onConfirm: () => void | Promise<void>;
+  /** Dodatni sadržaj ispod opisa (npr. polje za potvrdu kucanjem). */
+  children?: React.ReactNode;
+  /** Potvrda je onemogućena (npr. dok fraza nije ukucana). */
+  confirmDisabled?: boolean;
 };
 
 const buttonClass =
@@ -30,6 +34,8 @@ export function ConfirmDialog({
   cancelLabel = "Otkaži",
   tone = "default",
   onConfirm,
+  children,
+  confirmDisabled = false,
 }: ConfirmDialogProps) {
   const [pending, setPending] = useState(false);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -67,12 +73,13 @@ export function ConfirmDialog({
             ) : (
               <AlertDialog.Description className="sr-only">{title}</AlertDialog.Description>
             )}
+            {children ? <div className="mt-4">{children}</div> : null}
             <div className="mt-5 grid grid-cols-2 gap-2">
               <AlertDialog.Cancel disabled={pending} className={cn(buttonClass, "bg-surface-2 text-text hover:bg-surface-3")}>
                 {cancelLabel}
               </AlertDialog.Cancel>
               <AlertDialog.Action
-                disabled={pending}
+                disabled={pending || confirmDisabled}
                 onClick={confirm}
                 className={cn(
                   buttonClass,

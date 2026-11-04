@@ -28,7 +28,7 @@ export function useLongPress() {
   }, []);
 
   const createLongPressHandlers = useCallback(
-    (onLongPress: () => void) => ({
+    (onLongPress: () => void, delay = 650) => ({
       onTouchStart: (event: TouchEvent<HTMLElement>) => {
         if (event.touches.length !== 1) return;
         clearLongPressTimer();
@@ -36,7 +36,7 @@ export function useLongPress() {
         longPressTimerRef.current = window.setTimeout(() => {
           longPressTriggeredRef.current = true;
           onLongPress();
-        }, 650);
+        }, delay);
       },
       onTouchEnd: () => {
         clearLongPressTimer();

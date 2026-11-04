@@ -103,14 +103,17 @@ function StagePicker({
   );
 }
 
-function StageList({
+/** Lista stage-ova (velika dugmad na telefonu, kompaktna u popoveru). `exclude` sakriva stage-ove (npr. Poslato u grupnoj akciji). */
+export function StageList({
   current,
   onSelect,
   compact = false,
+  exclude = [],
 }: {
-  current: OrderStage;
+  current?: OrderStage;
   onSelect: (stage: OrderStage) => void;
   compact?: boolean;
+  exclude?: OrderStage[];
 }) {
   const option = (stage: StageMeta) => {
     const Icon = stage.icon;
@@ -144,9 +147,13 @@ function StageList({
 
   return (
     <div className="flex flex-col gap-0.5">
-      {STAGE_FLOW.map(option)}
-      <div role="separator" className={cn("my-1 h-px bg-border", compact ? "mx-1" : "mx-0 my-2")} />
-      {option(STAGES.vraceno)}
+      {STAGE_FLOW.filter((stage) => !exclude.includes(stage.value)).map(option)}
+      {exclude.includes("vraceno") ? null : (
+        <>
+          <div role="separator" className={cn("my-1 h-px bg-border", compact ? "mx-1" : "mx-0 my-2")} />
+          {option(STAGES.vraceno)}
+        </>
+      )}
     </div>
   );
 }
