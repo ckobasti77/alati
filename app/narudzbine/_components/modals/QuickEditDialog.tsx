@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet } from "@/components/ui/sheet";
@@ -14,6 +15,10 @@ const labelClass = "text-[13px] text-text-muted";
 
 export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
   const { quickEdit, setQuickEdit, isQuickEditSaving, closeQuickEdit, handleQuickEditSave } = rowActions;
+  // Poslednja vrednost ostaje prikazana dok traje izlazna animacija (inače sadržaj i naslov "skoče").
+  const [lastShown, setLastShown] = useState(quickEdit);
+  if (quickEdit && quickEdit !== lastShown) setLastShown(quickEdit);
+  const view = quickEdit ?? lastShown;
   const submitOnEnter = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -21,11 +26,11 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
     }
   };
   const title =
-    quickEdit?.field === "contact"
+    view?.field === "contact"
       ? "Kupac i telefon"
-      : quickEdit?.field === "address"
+      : view?.field === "address"
         ? "Adresa"
-        : quickEdit?.field === "transport"
+        : view?.field === "transport"
           ? "Transport"
           : "Profit %";
   return (
@@ -35,7 +40,7 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
         if (!open) closeQuickEdit();
       }}
       title={title}
-      description={quickEdit?.order.title}
+      description={view?.order.title}
       size="auto"
       desktopWidth="sm"
       footer={
@@ -55,7 +60,7 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
         </div>
       }
     >
-      {quickEdit?.field === "contact" ? (
+      {view?.field === "contact" ? (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="quick-edit-name" className={labelClass}>
@@ -66,7 +71,7 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
               autoFocus
               autoComplete="name"
               enterKeyHint="next"
-              value={quickEdit.customerName}
+              value={view.customerName}
               onChange={(event) =>
                 setQuickEdit((current) =>
                   current?.field === "contact" ? { ...current, customerName: event.target.value } : current,
@@ -84,7 +89,7 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
               inputMode="tel"
               autoComplete="tel"
               enterKeyHint="done"
-              value={quickEdit.phone}
+              value={view.phone}
               onKeyDown={submitOnEnter}
               onChange={(event) =>
                 setQuickEdit((current) =>
@@ -95,7 +100,7 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
           </div>
         </div>
       ) : null}
-      {quickEdit?.field === "address" ? (
+      {view?.field === "address" ? (
         <div className="flex flex-col gap-1.5">
           <label htmlFor="quick-edit-address" className={labelClass}>
             Adresa
@@ -105,7 +110,7 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
             autoFocus
             autoComplete="street-address"
             enterKeyHint="done"
-            value={quickEdit.address}
+            value={view.address}
             onKeyDown={submitOnEnter}
             onChange={(event) =>
               setQuickEdit((current) =>
@@ -115,7 +120,7 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
           />
         </div>
       ) : null}
-      {quickEdit?.field === "transport" ? (
+      {view?.field === "transport" ? (
         <div className="flex flex-col gap-1.5">
           <label htmlFor="quick-edit-transport" className={labelClass}>
             Trošak transporta
@@ -125,8 +130,8 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
             autoFocus
             inputMode="decimal"
             enterKeyHint="done"
-            placeholder="npr. 15 ili 15.5"
-            value={quickEdit.transportCost}
+            placeholder="npr. 15 ili 15,5"
+            value={view.transportCost}
             onKeyDown={submitOnEnter}
             onChange={(event) =>
               setQuickEdit((current) =>
@@ -136,7 +141,7 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
           />
         </div>
       ) : null}
-      {quickEdit?.field === "profit" ? (
+      {view?.field === "profit" ? (
         <div className="flex flex-col gap-1.5">
           <label htmlFor="quick-edit-profit" className={labelClass}>
             Procenat profita
@@ -147,7 +152,7 @@ export function QuickEditDialog({ rowActions }: QuickEditDialogProps) {
             inputMode="decimal"
             enterKeyHint="done"
             placeholder="npr. 50"
-            value={quickEdit.myProfitPercent}
+            value={view.myProfitPercent}
             onKeyDown={submitOnEnter}
             onChange={(event) =>
               setQuickEdit((current) =>
