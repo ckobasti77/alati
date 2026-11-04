@@ -15,9 +15,8 @@ type UseOrderRowActionsParams = {
   convex: ReturnType<typeof useConvex>;
   orderScope: "default" | "kalaba";
   sessionToken: string;
-  stageFilters: OrderStage[];
-  showUnreturnedOnly: boolean;
-  showReturnedOnly: boolean;
+  /** Da li red i dalje prolazi aktivne filtere (posle lokalne izmene). */
+  matchesFilters: (order: Order) => boolean;
   setOrders: Dispatch<SetStateAction<Order[]>>;
   updateOrder: ReturnType<typeof useConvexMutation>;
 };
@@ -27,7 +26,7 @@ type QuickPatch = Partial<
   Pick<Order, "stage" | "brojPosiljke" | "povratVracen" | "kasni" | "transportCost" | "myProfitPercent" | "customerName" | "phone" | "address">
 >;
 
-export function useOrderRowActions({ convex, orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, updateOrder }: UseOrderRowActionsParams) {
+export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFilters, setOrders, updateOrder }: UseOrderRowActionsParams) {
   const [quickEdit, setQuickEdit] = useState<QuickEditState | null>(null);
   const [isQuickEditSaving, setIsQuickEditSaving] = useState(false);
   const [shipmentStageModal, setShipmentStageModal] = useState<ShipmentStageModalState | null>(null);
@@ -160,21 +159,18 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, stageFilt
     [convex, orderScope, sessionToken, updateOrder],
   );
 
-  /** Spaja lokalni patch u red; red izlazi iz liste ako više ne prolazi aktivni filter statusa/povrata. */
+  /** Spaja lokalni patch u red; red izlazi iz liste ako više ne prolazi aktivne filtere. */
   const mergeIntoList = useCallback(
     (orderId: string, local: Partial<Order>) => {
       setOrders((prev) =>
         prev.flatMap((item) => {
           if (item._id !== orderId) return [item];
           const next = { ...item, ...local };
-          if (stageFilters.length > 0 && !stageFilters.includes(next.stage)) return [];
-          if (showUnreturnedOnly && next.povratVracen) return [];
-          if (showReturnedOnly && !next.povratVracen) return [];
-          return [next];
+          return matchesFilters(next) ? [next] : [];
         }),
       );
     },
-    [setOrders, showReturnedOnly, showUnreturnedOnly, stageFilters],
+    [matchesFilters, setOrders],
   );
 
   const closeQuickEdit = useCallback(() => {
@@ -334,13 +330,7 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, stageFilt
       setManualRefundSavingId(order._id);
       try {
         const result = await setManualRefund100({ token: sessionToken, id: order._id, scope: orderScope, enabled });
-        setOrders((previous) =>
-          previous.map((item) =>
-            item._id === order._id
-              ? { ...item, manualRefund100: result.enabled, manualRefund100At: result.changedAt ?? undefined }
-              : item,
-          ),
-        );
+        mergeIntoList(order._id, { manualRefund100: result.enabled, manualRefund100At: result.changedAt ?? undefined });
         toast.success(enabled ? "Narudžbina je ručno dodata u 100% povrat." : "Ručna oznaka 100% je uklonjena.");
       } catch (error) {
         console.error(error);

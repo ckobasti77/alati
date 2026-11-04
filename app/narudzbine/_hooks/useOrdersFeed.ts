@@ -5,7 +5,8 @@ import { useConvexQuery } from "@/lib/convex";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
 import type { Order, OrderListResponse, OrderStage } from "@/types/order";
 import { emptyOrderListTotals } from "../_lib/types";
-import { normalizeStageFilters, areArraysEqual, normalizeDateInput, resolveDateTimestamp, resolveTodayEndTimestamp, resolveOrderSortValue } from "../_lib/helpers";
+import { normalizeStageFilters, areArraysEqual, normalizeDateInput, resolveDateTimestamp, resolveTodayEndTimestamp } from "../_lib/helpers";
+import { mergeListPage, type OrderFilters } from "../_lib/orderFilters";
 import type { useRouter, useSearchParams } from "next/navigation";
 
 /** Veličina strane liste (infinite scroll). */
@@ -24,19 +25,7 @@ type UseOrdersFeedParams = {
 
 type Pagination = OrderListResponse["pagination"];
 
-export type OrderFilters = {
-  /** Primenjena pretraga (bez razmaka na krajevima). */
-  search: string;
-  stages: OrderStage[];
-  unreturned: boolean;
-  returned: boolean;
-  pickup: boolean;
-  shipping: boolean;
-  late: boolean;
-  refund100: boolean;
-  dateFrom: string;
-  dateTo: string;
-};
+export type { OrderFilters };
 
 const EMPTY_PAGINATION: Pagination = { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 };
 
@@ -157,11 +146,14 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
   const urlFilters = useMemo(() => parseOrderFilters(new URLSearchParams(searchParamsString)), [searchParamsString]);
   const urlKey = orderFiltersKey(urlFilters);
   const [syncedUrlKey, setSyncedUrlKey] = useState(urlKey);
+  // Brojač spoljnih promena URL-a: efekat ispod otkazuje pretragu koja još čeka (inače bi je kasnije primenio).
+  const [externalUrlChanges, setExternalUrlChanges] = useState(0);
   if (urlKey !== syncedUrlKey) {
     setSyncedUrlKey(urlKey);
     if (urlKey !== orderFiltersKey(filters)) {
       setFilters(urlFilters);
       setSearchInputState(urlFilters.search);
+      setExternalUrlChanges((count) => count + 1);
       resetOrdersFeed();
     }
   }
@@ -221,15 +213,9 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     if (list) {
       if (list.pagination) setOrdersPagination(list.pagination);
       if (list.totals) setOrdersTotals(list.totals);
-      if (list.items) {
-        setOrders((prev) => {
-          const map = new Map(prev.map((entry) => [String(entry._id), entry]));
-          list.items.forEach((entry) => map.set(String(entry._id), entry));
-          return Array.from(map.values()).sort(
-            (a, b) => resolveOrderSortValue(b) - resolveOrderSortValue(a) || b.kreiranoAt - a.kreiranoAt,
-          );
-        });
-      }
+      // Sveži redovi zamenjuju stare; redovi u opsegu ove strane koje server više ne vraća (ne prolaze filter,
+      // obrisani) izlaze iz liste.
+      if (list.items && list.pagination) setOrders((prev) => mergeListPage(prev, list));
       setIsLoadingMoreOrders(false);
     }
   }
@@ -340,6 +326,11 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     setSearchInputState("");
     applySearch("");
   }, [applySearch]);
+  useEffect(() => {
+    // Na mount-u (0) i posle svake spoljne promene URL-a: pretraga koja čeka više ne važi.
+    if (searchTimerRef.current !== null) window.clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = null;
+  }, [externalUrlChanges]);
   useEffect(
     () => () => {
       if (searchTimerRef.current !== null) window.clearTimeout(searchTimerRef.current);
@@ -420,6 +411,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
   }, [handleLoadMoreOrders]);
 
   return {
+    filters,
     search: filters.search,
     searchInput,
     setSearchInput,

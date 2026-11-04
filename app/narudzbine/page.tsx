@@ -11,6 +11,7 @@ import type { Order, OrderStage } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { getProductDisplayName, resolveProductImageUrl } from "./_lib/helpers";
+import { orderMatchesFilters } from "./_lib/orderFilters";
 import { useOrdersFeed } from "./_hooks/useOrdersFeed";
 import { useRefundPeriod } from "./_hooks/useRefundPeriod";
 import { useOrderCatalog } from "./_hooks/useOrderCatalog";
@@ -69,16 +70,18 @@ function OrdersContent() {
   const { products, productMap, supplierMap } = catalog;
   const restock = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
 
+  const refundPeriod = refundPeriodOverview?.period;
+  const matchesFilters = useCallback((order: Order) => orderMatchesFilters(order, feed.filters, refundPeriod), [feed.filters, refundPeriod]);
   const entries = useOrderEntries({ orders, refundPeriodOverview });
   const { orderEntries, visibleOrderIds } = entries;
-  const selection = useOrderSelection({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, visibleOrderIds });
+  const selection = useOrderSelection({ orderScope, sessionToken, matchesFilters, setOrders, visibleOrderIds });
 
   const pdf = useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, showRefund100Only, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap });
   const orderForm = useOrderForm({ orderScope, searchParams, sessionToken, products, supplierMap });
   const { editingOrder } = orderForm;
 
   const longPress = useLongPress();
-  const rowActions = useOrderRowActions({ convex, orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, updateOrder });
+  const rowActions = useOrderRowActions({ convex, orderScope, sessionToken, matchesFilters, setOrders, updateOrder });
   const formActions = useOrderFormActions({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, resetOrdersFeed, updateOrder, products, supplierMap, orderForm });
   const { resetOrderForm } = formActions;
 

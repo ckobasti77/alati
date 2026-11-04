@@ -10,14 +10,13 @@ import type { Order, OrderStage } from "@/types/order";
 type UseOrderSelectionParams = {
   orderScope: "default" | "kalaba";
   sessionToken: string;
-  stageFilters: OrderStage[];
-  showUnreturnedOnly: boolean;
-  showReturnedOnly: boolean;
+  /** Da li red i dalje prolazi aktivne filtere (posle grupne izmene). */
+  matchesFilters: (order: Order) => boolean;
   setOrders: Dispatch<SetStateAction<Order[]>>;
   visibleOrderIds: string[];
 };
 
-export function useOrderSelection({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, visibleOrderIds }: UseOrderSelectionParams) {
+export function useOrderSelection({ orderScope, sessionToken, matchesFilters, setOrders, visibleOrderIds }: UseOrderSelectionParams) {
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<"stage" | "povrat" | null>(null);
   // Telefon: mod izbora (dugme "Izaberi" ili long-press); tap na karticu tada bira umesto da otvara detalj.
@@ -87,10 +86,7 @@ export function useOrderSelection({ orderScope, sessionToken, stageFilters, show
                 ? { povratVracen: action.povratVracen, povratVracenAt: action.povratVracen ? Date.now() : undefined }
                 : {}),
             };
-            if (stageFilters.length > 0 && action.stage && !stageFilters.includes(action.stage)) return [];
-            if (showUnreturnedOnly && action.povratVracen) return [];
-            if (showReturnedOnly && action.povratVracen === false) return [];
-            return [next];
+            return matchesFilters(next) ? [next] : [];
           }),
         );
         setSelectedOrderIds((previous) => {
@@ -112,9 +108,7 @@ export function useOrderSelection({ orderScope, sessionToken, stageFilters, show
       orderScope,
       sessionToken,
       selectedOrderIds,
-      showReturnedOnly,
-      showUnreturnedOnly,
-      stageFilters,
+      matchesFilters,
       visibleOrderIds,
       setOrders,
     ],
