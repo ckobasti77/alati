@@ -2,7 +2,7 @@
 
 // Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useForm, type Resolver } from "react-hook-form";
+import { useForm, useWatch, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useConvexQuery } from "@/lib/convex";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
@@ -79,10 +79,11 @@ export function useOrderForm({ orderScope, searchParams, sessionToken, products,
     defaultValues: defaultFormValues,
     mode: "onBlur",
   });
-  const pickupValue = Boolean(form.watch("pickup"));
-  const slanjeModeValue = form.watch("slanjeMode");
-  const slanjeOwnerValue = form.watch("slanjeOwner");
-  const slanjeOwnerStartingAmountValue = form.watch("slanjeOwnerStartingAmount");
+  // useWatch umesto form.watch: kompatibilno sa React Compiler-om (isti re-render na promenu polja).
+  const pickupValue = Boolean(useWatch({ control: form.control, name: "pickup" }));
+  const slanjeModeValue = useWatch({ control: form.control, name: "slanjeMode" });
+  const slanjeOwnerValue = useWatch({ control: form.control, name: "slanjeOwner" });
+  const slanjeOwnerStartingAmountValue = useWatch({ control: form.control, name: "slanjeOwnerStartingAmount" });
   const showShippingFields = !pickupValue;
   const slanjeOwnerLabel =
     slanjeModeValue === "Posta"

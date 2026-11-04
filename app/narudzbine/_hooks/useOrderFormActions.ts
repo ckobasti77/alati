@@ -1,7 +1,7 @@
 "use client";
 
 // Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
-import { useCallback, useEffect, useEffectEvent, useMemo } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { useConvexMutation } from "@/lib/convex";
 import type { Customer } from "@/types/customer";
@@ -201,7 +201,7 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
     return () => window.clearTimeout(timer);
   }, [focusOrderField, form.formState.errors, form.formState.submitCount, getOrderErrorTarget, isModalOpen]);
 
-  const resetOrderForm = (options?: { closeModal?: boolean }) => {
+  const resetOrderForm = useCallback((options?: { closeModal?: boolean }) => {
     form.reset(defaultFormValues);
     setProductInput("");
     setProductSearch("");
@@ -226,7 +226,7 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
       modalSnapshotRef.current = "";
       setIsModalOpen(false);
     }
-  };
+  }, [form, lastAutoSelectedOwnerRef, modalSnapshotRef, previousPickupValueRef, previousSlanjeModeRef, setCustomerMenuOpen, setCustomerQuery, setDraftItems, setEditingOrder, setExitConfirmOpen, setIsModalOpen, setItemProductId, setItemQuantity, setItemSupplierId, setItemVariantId, setManualPurchasePrice, setManualSalePrice, setProductInput, setProductMenuOpen, setProductSearch, setUseManualPurchasePrice, setUseManualSalePrice]);
 
   const requestCloseOrderModal = () => {
     if (!isModalOpen || exitConfirmOpen) return;
@@ -337,10 +337,10 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
     [draftItems],
   );
 
-  const openCreateModal = () => {
+  const openCreateModal = useCallback(() => {
     resetOrderForm();
     setIsModalOpen(true);
-  };
+  }, [resetOrderForm, setIsModalOpen]);
 
   const openCreateModalWithProduct = useCallback(
     (product: Product) => {
@@ -391,19 +391,19 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
     router.replace(next ? `${basePath}?${next}` : basePath);
   }, [searchParams, router, basePath]);
 
-  useEffect(() => {
-    if (!preselectProductId) return;
-    if (!products || products.length === 0) return;
+  // ?productId=… (npr. "Naruči" sa proizvoda): otvori formu sa proizvodom, jednom po ID-u.
+  // Efekat zavisi samo od ID-a i liste proizvoda; ostalo čita preko useEffectEvent (bez izvršavanja na svaki render).
+  const handlePreselect = useEffectEvent((productList: Product[]) => {
     if (preselectHandledRef.current === preselectProductId) return;
-    const selected = products.find((product) => product._id === preselectProductId);
+    const selected = productList.find((product) => product._id === preselectProductId);
     preselectHandledRef.current = preselectProductId;
-    if (!selected) {
-      clearPreselectQuery();
-      return;
-    }
-    openCreateModalWithProduct(selected);
+    if (selected) openCreateModalWithProduct(selected);
     clearPreselectQuery();
-  }, [preselectProductId, products, openCreateModalWithProduct, clearPreselectQuery, preselectHandledRef]);
+  });
+  useEffect(() => {
+    if (!preselectProductId || !products || products.length === 0) return;
+    handlePreselect(products);
+  }, [preselectProductId, products]);
 
   // [+] iz donje navigacije / headera vodi na ?nova=1: otvori formu pa očisti parametar.
   const isNewOrderRequested = searchParams?.get("nova") === "1";
@@ -420,13 +420,17 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
     if (isNewOrderRequested) handleNewOrderRequest();
   }, [isNewOrderRequested]);
 
+  // "U toku" preko ref-a: dvostruki tap na Sačuvaj ne pravi dve narudžbine.
+  const submittingRef = useRef(false);
   const handleSubmitOrder = async (values: OrderFormValues) => {
+    if (submittingRef.current) return;
     if (draftItems.length === 0) {
       toast.error("Dodaj bar jedan proizvod u narudžbinu.");
       focusOrderField("productSearch");
       return;
     }
 
+    submittingRef.current = true;
     try {
       const pickup = Boolean(values.pickup);
       const customerName = values.customerName?.trim() ?? "";
@@ -502,6 +506,8 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
     } catch (error) {
       console.error(error);
       toast.error("Nije moguće sačuvati narudžbinu.");
+    } finally {
+      submittingRef.current = false;
     }
   };
 
