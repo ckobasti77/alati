@@ -992,6 +992,7 @@ export const list = query({
     pickupOnly: v.optional(v.boolean()),
     shippingOnly: v.optional(v.boolean()),
     lateOnly: v.optional(v.boolean()),
+    refund100Only: v.optional(v.boolean()),
     dateFrom: v.optional(v.number()),
     dateTo: v.optional(v.number()),
     scope: v.optional(orderScopeSchema),
@@ -1100,6 +1101,24 @@ export const list = query({
       orders = orders.filter(
         (order) => Boolean(order.kasni) && normalizeStage(order.stage as any) === "poslato",
       );
+    }
+
+    // "100% povrat" (za povrat): isti skup kao pendingCount u orders:refundPeriod i dashboard:overview.
+    if (args.refund100Only) {
+      orders = orders.filter((order) => {
+        const summary = orderTotals(order);
+        const refund = calculateOrderRefund({
+          orderCreatedAt: order.kreiranoAt,
+          totalNabavno: summary.totals.totalNabavno,
+          profit: summary.profit,
+          transport: summary.transport,
+          myProfitPercent: order.myProfitPercent,
+          refundPeriod: activeRefundPeriod,
+          povratVracen: order.povratVracen,
+          manualRefund100: order.manualRefund100,
+        });
+        return refund.isFullRefund100 && !refund.isExcludedBecauseReturned;
+      });
     }
 
     const totals = orders.reduce(

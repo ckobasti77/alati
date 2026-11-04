@@ -23,13 +23,14 @@ type UseOrdersPdfParams = {
   showPickupOnly: boolean;
   showShippingOnly: boolean;
   showLateOnly: boolean;
-  orderListQueryArgs: { token: string; search: string | undefined; stages: OrderStage[]; unreturnedOnly: boolean; returnedOnly: boolean; pickupOnly: boolean; shippingOnly: boolean; lateOnly: boolean; dateFrom: number | undefined; dateTo: number | undefined; scope: "default" | "kalaba" };
+  showRefund100Only: boolean;
+  orderListQueryArgs: { token: string; search: string | undefined; stages: OrderStage[]; unreturnedOnly: boolean; returnedOnly: boolean; pickupOnly: boolean; shippingOnly: boolean; lateOnly: boolean; refund100Only?: true; dateFrom: number | undefined; dateTo: number | undefined; scope: "default" | "kalaba" };
   dateFilterActive: boolean;
   refundPeriodOverview: OrderRefundPeriodOverview | undefined;
   productMap: Map<string, Product>;
 };
 
-export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap }: UseOrdersPdfParams) {
+export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, showRefund100Only, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap }: UseOrdersPdfParams) {
   const [ordersPdfMode, setOrdersPdfMode] = useState<"download" | "share" | null>(null);
   const isOrdersPdfBusy = ordersPdfMode !== null;
   const buildOrdersPdfSubtitle = useCallback(
@@ -45,13 +46,14 @@ export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, s
       if (showPickupOnly) filters.push("Preuzimanje: licno");
       if (showShippingOnly) filters.push("Preuzimanje: slanje");
       if (showLateOnly) filters.push("Isporuka: kasni");
+      if (showRefund100Only) filters.push("Povrat: 100% (za povrat)");
       if (dateFilterActive) {
         filters.push(`Datum: ${dateFrom || "pocetak"} - ${dateTo || "danas"}`);
       }
       const filterText = filters.length > 0 ? filters.join(" | ") : "Bez aktivnih filtera";
       return `Izvezeno ${count} od ${total} narudzbina. ${filterText}.`;
     },
-    [dateFilterActive, dateFrom, dateTo, search, showLateOnly, showPickupOnly, showShippingOnly, showReturnedOnly, showUnreturnedOnly, stageFilters],
+    [dateFilterActive, dateFrom, dateTo, search, showLateOnly, showPickupOnly, showRefund100Only, showShippingOnly, showReturnedOnly, showUnreturnedOnly, stageFilters],
   );
 
   const fetchOrdersForPdf = useCallback(async () => {

@@ -49,9 +49,8 @@ function buildItems(actions: DashboardOverview["actions"]): ActionItem[] {
         .filter(Boolean)
         .join(" · "),
       count: refund.pendingCount,
-      href: refund.period
-        ? `/narudzbine?from=${refund.period.startDate}&to=${refund.period.endDate}&unreturned=1`
-        : "/narudzbine",
+      // Isti skup kao pendingCount: period ILI ručno dodate, a povrat nije vraćen.
+      href: "/narudzbine?povrat100=1",
       tone: "warning",
     },
     {

@@ -9,6 +9,9 @@ import { emptyOrderListTotals } from "../_lib/types";
 import { normalizeStageFilters, areArraysEqual, normalizeDateInput, resolveDateTimestamp, resolveTodayEndTimestamp, resolveOrderSortValue } from "../_lib/helpers";
 import type { useRouter, useSearchParams } from "next/navigation";
 
+/** Veličina strane liste (infinite scroll). */
+export const PAGE_SIZE = 30;
+
 type UseOrdersFeedParams = {
   basePath: string;
   orderScope: "default" | "kalaba";
@@ -37,6 +40,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
   const pickupQuery = useMemo(() => searchParams?.get("pickup") === "1", [searchParamsString, searchParams]);
   const shippingQuery = useMemo(() => searchParams?.get("shipping") === "1", [searchParamsString, searchParams]);
   const lateQuery = useMemo(() => searchParams?.get("late") === "1", [searchParamsString, searchParams]);
+  const refund100Query = useMemo(() => searchParams?.get("povrat100") === "1", [searchParamsString, searchParams]);
   const effectiveUnreturnedQuery = unreturnedQuery && !returnedQuery;
   const effectiveReturnedQuery = returnedQuery;
   const effectiveShippingQuery = shippingQuery && !pickupQuery;
@@ -49,6 +53,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
   const [showPickupOnly, setShowPickupOnly] = useState(pickupQuery);
   const [showShippingOnly, setShowShippingOnly] = useState(effectiveShippingQuery);
   const [showLateOnly, setShowLateOnly] = useState(lateQuery);
+  const [showRefund100Only, setShowRefund100Only] = useState(refund100Query);
   const [filterMenuMode, setFilterMenuMode] = useState<"closed" | "hover" | "pinned">("closed");
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -56,7 +61,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
   const [dragOverOrderId, setDragOverOrderId] = useState<string | null>(null);
   const [ordersPagination, setOrdersPagination] = useState<OrderListResponse["pagination"]>({
     page: 1,
-    pageSize: 10,
+    pageSize: PAGE_SIZE,
     total: 0,
     totalPages: 1,
   });
@@ -79,12 +84,13 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     showPickupOnly: boolean;
     showShippingOnly: boolean;
     showLateOnly: boolean;
+    showRefund100Only: boolean;
     dateFrom: string;
     dateTo: string;
   }>({
     orders: [],
     page: 1,
-    pagination: { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+    pagination: { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 },
     search: "",
     stageFilters: [],
     showUnreturnedOnly: false,
@@ -92,6 +98,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     showPickupOnly: false,
     showShippingOnly: false,
     showLateOnly: false,
+    showRefund100Only: false,
     dateFrom: "",
     dateTo: "",
   });
@@ -102,6 +109,8 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     params.delete("orderModal");
     params.delete("nova");
     params.delete("restock");
+    // Prikaz (tabela/kartice…) ne menja listu, pa ne sme da menja ni ključ za restore.
+    params.delete("prikaz");
     const suffix = params.toString();
     return `listState:${basePath}${suffix ? `?${suffix}` : ""}`;
   }, [basePath, searchParamsString]);
@@ -132,6 +141,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     pickupOnly: boolean;
     shippingOnly: boolean;
     lateOnly: boolean;
+    refund100Only?: true;
     dateFrom: number | undefined;
     dateTo: number | undefined;
     scope: "default" | "kalaba";
@@ -145,6 +155,8 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
       pickupOnly: showPickupOnly,
       shippingOnly: showShippingOnly,
       lateOnly: showLateOnly,
+      // Šalje se samo kad je uključen (stariji backend ne zna za argument).
+      ...(showRefund100Only ? { refund100Only: true as const } : {}),
       dateFrom: dateFromTimestamp,
       dateTo: dateToTimestamp,
       scope: orderScope,
@@ -158,6 +170,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
       showPickupOnly,
       showShippingOnly,
       showLateOnly,
+      showRefund100Only,
       showReturnedOnly,
       showUnreturnedOnly,
       stageFilters,
@@ -167,7 +180,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
   const list = useConvexQuery<OrderListResponse>("orders:list", {
     ...orderListQueryArgs,
     page,
-    pageSize: 10,
+    pageSize: PAGE_SIZE,
   });
   const isOrdersLoading = list === undefined && orders.length === 0;
   const hasMoreOrders = ordersPagination.totalPages > page;
@@ -179,6 +192,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     (showPickupOnly ? 1 : 0) +
     (showShippingOnly ? 1 : 0) +
     (showLateOnly ? 1 : 0) +
+    (showRefund100Only ? 1 : 0) +
     (dateFilterActive ? 1 : 0);
   const isFilterMenuOpen = filterMenuMode !== "closed";
   useEffect(() => {
@@ -193,10 +207,11 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
       showPickupOnly,
       showShippingOnly,
       showLateOnly,
+      showRefund100Only,
       dateFrom,
       dateTo,
     };
-  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, stageFilters, dateFrom, dateTo]);
+  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, showRefund100Only, stageFilters, dateFrom, dateTo]);
 
   useEffect(() => {
     if (didRestoreRef.current) return;
@@ -211,6 +226,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     const storedPickup = stored.extra?.showPickupOnly === true;
     const storedShipping = stored.extra?.showShippingOnly === true;
     const storedLate = stored.extra?.showLateOnly === true;
+    const storedRefund100 = stored.extra?.showRefund100Only === true;
     const storedDateFrom = normalizeDateInput(
       typeof stored.extra?.dateFrom === "string" ? stored.extra.dateFrom : "",
     );
@@ -225,6 +241,9 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
       storedPickup !== pickupQuery ||
       storedShipping !== effectiveShippingQuery ||
       storedLate !== lateQuery ||
+      storedRefund100 !== refund100Query ||
+      // Sačuvane strane drugačije veličine bi preskočile redove pri sledećem učitavanju.
+      (stored.pagination?.pageSize ?? PAGE_SIZE) !== PAGE_SIZE ||
       storedDateFrom !== dateFromQuery ||
       storedDateTo !== dateToQuery
     ) {
@@ -246,6 +265,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     setShowPickupOnly(pickupQuery);
     setShowShippingOnly(effectiveShippingQuery);
     setShowLateOnly(lateQuery);
+    setShowRefund100Only(refund100Query);
     setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
     clearListState(listStateKey);
   }, [
@@ -257,6 +277,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     pickupQuery,
     effectiveShippingQuery,
     lateQuery,
+    refund100Query,
     dateFromQuery,
     dateToQuery,
   ]);
@@ -290,6 +311,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
           showPickupOnly: snapshot.showPickupOnly,
           showShippingOnly: snapshot.showShippingOnly,
           showLateOnly: snapshot.showLateOnly,
+          showRefund100Only: snapshot.showRefund100Only,
           dateFrom: snapshot.dateFrom,
           dateTo: snapshot.dateTo,
         },
@@ -323,7 +345,8 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     const pickupChanged = current.showPickupOnly !== pickupQuery;
     const shippingChanged = current.showShippingOnly !== effectiveShippingQuery;
     const lateChanged = current.showLateOnly !== lateQuery;
-    if (!searchChanged && !dateFromChanged && !dateToChanged && !stagesChanged && !unreturnedChanged && !returnedChanged && !pickupChanged && !shippingChanged && !lateChanged) {
+    const refund100Changed = current.showRefund100Only !== refund100Query;
+    if (!searchChanged && !dateFromChanged && !dateToChanged && !stagesChanged && !unreturnedChanged && !returnedChanged && !pickupChanged && !shippingChanged && !lateChanged && !refund100Changed) {
       skipUrlSyncRef.current = false;
       return;
     }
@@ -354,6 +377,9 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     if (lateChanged) {
       setShowLateOnly(lateQuery);
     }
+    if (refund100Changed) {
+      setShowRefund100Only(refund100Query);
+    }
     if (!skipUrlSyncRef.current) {
       resetOrdersFeed();
     }
@@ -367,6 +393,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     pickupQuery,
     effectiveShippingQuery,
     lateQuery,
+    refund100Query,
     dateFromQuery,
     dateToQuery,
   ]);
@@ -384,7 +411,8 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
       showReturnedOnly !== effectiveReturnedQuery ||
       showPickupOnly !== pickupQuery ||
       showShippingOnly !== effectiveShippingQuery ||
-      showLateOnly !== lateQuery;
+      showLateOnly !== lateQuery ||
+      showRefund100Only !== refund100Query;
     if (!needsUpdate) return;
     const params = new URLSearchParams(searchParams.toString());
     if (nextSearch) {
@@ -429,6 +457,11 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     } else {
       params.delete("late");
     }
+    if (showRefund100Only) {
+      params.set("povrat100", "1");
+    } else {
+      params.delete("povrat100");
+    }
     const next = params.toString();
     router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
   }, [
@@ -442,6 +475,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     showPickupOnly,
     showShippingOnly,
     showLateOnly,
+    showRefund100Only,
     stageFilters,
     stageQuery,
     effectiveUnreturnedQuery,
@@ -449,6 +483,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     pickupQuery,
     effectiveShippingQuery,
     lateQuery,
+    refund100Query,
     dateFrom,
     dateTo,
     dateFromQuery,
@@ -514,6 +549,38 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     },
     [resetOrdersFeed],
   );
+
+  const handleRefund100Toggle = useCallback(
+    (checked: boolean) => {
+      setShowRefund100Only(checked);
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  /** Postavlja ceo period odjednom (brzi izbori: Danas, 7 dana…). */
+  const handleDateRangeChange = useCallback(
+    (from: string, to: string) => {
+      setDateFrom(normalizeDateInput(from));
+      setDateTo(normalizeDateInput(to));
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  /** Briše sve filtere (pretraga ostaje). */
+  const clearAllFilters = useCallback(() => {
+    setStageFilters([]);
+    setShowUnreturnedOnly(false);
+    setShowReturnedOnly(false);
+    setShowPickupOnly(false);
+    setShowShippingOnly(false);
+    setShowLateOnly(false);
+    setShowRefund100Only(false);
+    setDateFrom("");
+    setDateTo("");
+    resetOrdersFeed();
+  }, [resetOrdersFeed]);
 
   const handleDateFromChange = useCallback(
     (value: string) => {
@@ -595,12 +662,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     if (isLoadingMoreOrders) return;
     if (!hasMoreOrders) return;
     setIsLoadingMoreOrders(true);
-    if (loadMoreOrdersTimerRef.current !== null) {
-      window.clearTimeout(loadMoreOrdersTimerRef.current);
-    }
-    loadMoreOrdersTimerRef.current = window.setTimeout(() => {
-      setPage((prev) => prev + 1);
-    }, 850);
+    setPage((prev) => prev + 1);
   }, [hasMoreOrders, isLoadingMoreOrders]);
 
   useEffect(() => {
@@ -613,13 +675,13 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
           handleLoadMoreOrders();
         }
       },
-      { rootMargin: "240px" },
+      { rootMargin: "600px 0px" },
     );
     observer.observe(target);
     return () => observer.disconnect();
   }, [handleLoadMoreOrders]);
 
 
-  return { search, setSearch, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, setFilterMenuMode, page, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId, ordersPagination, ordersTotals, isLoadingMoreOrders, ordersLoaderRef, orderListQueryArgs, isOrdersLoading, hasMoreOrders, dateFilterActive, activeFilterCount, isFilterMenuOpen, resetOrdersFeed, handleStageFilterToggle, handleUnreturnedToggle, handleReturnedToggle, handlePickupToggle, handleShippingToggle, handleLateToggle, handleDateFromChange, handleDateToChange, handleClearDateFilter, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle };
+  return { search, setSearch, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, showRefund100Only, setFilterMenuMode, page, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId, ordersPagination, ordersTotals, isLoadingMoreOrders, ordersLoaderRef, orderListQueryArgs, isOrdersLoading, hasMoreOrders, dateFilterActive, activeFilterCount, isFilterMenuOpen, resetOrdersFeed, handleStageFilterToggle, handleUnreturnedToggle, handleReturnedToggle, handlePickupToggle, handleShippingToggle, handleLateToggle, handleRefund100Toggle, handleDateRangeChange, clearAllFilters, handleDateFromChange, handleDateToChange, handleClearDateFilter, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle };
 }
 
