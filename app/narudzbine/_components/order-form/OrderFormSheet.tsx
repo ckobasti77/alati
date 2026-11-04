@@ -95,8 +95,11 @@ export function OrderFormSheet({ orderForm, formActions, catalog }: OrderFormShe
       size="full"
       desktopWidth="lg"
       closeSide="start"
-      // Fokus na pretragu proizvoda radi hook (kao ranije); Radix ne fokusira ✕.
-      onOpenAutoFocus={(event) => event.preventDefault()}
+      // Prvi korak unosa: fokus na pretragu proizvoda (ne na ✕); izmena počinje od vrha forme.
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        document.getElementById("order-product")?.focus({ preventScroll: true });
+      }}
       headerActions={
         <Button type="submit" form={FORM_ID} size="sm" disabled={submitting} className="h-11 rounded-xl px-4 md:h-9">
           Sačuvaj

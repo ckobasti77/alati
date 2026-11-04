@@ -112,6 +112,7 @@ function OrdersContent() {
 
   const { selectedOrderIds, toggleOrderSelection } = selection;
   const keyboard = useListKeyboard({
+    enabled: ordersView.isDesktop && ordersView.shortcutsEnabled,
     ids: visibleOrderIds,
     searchRef,
     onOpen: openOrder,
@@ -125,6 +126,8 @@ function OrdersContent() {
     rowActions,
     onStageChange: (order: Order, stage: OrderStage) => void rowActions.handleStageChange(order, stage),
     onDelete: orderDelete.openDeleteModal,
+    onMove: ordersView.isDesktop ? reorder.moveOrder : undefined,
+    positionOf: (orderId: string) => ({ index: visibleOrderIds.indexOf(orderId), count: visibleOrderIds.length }),
     selected: selectedOrderIds,
     toggleSelected: toggleOrderSelection,
     selectionLocked: selection.bulkAction !== null,

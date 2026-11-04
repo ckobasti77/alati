@@ -3,6 +3,8 @@
 import { useEffect, useEffectEvent, useState, type RefObject } from "react";
 
 type UseListKeyboardParams = {
+  /** Prečice uključene (može da se isključi u podešavanjima prikaza). */
+  enabled: boolean;
   /** Redosled stavki na ekranu. */
   ids: string[];
   searchRef: RefObject<HTMLInputElement | null>;
@@ -20,12 +22,12 @@ const isOverlayOpen = () =>
   Boolean(document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"]'));
 
 /** Tastatura liste: `/` pretraga, `j`/`k` kretanje, `Enter` otvara, `x` bira, `v` menja prikaz. */
-export function useListKeyboard({ ids, searchRef, onOpen, onToggleSelect, onToggleView }: UseListKeyboardParams) {
+export function useListKeyboard({ enabled, ids, searchRef, onOpen, onToggleSelect, onToggleView }: UseListKeyboardParams) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const currentActive = activeId && ids.includes(activeId) ? activeId : null;
 
   const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (!enabled || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
     if (isTypingTarget(event.target) || isOverlayOpen()) return;
     const key = event.key;
 
@@ -38,6 +40,10 @@ export function useListKeyboard({ ids, searchRef, onOpen, onToggleSelect, onTogg
     if (key === "v" || key === "V") {
       event.preventDefault();
       onToggleView();
+      // Novi prikaz montira nove elemente: fokus se vraća na isti (aktivni) red/karticu.
+      if (currentActive) {
+        window.setTimeout(() => document.querySelector<HTMLElement>(`[data-flip-id="${currentActive}"]`)?.focus({ preventScroll: true }), 60);
+      }
       return;
     }
     if (key === "j" || key === "k") {

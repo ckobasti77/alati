@@ -214,15 +214,18 @@ export function OrderDetailCard({ entry, longPress }: { entry: OrderEntry; longP
             </dd>
           </div>
           <div className={cn("-my-2 flex items-center justify-end", interactive && "relative z-10")}>
-            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-text-muted">
-              Vraćen
-              <Switch
-                checked={Boolean(order.povratVracen)}
-                disabled={!interactive}
-                onCheckedChange={(checked) => void ctx.rowActions.handlePovratToggle(order, checked)}
-                aria-label="Povrat vraćen"
-              />
-            </label>
+            <dt className="sr-only">Povrat vraćen</dt>
+            <dd>
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-text-muted">
+                Vraćen
+                <Switch
+                  checked={Boolean(order.povratVracen)}
+                  disabled={!interactive}
+                  onCheckedChange={(checked) => void ctx.rowActions.handlePovratToggle(order, checked)}
+                  aria-label={`Povrat vraćen: ${title.primary}`}
+                />
+              </label>
+            </dd>
           </div>
         </dl>
 

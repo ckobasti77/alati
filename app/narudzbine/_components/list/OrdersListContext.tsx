@@ -12,6 +12,10 @@ export type OrdersListContextValue = {
   rowActions: ReturnType<typeof useOrderRowActions>;
   onStageChange: (order: Order, stage: OrderStage) => void;
   onDelete: (order: Order) => void;
+  /** Ručni redosled bez miša (desktop); undefined na telefonu. */
+  onMove?: (orderId: string, direction: -1 | 1) => void;
+  /** Pozicija u učitanoj listi (za "Pomeri gore/dole"). */
+  positionOf: (orderId: string) => { index: number; count: number };
   selected: Set<string>;
   toggleSelected: (id: string, checked: boolean) => void;
   /** Grupna akcija je u toku: izbor je zaključan. */

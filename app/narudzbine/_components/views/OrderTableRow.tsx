@@ -61,6 +61,8 @@ export function OrderTableRow({
       onDrop={drag.onDrop(order._id)}
       className={cn(
         "group cursor-pointer text-[13px] transition-colors duration-(--duration-fast) [&>td]:shadow-[inset_0_-1px_0_var(--color-border)]",
+        // j/k: aktivni red se ne skriva ispod sticky zaglavlja i zbira.
+        "scroll-mt-[calc(var(--header-h)+3.5rem)] scroll-mb-14",
         "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring aria-[current=true]:bg-surface-2",
         comfy ? "h-[88px]" : "h-16",
         selected ? "bg-accent-soft/60 hover:bg-accent-soft" : "hover:bg-surface-2",
@@ -109,7 +111,6 @@ export function OrderTableRow({
             <Link
               href={ctx.orderHref(order._id)}
               onClick={stop}
-              tabIndex={-1}
               title={title.secondary ? `${title.primary} / ${title.secondary}` : title.primary}
               className="line-clamp-2 font-medium leading-[18px] text-text hover:underline"
             >
@@ -176,7 +177,7 @@ export function OrderTableRow({
               type="checkbox"
               checked={Boolean(order.povratVracen)}
               onChange={(event) => void ctx.rowActions.handlePovratToggle(order, event.target.checked)}
-              aria-label="Povrat vraćen"
+              aria-label={`Povrat vraćen: ${title.primary}`}
               className="size-4 cursor-pointer accent-accent"
             />
           </label>

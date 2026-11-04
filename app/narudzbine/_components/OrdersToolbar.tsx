@@ -100,7 +100,7 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
         ) : null}
         <ResultCount feed={feed} className="ml-auto" />
         <ViewToggle value={ordersView.view === "kartice" ? "kartice" : "tabela"} onChange={ordersView.setView} showLabels />
-        {ordersView.view === "tabela" ? <ViewSettingsMenu ordersView={ordersView} /> : null}
+        <ViewSettingsMenu ordersView={ordersView} />
       </div>
     );
   }
@@ -123,6 +123,9 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
             <CountBadge count={feed.activeFilterCount} inverted />
           </Button>
         </div>
+        <span className="sr-only" aria-live="polite">
+          {feed.isOrdersLoading ? "" : `${feed.ordersPagination.total.toLocaleString("sr-RS")} ${pluralOrders(feed.ordersPagination.total)}`}
+        </span>
         <div className="mt-2 flex snap-x scroll-px-4 gap-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Brzi filteri">
           {STAGE_OPTIONS.map((stage) => (
             <Chip

@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  ArrowDown,
+  ArrowUp,
   BadgePercent,
   Banknote,
   CheckCheck,
@@ -35,11 +37,12 @@ export function useOpenShipment() {
 
 /** ⋯ meni narudžbine. Brisanje je poslednje, odvojeno i ide kroz potvrdu. */
 export function OrderActionsMenu({ entry, className }: { entry: OrderEntry; className?: string }) {
-  const { rowActions, onDelete, orderHref } = useOrdersList();
+  const { rowActions, onDelete, orderHref, onMove, positionOf } = useOrdersList();
   const openShipment = useOpenShipment();
   const { order, isInRefundPeriod, isManualRefund100 } = entry;
   const shipmentNumber = resolveShipmentNumber(order);
   const isSent = order.stage === "poslato";
+  const position = positionOf(order._id);
 
   const items: ActionMenuItem[] = [
     { label: "Izmeni", icon: Pencil, href: orderHref(order._id) },
@@ -82,6 +85,12 @@ export function OrderActionsMenu({ entry, className }: { entry: OrderEntry; clas
       separatorBefore: !shipmentNumber,
     },
     { label: "Kopiraj ID", icon: Copy, onSelect: () => void rowActions.copyText(order._id, "ID narudžbine je kopiran.") },
+    ...(onMove
+      ? [
+          { label: "Pomeri gore", icon: ArrowUp, disabled: position.index <= 0, onSelect: () => onMove(order._id, -1), separatorBefore: true },
+          { label: "Pomeri dole", icon: ArrowDown, disabled: position.index < 0 || position.index >= position.count - 1, onSelect: () => onMove(order._id, 1) },
+        ]
+      : []),
     { label: "Obriši", icon: Trash2, destructive: true, separatorBefore: true, onSelect: () => onDelete(order) },
   ];
 

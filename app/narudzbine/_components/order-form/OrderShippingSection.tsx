@@ -78,7 +78,9 @@ export function OrderShippingSection({ orderForm }: OrderShippingSectionProps) {
             name="slanjeMode"
             render={({ field, fieldState }) => (
               <FormItem className="gap-1.5">
-                <FormLabel>Slanje</FormLabel>
+                <span className="text-sm font-medium text-text" aria-hidden>
+                  Slanje
+                </span>
                 <SegmentedControl
                   ariaLabel="Slanje"
                   fullWidth
@@ -118,6 +120,7 @@ export function OrderShippingSection({ orderForm }: OrderShippingSectionProps) {
                   enterKeyHint="next"
                   list={slanjeModeValue ? `slanje-owner-list-${slanjeModeValue.toLowerCase()}` : undefined}
                   aria-invalid={fieldState.error ? true : undefined}
+                  aria-describedby={fieldState.error ? "order-owner-error" : "order-owner-hint"}
                   onChange={(event) => field.onChange(event.target.value)}
                   onBlur={field.onBlur}
                 />
@@ -128,7 +131,7 @@ export function OrderShippingSection({ orderForm }: OrderShippingSectionProps) {
                     ))}
                   </datalist>
                 ) : null}
-                <p className="text-[13px] text-text-muted">
+                <p id="order-owner-hint" className="text-[13px] text-text-muted">
                   {ownerHint}
                   {slanjeOwnerOptions.length > slanjeOwnerQuickOptions.length
                     ? ` Prikazano ${slanjeOwnerQuickOptions.length} od ${slanjeOwnerOptions.length}.`
@@ -137,7 +140,7 @@ export function OrderShippingSection({ orderForm }: OrderShippingSectionProps) {
                     ? ` Početno stanje: ${formatCurrency(selectedAksBexAccount.startingAmount ?? 0, "EUR")}.`
                     : ""}
                 </p>
-                <FormMessage>{fieldState.error?.message}</FormMessage>
+                <FormMessage id="order-owner-error">{fieldState.error?.message}</FormMessage>
               </FormItem>
             )}
           />
@@ -155,11 +158,12 @@ export function OrderShippingSection({ orderForm }: OrderShippingSectionProps) {
                     placeholder="npr. 1200"
                     value={field.value}
                     aria-invalid={fieldState.error ? true : undefined}
+                    aria-describedby={fieldState.error ? "order-owner-start-error" : undefined}
                     onValueChange={field.onChange}
                     onBlur={field.onBlur}
                   />
                   <p className="text-[13px] text-text-muted">Koliko je već leglo na ovaj račun pre prvih narudžbina u aplikaciji.</p>
-                  <FormMessage>{fieldState.error?.message}</FormMessage>
+                  <FormMessage id="order-owner-start-error">{fieldState.error?.message}</FormMessage>
                 </FormItem>
               )}
             />

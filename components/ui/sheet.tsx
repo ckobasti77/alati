@@ -111,6 +111,15 @@ export function Sheet({
           />
           <DialogPrimitive.Content
             ref={setPanel}
+            // Bez opisa nema aria-describedby (inače čitač dva puta izgovara naslov).
+            {...(description ? {} : { "aria-describedby": undefined })}
+            onEscapeKeyDown={(event) => {
+              // Esc u otvorenom combobox-u (lista ispod polja) zatvara samo listu, ne ceo sheet.
+              const target = event.target;
+              if (target instanceof HTMLElement && target.getAttribute("role") === "combobox" && target.getAttribute("aria-expanded") === "true") {
+                event.preventDefault();
+              }
+            }}
             onOpenAutoFocus={(event) => {
               // Fokus se još nije pomerio: zapamti okidač da mu se fokus vrati pri zatvaranju.
               returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -164,7 +173,6 @@ export function Sheet({
                 ) : null}
               </header>
             )}
-            {!description && <DialogPrimitive.Description className="sr-only">{title}</DialogPrimitive.Description>}
             <div
               className={cn(
                 "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4",

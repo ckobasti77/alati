@@ -35,7 +35,9 @@ export function OrderStageField() {
       name="stage"
       render={({ field }) => (
         <FormItem className="gap-2">
-          <FormLabel id="order-stage-label">Status</FormLabel>
+          <span className="text-sm font-medium text-text" aria-hidden>
+            Status
+          </span>
           <SegmentedControl<OrderStage>
             ariaLabel="Status"
             columns={4}

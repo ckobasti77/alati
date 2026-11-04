@@ -8,6 +8,9 @@ import { getProductDisplayName } from "../../_lib/helpers";
 import type { useOrderCatalog } from "../../_hooks/useOrderCatalog";
 import type { useOrderForm } from "../../_hooks/useOrderForm";
 import type { Product } from "@/types/order";
+import { useListboxNav } from "./useListboxNav";
+
+const productOptionId = (index: number) => `order-product-opt-${index}`;
 
 type OrderProductPickerProps = {
   orderForm: ReturnType<typeof useOrderForm>;
@@ -45,6 +48,15 @@ export function OrderProductPicker({ orderForm, catalog }: OrderProductPickerPro
     setProductMenuOpen(false);
   };
 
+  const nav = useListboxNav({
+    count: filteredProducts.length,
+    open: productMenuOpen,
+    setOpen: setProductMenuOpen,
+    onSelect: (index) => selectProduct(filteredProducts[index]),
+    optionId: productOptionId,
+    enterSelectsFirst: true,
+  });
+
   const clear = () => {
     setProductInput("");
     setProductSearch("");
@@ -68,13 +80,16 @@ export function OrderProductPicker({ orderForm, catalog }: OrderProductPickerPro
           autoComplete="off"
           role="combobox"
           aria-expanded={productMenuOpen}
-          aria-controls="order-product-options"
+          aria-controls={productMenuOpen ? "order-product-options" : undefined}
           aria-autocomplete="list"
+          aria-activedescendant={nav.inputProps["aria-activedescendant"]}
           placeholder={isProductsLoading ? "Učitavanje…" : "Pretraži proizvod"}
-          disabled={isProductsLoading || (products?.length ?? 0) === 0}
+          // Dok se katalog učitava polje ostaje aktivno (fokus pri otvaranju forme), lista piše "Učitavanje…".
+          disabled={!isProductsLoading && (products?.length ?? 0) === 0}
           className="pr-11 pl-9 [&::-webkit-search-cancel-button]:hidden"
           onChange={(event) => {
             const value = event.target.value;
+            nav.resetActive();
             setProductInput(value);
             setProductSearch(value);
             setProductMenuOpen(true);
@@ -85,10 +100,9 @@ export function OrderProductPicker({ orderForm, catalog }: OrderProductPickerPro
             }
           }}
           onKeyDown={(event) => {
-            // Enter ne šalje formu: bira prvi rezultat.
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            if (productMenuOpen && filteredProducts[0]) selectProduct(filteredProducts[0]);
+            nav.inputProps.onKeyDown(event);
+            // Enter nikad ne šalje formu iz pretrage proizvoda.
+            if (event.key === "Enter") event.preventDefault();
           }}
           onFocus={() => {
             setProductMenuOpen(true);
@@ -125,16 +139,21 @@ export function OrderProductPicker({ orderForm, catalog }: OrderProductPickerPro
             ) : filteredProducts.length === 0 ? (
               <p className="px-3 py-2.5 text-sm text-text-muted">Nema rezultata</p>
             ) : (
-              filteredProducts.map((product) => {
+              filteredProducts.map((product, index) => {
                 const variants = product.variants ?? [];
                 const defaultVariant = variants.find((variant) => variant.isDefault) ?? variants[0];
                 return (
                   <button
                     key={product._id}
+                    id={productOptionId(index)}
                     type="button"
                     role="option"
-                    aria-selected={selectedProduct?._id === product._id}
-                    className="flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-surface-2"
+                    tabIndex={-1}
+                    aria-selected={nav.active === index}
+                    className={cn(
+                      "flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-surface-2",
+                      nav.active === index && "bg-surface-2 ring-1 ring-inset ring-ring",
+                    )}
                     onMouseDown={(event) => {
                       event.preventDefault();
                       selectProduct(product);

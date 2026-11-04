@@ -4,6 +4,9 @@ import { FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/for
 import { Input } from "@/components/ui/input";
 import type { useOrderForm } from "../../_hooks/useOrderForm";
 import type { useOrderFormActions } from "../../_hooks/useOrderFormActions";
+import { useListboxNav } from "./useListboxNav";
+
+const customerOptionId = (index: number) => `order-customer-opt-${index}`;
 
 type OrderCustomerSectionProps = {
   orderForm: ReturnType<typeof useOrderForm>;
@@ -15,6 +18,16 @@ export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSe
   const { setCustomerQuery, customerMenuOpen, setCustomerMenuOpen, customers, pickupValue } = orderForm;
   const { handleCustomerSelect } = formActions;
   const showSuggestions = customerMenuOpen && (customers?.length ?? 0) > 0;
+  const nav = useListboxNav({
+    count: showSuggestions ? customers?.length ?? 0 : 0,
+    open: showSuggestions,
+    setOpen: setCustomerMenuOpen,
+    onSelect: (index) => {
+      const customer = customers?.[index];
+      if (customer) handleCustomerSelect(customer);
+    },
+    optionId: customerOptionId,
+  });
   return (
     <div className="flex flex-col gap-4">
       <FormField
@@ -33,12 +46,15 @@ export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSe
                 placeholder="npr. Marko Marković"
                 role="combobox"
                 aria-expanded={showSuggestions}
-                aria-controls="order-customer-suggestions"
+                aria-controls={showSuggestions ? "order-customer-suggestions" : undefined}
                 aria-autocomplete="list"
+                aria-activedescendant={nav.inputProps["aria-activedescendant"]}
                 aria-invalid={fieldState.error ? true : undefined}
                 aria-describedby={fieldState.error ? "order-customer-name-error" : undefined}
                 {...field}
+                onKeyDown={nav.inputProps.onKeyDown}
                 onChange={(event) => {
+                  nav.resetActive();
                   field.onChange(event);
                   setCustomerQuery(event.target.value);
                   setCustomerMenuOpen(true);
@@ -56,13 +72,15 @@ export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSe
                   aria-label="Raniji kupci"
                   className="absolute inset-x-0 top-full z-(--z-raised) mt-1 max-h-64 overflow-y-auto rounded-xl bg-raised p-1 shadow-(--shadow-popover) ring-1 ring-border"
                 >
-                  {customers?.map((customer) => (
+                  {customers?.map((customer, index) => (
                     <button
                       key={customer._id}
+                      id={customerOptionId(index)}
                       type="button"
                       role="option"
-                      aria-selected={false}
-                      className="flex min-h-11 w-full cursor-pointer flex-col items-start justify-center gap-0.5 rounded-lg px-3 py-1.5 text-left hover:bg-surface-2"
+                      tabIndex={-1}
+                      aria-selected={nav.active === index}
+                      className={`flex min-h-11 w-full cursor-pointer flex-col items-start justify-center gap-0.5 rounded-lg px-3 py-1.5 text-left hover:bg-surface-2 ${nav.active === index ? "bg-surface-2 ring-1 ring-inset ring-ring" : ""}`}
                       onMouseDown={(event) => {
                         event.preventDefault();
                         handleCustomerSelect(customer);

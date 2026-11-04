@@ -174,8 +174,11 @@ export function SummaryStrip({
         isDesktop ? (
           <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 px-3 text-[13px]" aria-label="Obračun za aktivne filtere">
             <div className="flex items-center gap-1.5 text-text-muted">
-              <Sigma className="size-4" aria-hidden />
-              <span className="num text-text">{total.toLocaleString("sr-RS")}</span> {pluralOrders(total)}
+              <dt className="sr-only">Broj narudžbina</dt>
+              <dd className="flex items-center gap-1.5">
+                <Sigma className="size-4" aria-hidden />
+                <span className="num text-text">{total.toLocaleString("sr-RS")}</span> {pluralOrders(total)}
+              </dd>
             </div>
             {totalRows.map(([label, value, tone]) => (
               <div key={label} className="flex items-baseline gap-1.5">

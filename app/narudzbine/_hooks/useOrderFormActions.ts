@@ -41,8 +41,13 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
     (fieldName: keyof OrderFormValues | string) => {
       const targetName = String(fieldName);
       requestAnimationFrame(() => {
+        // Pretraga proizvoda nije RHF polje: setFocus bi tiho prošao bez efekta.
+        if (targetName === "productSearch" && productInputRef.current) {
+          productInputRef.current.focus();
+          return;
+        }
         try {
-          form.setFocus(targetName as any, { shouldSelect: true });
+          form.setFocus(targetName as keyof OrderFormValues, { shouldSelect: true });
           return;
         } catch {
           // fall through to DOM query

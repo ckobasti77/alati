@@ -68,15 +68,8 @@ export function useOrderReorder({ orderScope, sessionToken, orders, setOrders, d
     [dragOverOrderId, setDragOverOrderId],
   );
 
-  const handleOrderDrop = useCallback(
-    (orderId: string) => async (event: DragEvent<HTMLTableRowElement>) => {
-      event.preventDefault();
-      const sourceId = draggingOrderId ?? event.dataTransfer.getData("text/plain");
-      if (!sourceId || sourceId === orderId) {
-        setDraggingOrderId(null);
-        setDragOverOrderId(null);
-        return;
-      }
+  const commitReorder = useCallback(
+    async (sourceId: string, orderId: string) => {
       const nextOrders = reorderOrdersList(orders, sourceId, orderId);
       if (nextOrders === orders) {
         setDraggingOrderId(null);
@@ -114,10 +107,35 @@ export function useOrderReorder({ orderScope, sessionToken, orders, setOrders, d
         );
       }
     },
-    [draggingOrderId, orderScope, orders, reorderOrders, reorderOrdersList, sessionToken, setDragOverOrderId, setDraggingOrderId, setOrders],
+    [orderScope, orders, reorderOrders, reorderOrdersList, sessionToken, setDragOverOrderId, setDraggingOrderId, setOrders],
+  );
+
+  const handleOrderDrop = useCallback(
+    (orderId: string) => async (event: DragEvent<HTMLTableRowElement>) => {
+      event.preventDefault();
+      const sourceId = draggingOrderId ?? event.dataTransfer.getData("text/plain");
+      if (!sourceId || sourceId === orderId) {
+        setDraggingOrderId(null);
+        setDragOverOrderId(null);
+        return;
+      }
+      await commitReorder(sourceId, orderId);
+    },
+    [commitReorder, draggingOrderId, setDragOverOrderId, setDraggingOrderId],
+  );
+
+  /** Tastatura/meni: zameni mesto sa susedom (isto kao prevlačenje za jedno mesto). */
+  const moveOrder = useCallback(
+    (orderId: string, direction: -1 | 1) => {
+      const index = orders.findIndex((item) => item._id === orderId);
+      const neighbor = orders[index + direction];
+      if (index < 0 || !neighbor) return;
+      void commitReorder(orderId, neighbor._id);
+    },
+    [commitReorder, orders],
   );
 
 
-  return { handleOrderDragStart, handleOrderDragEnd, handleOrderDragOver, handleOrderDragLeave, handleOrderDrop };
+  return { handleOrderDragStart, handleOrderDragEnd, handleOrderDragOver, handleOrderDragLeave, handleOrderDrop, moveOrder };
 }
 

@@ -54,6 +54,12 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-(--z-header) border-b bg-(--header-bg) pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+      <a
+        href="#main"
+        className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:top-2 focus-visible:left-2 focus-visible:z-(--z-toast) focus-visible:rounded-lg focus-visible:bg-accent focus-visible:px-3 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-accent-fg"
+      >
+        Preskoči na sadržaj
+      </a>
       {/* Telefon */}
       <div className="flex h-(--header-h) items-center gap-1 px-1.5 md:hidden">
         {meta.backHref && isAuthed ? (

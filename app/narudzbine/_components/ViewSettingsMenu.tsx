@@ -4,21 +4,25 @@ import { Settings2 } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Switch } from "@/components/ui/switch";
 import { ORDER_COLUMNS, DEFAULT_ORDER_COLUMNS } from "../_lib/orderView";
 import type { OrdersViewState } from "../_hooks/useOrdersView";
 
 /** Desktop tabela: gustina reda i vidljive kolone (pamti se). */
 export function ViewSettingsMenu({ ordersView }: { ordersView: OrdersViewState }) {
-  const { density, setDensity, columns, toggleColumn, resetColumns } = ordersView;
+  const { density, setDensity, columns, toggleColumn, resetColumns, shortcutsEnabled, setShortcutsEnabled, view } = ordersView;
+  const isTable = view === "tabela";
   const isDefault = columns.length === DEFAULT_ORDER_COLUMNS.length && columns.every((key) => DEFAULT_ORDER_COLUMNS.includes(key));
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <IconButton aria-label="Gustina i kolone" title="Gustina i kolone" variant="outline">
+        <IconButton aria-label={isTable ? "Gustina, kolone i prečice" : "Prečice"} title={isTable ? "Gustina, kolone i prečice" : "Prečice"} variant="outline">
           <Settings2 />
         </IconButton>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 p-3" aria-label="Gustina i kolone">
+      <PopoverContent align="end" className="w-64 p-3" aria-label="Podešavanja prikaza">
+        {isTable ? (
+          <>
         <p className="mb-2 text-[13px] font-medium text-text-muted">Gustina</p>
         <SegmentedControl
           ariaLabel="Gustina redova"
@@ -53,6 +57,16 @@ export function ViewSettingsMenu({ ordersView }: { ordersView: OrdersViewState }
             Vrati podrazumevane kolone
           </button>
         ) : null}
+          </>
+        ) : null}
+        <div className={isTable ? "mt-3 border-t border-border pt-1" : undefined}>
+          <Switch
+            label="Prečice na tastaturi"
+            description="/ pretraga · j k red · x izbor · v prikaz"
+            checked={shortcutsEnabled}
+            onCheckedChange={setShortcutsEnabled}
+          />
+        </div>
       </PopoverContent>
     </Popover>
   );

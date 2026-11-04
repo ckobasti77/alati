@@ -69,7 +69,7 @@ export default function RootLayout({
           <ShellProvider>
             <div className="min-h-dvh" style={{ backgroundColor: "var(--panel-bg)" }}>
               <AppHeader />
-              <main className="mx-auto max-w-7xl pt-4 pr-[max(1rem,env(safe-area-inset-right))] pb-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+1.5rem)] pl-[max(1rem,env(safe-area-inset-left))] md:px-6 md:py-8">
+              <main id="main" tabIndex={-1} className="mx-auto max-w-7xl outline-none pt-4 pr-[max(1rem,env(safe-area-inset-right))] pb-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+1.5rem)] pl-[max(1rem,env(safe-area-inset-left))] md:px-6 md:py-8">
                 {children}
               </main>
               <BottomNav />

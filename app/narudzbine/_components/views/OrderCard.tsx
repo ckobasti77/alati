@@ -32,7 +32,7 @@ export function OrderCard({ entry }: { entry: OrderEntry }) {
       onClick={() => ctx.openOrder(order._id)}
       onFocus={() => ctx.setActiveId(order._id)}
       className={cn(
-        "group flex cursor-pointer flex-col rounded-2xl bg-surface ring-1 transition-colors duration-(--duration-fast)",
+        "group flex scroll-mt-[calc(var(--header-h)+1rem)] cursor-pointer flex-col rounded-2xl bg-surface ring-1 transition-colors duration-(--duration-fast)",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring aria-[current=true]:ring-border-strong",
         selected ? "ring-accent/50 bg-accent-soft/40" : "ring-border hover:ring-border-strong",
       )}
@@ -58,7 +58,6 @@ export function OrderCard({ entry }: { entry: OrderEntry }) {
           <Link
             href={ctx.orderHref(order._id)}
             onClick={stop}
-            tabIndex={-1}
             className="line-clamp-2 text-sm leading-5 font-medium text-text hover:underline"
             title={title.primary}
           >

@@ -19,6 +19,7 @@ const STORAGE = {
   phone: "narudzbine:prikaz:telefon",
   density: "narudzbine:gustina",
   columns: "narudzbine:kolone",
+  shortcuts: "narudzbine:precice",
 } as const;
 
 function readStorage(key: string): string | null {
@@ -64,6 +65,13 @@ export function useOrdersView({ basePath, router, searchParamsString }: UseOrder
     }
   });
 
+  // Jednoslovne prečice (/ j k x v) mogu da se isključe (WCAG 2.1.4).
+  const [shortcutsEnabled, setShortcutsState] = useState(() => readStorage(STORAGE.shortcuts) !== "0");
+  const setShortcutsEnabled = useCallback((next: boolean) => {
+    writeStorage(STORAGE.shortcuts, next ? "1" : "0");
+    setShortcutsState(next);
+  }, []);
+
   const urlView = new URLSearchParams(searchParamsString).get("prikaz");
   const view = resolveOrdersView({ isDesktop, url: urlView, stored: isDesktop ? stored.desktop : stored.phone });
 
@@ -100,7 +108,7 @@ export function useOrdersView({ basePath, router, searchParamsString }: UseOrder
     setColumnsState(DEFAULT_ORDER_COLUMNS);
   }, []);
 
-  return { isDesktop, view, setView, toggleView, density, setDensity, columns, toggleColumn, resetColumns };
+  return { isDesktop, view, setView, toggleView, density, setDensity, columns, toggleColumn, resetColumns, shortcutsEnabled, setShortcutsEnabled };
 }
 
 export type OrdersViewState = ReturnType<typeof useOrdersView>;
