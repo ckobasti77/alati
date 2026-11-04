@@ -1,7 +1,7 @@
 "use client";
 
 // Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useConvexMutation } from "@/lib/convex";
 import type { Dispatch, SetStateAction } from "react";
@@ -22,6 +22,8 @@ export function useOrderSelection({ orderScope, sessionToken, stageFilters, show
   const [bulkAction, setBulkAction] = useState<"stage" | "povrat" | null>(null);
   // Telefon: mod izbora (dugme "Izaberi" ili long-press); tap na karticu tada bira umesto da otvara detalj.
   const [selectionMode, setSelectionMode] = useState(false);
+  // "U toku" preko ref-a: dvoklik ne šalje istu grupnu akciju dva puta.
+  const bulkBusyRef = useRef(false);
   const bulkUpdateOrders = useConvexMutation<{
     token: string;
     scope: "default" | "kalaba";
@@ -64,7 +66,8 @@ export function useOrderSelection({ orderScope, sessionToken, stageFilters, show
   const handleBulkAction = useCallback(
     async (action: { stage?: OrderStage; povratVracen?: boolean; message: string }) => {
       const orderIds = visibleOrderIds.filter((id) => selectedOrderIds.has(id));
-      if (orderIds.length === 0 || bulkAction) return;
+      if (orderIds.length === 0 || bulkBusyRef.current) return;
+      bulkBusyRef.current = true;
       setBulkAction(action.stage ? "stage" : "povrat");
       try {
         await bulkUpdateOrders({
@@ -100,11 +103,11 @@ export function useOrderSelection({ orderScope, sessionToken, stageFilters, show
         console.error(error);
         toast.error("Grupna akcija nije uspela.");
       } finally {
+        bulkBusyRef.current = false;
         setBulkAction(null);
       }
     },
     [
-      bulkAction,
       bulkUpdateOrders,
       orderScope,
       sessionToken,

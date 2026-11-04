@@ -24,7 +24,8 @@ export function DeleteRestockDialog({ restock }: DeleteRestockDialogProps) {
       confirmDisabled={!restockDeleteCandidate || isDeletingRestock}
       onConfirm={async () => {
         if (!restockDeleteCandidate) return;
-        await handleRestockDelete(restockDeleteCandidate._id);
+        const deleted = await handleRestockDelete(restockDeleteCandidate._id);
+        if (!deleted) throw new Error("Brisanje zahteva nije uspelo.");
       }}
     />
   );

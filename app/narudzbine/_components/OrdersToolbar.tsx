@@ -47,11 +47,8 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
   const searchInput = (
     <SearchField
       ref={searchRef}
-      value={feed.search}
-      onChange={(value) => {
-        feed.setSearch(value);
-        feed.resetOrdersFeed();
-      }}
+      value={feed.searchInput}
+      onChange={(value) => (value === "" ? feed.clearSearch() : feed.setSearchInput(value))}
       showShortcut={ordersView.isDesktop}
       className={ordersView.isDesktop ? "w-72" : "min-w-0 flex-1"}
     />

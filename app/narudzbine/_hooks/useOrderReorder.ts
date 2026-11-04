@@ -88,6 +88,8 @@ export function useOrderReorder({ orderScope, sessionToken, orders, setOrders, d
         ...item,
         sortIndex: base - index,
       }));
+      // Za rollback: redosled i sortIndex pre prevlačenja (ne ceo niz, da se ne izgube izmene stigle u međuvremenu).
+      const previousSort = new Map(orders.map((item, index) => [item._id, { index, sortIndex: item.sortIndex }]));
       setOrders(nextOrdersWithSort);
       setDraggingOrderId(null);
       setDragOverOrderId(null);
@@ -98,11 +100,18 @@ export function useOrderReorder({ orderScope, sessionToken, orders, setOrders, d
           orderIds: nextOrders.map((item) => item._id),
           base,
         });
-        toast.success("Redosled narudzbina sacuvan.");
+        toast.success("Redosled narudžbina je sačuvan.");
       } catch (error) {
         console.error(error);
-        toast.error("Nije moguce sacuvati novi redosled.");
-        setOrders(orders);
+        toast.error("Nije moguće sačuvati novi redosled.");
+        setOrders((current) =>
+          current
+            .map((item) => {
+              const before = previousSort.get(item._id);
+              return before ? { ...item, sortIndex: before.sortIndex } : item;
+            })
+            .sort((a, b) => (previousSort.get(a._id)?.index ?? 0) - (previousSort.get(b._id)?.index ?? 0)),
+        );
       }
     },
     [draggingOrderId, orderScope, orders, reorderOrders, reorderOrdersList, sessionToken, setDragOverOrderId, setDraggingOrderId, setOrders],

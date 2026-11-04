@@ -1,7 +1,6 @@
 "use client";
 
-// Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useConvexQuery } from "@/lib/convex";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
 import type { Order, OrderListResponse, OrderStage } from "@/types/order";
@@ -11,6 +10,8 @@ import type { useRouter, useSearchParams } from "next/navigation";
 
 /** Veličina strane liste (infinite scroll). */
 export const PAGE_SIZE = 30;
+/** Pretraga se primenjuje kad korisnik zastane sa kucanjem. */
+const SEARCH_DEBOUNCE_MS = 250;
 
 type UseOrdersFeedParams = {
   basePath: string;
@@ -21,116 +22,164 @@ type UseOrdersFeedParams = {
   sessionToken: string;
 };
 
+type Pagination = OrderListResponse["pagination"];
+
+export type OrderFilters = {
+  /** Primenjena pretraga (bez razmaka na krajevima). */
+  search: string;
+  stages: OrderStage[];
+  unreturned: boolean;
+  returned: boolean;
+  pickup: boolean;
+  shipping: boolean;
+  late: boolean;
+  refund100: boolean;
+  dateFrom: string;
+  dateTo: string;
+};
+
+const EMPTY_PAGINATION: Pagination = { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 };
+
+/** Filteri iz URL-a. "returned" pobeđuje "unreturned", "pickup" pobeđuje "shipping" (kao ranije). */
+export function parseOrderFilters(params: URLSearchParams): OrderFilters {
+  const returned = params.get("returned") === "1";
+  const pickup = params.get("pickup") === "1";
+  return {
+    search: (params.get("q") ?? "").trim(),
+    stages: normalizeStageFilters(params.getAll("stage")),
+    unreturned: params.get("unreturned") === "1" && !returned,
+    returned,
+    pickup,
+    shipping: params.get("shipping") === "1" && !pickup,
+    late: params.get("late") === "1",
+    refund100: params.get("povrat100") === "1",
+    dateFrom: normalizeDateInput(params.get("from")),
+    dateTo: normalizeDateInput(params.get("to")),
+  };
+}
+
+export const orderFiltersKey = (filters: OrderFilters) =>
+  JSON.stringify({ ...filters, search: filters.search.trim(), stages: normalizeStageFilters(filters.stages) });
+
+/** Upisuje filtere u postojeće parametre (ostali parametri, npr. prikaz/nova/productId, ostaju). */
+export function writeOrderFilters(params: URLSearchParams, filters: OrderFilters) {
+  const toggle = (key: string, on: boolean) => (on ? params.set(key, "1") : params.delete(key));
+  const search = filters.search.trim();
+  if (search) params.set("q", search);
+  else params.delete("q");
+  if (filters.dateFrom) params.set("from", filters.dateFrom);
+  else params.delete("from");
+  if (filters.dateTo) params.set("to", filters.dateTo);
+  else params.delete("to");
+  params.delete("stage");
+  normalizeStageFilters(filters.stages).forEach((stage) => params.append("stage", stage));
+  toggle("unreturned", filters.unreturned);
+  toggle("returned", filters.returned);
+  toggle("pickup", filters.pickup);
+  toggle("shipping", filters.shipping);
+  toggle("late", filters.late);
+  toggle("povrat100", filters.refund100);
+  return params;
+}
+
+/** Ključ za čuvanje liste (sessionStorage). Parametri koji ne menjaju listu se izostavljaju. */
+export function buildListStateKey(basePath: string, searchParamsString: string) {
+  const params = new URLSearchParams(searchParamsString);
+  ["productId", "orderModal", "nova", "restock", "prikaz"].forEach((key) => params.delete(key));
+  const suffix = params.toString();
+  return `listState:${basePath}${suffix ? `?${suffix}` : ""}`;
+}
+
+type StoredExtra = Record<string, unknown> | undefined;
+
+export function storedFiltersMatch(extra: StoredExtra, filters: OrderFilters) {
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  return (
+    text(extra?.search).trim() === filters.search &&
+    areArraysEqual(normalizeStageFilters(Array.isArray(extra?.stageFilters) ? (extra.stageFilters as string[]) : []), filters.stages) &&
+    (extra?.showUnreturnedOnly === true) === filters.unreturned &&
+    (extra?.showReturnedOnly === true) === filters.returned &&
+    (extra?.showPickupOnly === true) === filters.pickup &&
+    (extra?.showShippingOnly === true) === filters.shipping &&
+    (extra?.showLateOnly === true) === filters.late &&
+    (extra?.showRefund100Only === true) === filters.refund100 &&
+    normalizeDateInput(text(extra?.dateFrom)) === filters.dateFrom &&
+    normalizeDateInput(text(extra?.dateTo)) === filters.dateTo
+  );
+}
+
+// Oznaka da je feed resetovan: sledeći rezultat liste se spaja čak i ako je isti objekat kao pre.
+const LIST_RESET = Symbol("list-reset");
+
 export function useOrdersFeed({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken }: UseOrdersFeedParams) {
-  const searchQuery = useMemo(() => searchParams?.get("q") ?? "", [searchParamsString, searchParams]);
-  const dateFromQuery = useMemo(
-    () => normalizeDateInput(searchParams?.get("from")),
-    [searchParamsString, searchParams],
-  );
-  const dateToQuery = useMemo(
-    () => normalizeDateInput(searchParams?.get("to")),
-    [searchParamsString, searchParams],
-  );
-  const stageQuery = useMemo(
-    () => normalizeStageFilters(searchParams ? searchParams.getAll("stage") : []),
-    [searchParamsString, searchParams],
-  );
-  const unreturnedQuery = useMemo(() => searchParams?.get("unreturned") === "1", [searchParamsString, searchParams]);
-  const returnedQuery = useMemo(() => searchParams?.get("returned") === "1", [searchParamsString, searchParams]);
-  const pickupQuery = useMemo(() => searchParams?.get("pickup") === "1", [searchParamsString, searchParams]);
-  const shippingQuery = useMemo(() => searchParams?.get("shipping") === "1", [searchParamsString, searchParams]);
-  const lateQuery = useMemo(() => searchParams?.get("late") === "1", [searchParamsString, searchParams]);
-  const refund100Query = useMemo(() => searchParams?.get("povrat100") === "1", [searchParamsString, searchParams]);
-  const effectiveUnreturnedQuery = unreturnedQuery && !returnedQuery;
-  const effectiveReturnedQuery = returnedQuery;
-  const effectiveShippingQuery = shippingQuery && !pickupQuery;
-  const [search, setSearch] = useState(searchQuery);
-  const [dateFrom, setDateFrom] = useState(dateFromQuery);
-  const [dateTo, setDateTo] = useState(dateToQuery);
-  const [stageFilters, setStageFilters] = useState<OrderStage[]>(stageQuery);
-  const [showUnreturnedOnly, setShowUnreturnedOnly] = useState(effectiveUnreturnedQuery);
-  const [showReturnedOnly, setShowReturnedOnly] = useState(effectiveReturnedQuery);
-  const [showPickupOnly, setShowPickupOnly] = useState(pickupQuery);
-  const [showShippingOnly, setShowShippingOnly] = useState(effectiveShippingQuery);
-  const [showLateOnly, setShowLateOnly] = useState(lateQuery);
-  const [showRefund100Only, setShowRefund100Only] = useState(refund100Query);
-  const [filterMenuMode, setFilterMenuMode] = useState<"closed" | "hover" | "pinned">("closed");
-  const [page, setPage] = useState(1);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
-  const [dragOverOrderId, setDragOverOrderId] = useState<string | null>(null);
-  const [ordersPagination, setOrdersPagination] = useState<OrderListResponse["pagination"]>({
-    page: 1,
-    pageSize: PAGE_SIZE,
-    total: 0,
-    totalPages: 1,
+  // Prvi render: filteri iz URL-a i, ako se poklapaju, sačuvana lista + skrol (povratak sa detalja).
+  // Stranica se renderuje samo na klijentu (RequireAuth), pa je sessionStorage dostupan.
+  const [initial] = useState(() => {
+    const filters = parseOrderFilters(new URLSearchParams(searchParamsString));
+    const key = buildListStateKey(basePath, searchParamsString);
+    const stored = readListState<Order, Pagination>(key);
+    // Sačuvane strane drugačije veličine bi preskočile redove pri sledećem učitavanju.
+    const restorable =
+      stored && storedFiltersMatch(stored.extra, filters) && (stored.pagination?.pageSize ?? PAGE_SIZE) === PAGE_SIZE ? stored : null;
+    return { filters, key, restored: restorable };
   });
+
+  const [filters, setFilters] = useState<OrderFilters>(initial.filters);
+  const [searchInput, setSearchInputState] = useState(initial.filters.search);
+  const [page, setPage] = useState(initial.restored?.page ?? 1);
+  const [orders, setOrders] = useState<Order[]>(initial.restored?.items ?? []);
+  const [ordersPagination, setOrdersPagination] = useState<Pagination>(initial.restored?.pagination ?? EMPTY_PAGINATION);
   const [ordersTotals, setOrdersTotals] = useState<OrderListResponse["totals"]>(emptyOrderListTotals);
   const [isLoadingMoreOrders, setIsLoadingMoreOrders] = useState(false);
-  const ordersLoaderRef = useRef<HTMLDivElement | null>(null);
-  const loadMoreOrdersTimerRef = useRef<number | null>(null);
-  const scrollYRef = useRef(0);
-  const skipUrlSyncRef = useRef(false);
-  const skipInitialResetRef = useRef(false);
-  const didRestoreRef = useRef(false);
-  const listStateRef = useRef<{
-    orders: Order[];
-    page: number;
-    pagination: OrderListResponse["pagination"];
-    search: string;
-    stageFilters: OrderStage[];
-    showUnreturnedOnly: boolean;
-    showReturnedOnly: boolean;
-    showPickupOnly: boolean;
-    showShippingOnly: boolean;
-    showLateOnly: boolean;
-    showRefund100Only: boolean;
-    dateFrom: string;
-    dateTo: string;
-  }>({
-    orders: [],
-    page: 1,
-    pagination: { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 },
-    search: "",
-    stageFilters: [],
-    showUnreturnedOnly: false,
-    showReturnedOnly: false,
-    showPickupOnly: false,
-    showShippingOnly: false,
-    showLateOnly: false,
-    showRefund100Only: false,
-    dateFrom: "",
-    dateTo: "",
-  });
-  const [pendingScrollY, setPendingScrollY] = useState<number | null>(null);
-  const listStateKey = useMemo(() => {
-    const params = new URLSearchParams(searchParamsString);
-    params.delete("productId");
-    params.delete("orderModal");
-    params.delete("nova");
-    params.delete("restock");
-    // Prikaz (tabela/kartice…) ne menja listu, pa ne sme da menja ni ključ za restore.
-    params.delete("prikaz");
-    const suffix = params.toString();
-    return `listState:${basePath}${suffix ? `?${suffix}` : ""}`;
-  }, [basePath, searchParamsString]);
+  const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
+  const [dragOverOrderId, setDragOverOrderId] = useState<string | null>(null);
+  const [mergedList, setMergedList] = useState<OrderListResponse | undefined | typeof LIST_RESET>(undefined);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleScroll = () => {
-      scrollYRef.current = window.scrollY;
-    };
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+  const ordersLoaderRef = useRef<HTMLDivElement | null>(null);
+  const scrollYRef = useRef(0);
+  const searchTimerRef = useRef<number | null>(null);
+  const listStateRef = useRef({ orders, page, pagination: ordersPagination, filters });
+  const filtersRef = useRef(filters);
+  const listStateKey = useMemo(() => buildListStateKey(basePath, searchParamsString), [basePath, searchParamsString]);
+
+  const resetOrdersFeed = useCallback(() => {
+    setOrders([]);
+    setDraggingOrderId(null);
+    setDragOverOrderId(null);
+    setPage(1);
+    setOrdersPagination((prev) => ({ ...prev, page: 1, total: 0, totalPages: 1 }));
+    setOrdersTotals(emptyOrderListTotals);
+    setIsLoadingMoreOrders(false);
+    setMergedList(LIST_RESET);
   }, []);
 
-  const dateFromTimestamp = useMemo(() => resolveDateTimestamp(dateFrom, "start"), [dateFrom]);
+  // URL → filteri (nazad/napred, link sa table). Sopstveni upis u URL daje isti ključ, pa ne resetuje.
+  const urlFilters = useMemo(() => parseOrderFilters(new URLSearchParams(searchParamsString)), [searchParamsString]);
+  const urlKey = orderFiltersKey(urlFilters);
+  const [syncedUrlKey, setSyncedUrlKey] = useState(urlKey);
+  if (urlKey !== syncedUrlKey) {
+    setSyncedUrlKey(urlKey);
+    if (urlKey !== orderFiltersKey(filters)) {
+      setFilters(urlFilters);
+      setSearchInputState(urlFilters.search);
+      resetOrdersFeed();
+    }
+  }
+
+  // Nova sesija ili scope: lista kreće iz početka.
+  const sessionKey = `${sessionToken}|${orderScope}`;
+  const [syncedSessionKey, setSyncedSessionKey] = useState(sessionKey);
+  if (sessionKey !== syncedSessionKey) {
+    setSyncedSessionKey(sessionKey);
+    resetOrdersFeed();
+  }
+
+  const dateFromTimestamp = useMemo(() => resolveDateTimestamp(filters.dateFrom, "start"), [filters.dateFrom]);
   const dateToTimestamp = useMemo(() => {
-    if (dateTo) return resolveDateTimestamp(dateTo, "end");
-    if (dateFrom) return resolveTodayEndTimestamp();
+    if (filters.dateTo) return resolveDateTimestamp(filters.dateTo, "end");
+    if (filters.dateFrom) return resolveTodayEndTimestamp();
     return undefined;
-  }, [dateFrom, dateTo]);
+  }, [filters.dateFrom, filters.dateTo]);
 
   const orderListQueryArgs = useMemo<{
     token: string;
@@ -148,519 +197,211 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
   }>(
     () => ({
       token: sessionToken,
-      search: search.trim() ? search.trim() : undefined,
-      stages: stageFilters,
-      unreturnedOnly: showUnreturnedOnly,
-      returnedOnly: showReturnedOnly,
-      pickupOnly: showPickupOnly,
-      shippingOnly: showShippingOnly,
-      lateOnly: showLateOnly,
+      search: filters.search || undefined,
+      stages: filters.stages,
+      unreturnedOnly: filters.unreturned,
+      returnedOnly: filters.returned,
+      pickupOnly: filters.pickup,
+      shippingOnly: filters.shipping,
+      lateOnly: filters.late,
       // Šalje se samo kad je uključen (stariji backend ne zna za argument).
-      ...(showRefund100Only ? { refund100Only: true as const } : {}),
+      ...(filters.refund100 ? { refund100Only: true as const } : {}),
       dateFrom: dateFromTimestamp,
       dateTo: dateToTimestamp,
       scope: orderScope,
     }),
-    [
-      dateFromTimestamp,
-      dateToTimestamp,
-      orderScope,
-      search,
-      sessionToken,
-      showPickupOnly,
-      showShippingOnly,
-      showLateOnly,
-      showRefund100Only,
-      showReturnedOnly,
-      showUnreturnedOnly,
-      stageFilters,
-    ],
+    [dateFromTimestamp, dateToTimestamp, filters, orderScope, sessionToken],
   );
 
-  const list = useConvexQuery<OrderListResponse>("orders:list", {
-    ...orderListQueryArgs,
-    page,
-    pageSize: PAGE_SIZE,
-  });
+  const list = useConvexQuery<OrderListResponse>("orders:list", { ...orderListQueryArgs, page, pageSize: PAGE_SIZE });
+
+  // Rezultat strane → lista (spaja se po ID-u, pa realtime izmene učitanih stavki stižu same).
+  if (list !== mergedList) {
+    setMergedList(list);
+    if (list) {
+      if (list.pagination) setOrdersPagination(list.pagination);
+      if (list.totals) setOrdersTotals(list.totals);
+      if (list.items) {
+        setOrders((prev) => {
+          const map = new Map(prev.map((entry) => [String(entry._id), entry]));
+          list.items.forEach((entry) => map.set(String(entry._id), entry));
+          return Array.from(map.values()).sort(
+            (a, b) => resolveOrderSortValue(b) - resolveOrderSortValue(a) || b.kreiranoAt - a.kreiranoAt,
+          );
+        });
+      }
+      setIsLoadingMoreOrders(false);
+    }
+  }
+
   const isOrdersLoading = list === undefined && orders.length === 0;
   const hasMoreOrders = ordersPagination.totalPages > page;
-  const dateFilterActive = Boolean(dateFrom || dateTo);
+  const dateFilterActive = Boolean(filters.dateFrom || filters.dateTo);
   const activeFilterCount =
-    stageFilters.length +
-    (showUnreturnedOnly ? 1 : 0) +
-    (showReturnedOnly ? 1 : 0) +
-    (showPickupOnly ? 1 : 0) +
-    (showShippingOnly ? 1 : 0) +
-    (showLateOnly ? 1 : 0) +
-    (showRefund100Only ? 1 : 0) +
+    filters.stages.length +
+    (filters.unreturned ? 1 : 0) +
+    (filters.returned ? 1 : 0) +
+    (filters.pickup ? 1 : 0) +
+    (filters.shipping ? 1 : 0) +
+    (filters.late ? 1 : 0) +
+    (filters.refund100 ? 1 : 0) +
     (dateFilterActive ? 1 : 0);
-  const isFilterMenuOpen = filterMenuMode !== "closed";
+
+  // Snimci za čuvanje pri odlasku i za pretragu (ref, bez novog rendera).
   useEffect(() => {
-    listStateRef.current = {
-      orders,
-      page,
-      pagination: ordersPagination,
-      search,
-      stageFilters,
-      showUnreturnedOnly,
-      showReturnedOnly,
-      showPickupOnly,
-      showShippingOnly,
-      showLateOnly,
-      showRefund100Only,
-      dateFrom,
-      dateTo,
+    listStateRef.current = { orders, page, pagination: ordersPagination, filters };
+    filtersRef.current = filters;
+  }, [orders, page, ordersPagination, filters]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      scrollYRef.current = window.scrollY;
     };
-  }, [orders, ordersPagination, page, search, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, showRefund100Only, stageFilters, dateFrom, dateTo]);
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
-  useEffect(() => {
-    if (didRestoreRef.current) return;
-    didRestoreRef.current = true;
-    const stored = readListState<Order, OrderListResponse["pagination"]>(listStateKey);
-    if (!stored) return;
-    const storedSearch = typeof stored.extra?.search === "string" ? stored.extra.search : "";
-    const storedStagesRaw = Array.isArray(stored.extra?.stageFilters) ? (stored.extra.stageFilters as string[]) : [];
-    const storedStages = normalizeStageFilters(storedStagesRaw);
-    const storedUnreturned = stored.extra?.showUnreturnedOnly === true;
-    const storedReturned = stored.extra?.showReturnedOnly === true;
-    const storedPickup = stored.extra?.showPickupOnly === true;
-    const storedShipping = stored.extra?.showShippingOnly === true;
-    const storedLate = stored.extra?.showLateOnly === true;
-    const storedRefund100 = stored.extra?.showRefund100Only === true;
-    const storedDateFrom = normalizeDateInput(
-      typeof stored.extra?.dateFrom === "string" ? stored.extra.dateFrom : "",
-    );
-    const storedDateTo = normalizeDateInput(
-      typeof stored.extra?.dateTo === "string" ? stored.extra.dateTo : "",
-    );
-    if (
-      storedSearch !== searchQuery ||
-      !areArraysEqual(storedStages, stageQuery) ||
-      storedUnreturned !== effectiveUnreturnedQuery ||
-      storedReturned !== effectiveReturnedQuery ||
-      storedPickup !== pickupQuery ||
-      storedShipping !== effectiveShippingQuery ||
-      storedLate !== lateQuery ||
-      storedRefund100 !== refund100Query ||
-      // Sačuvane strane drugačije veličine bi preskočile redove pri sledećem učitavanju.
-      (stored.pagination?.pageSize ?? PAGE_SIZE) !== PAGE_SIZE ||
-      storedDateFrom !== dateFromQuery ||
-      storedDateTo !== dateToQuery
-    ) {
-      return;
-    }
-    skipInitialResetRef.current = true;
-    skipUrlSyncRef.current = true;
-    setOrders(stored.items ?? []);
-    setPage(stored.page ?? 1);
-    if (stored.pagination) {
-      setOrdersPagination(stored.pagination);
-    }
-    setSearch(searchQuery);
-    setDateFrom(dateFromQuery);
-    setDateTo(dateToQuery);
-    setStageFilters(stageQuery);
-    setShowUnreturnedOnly(effectiveUnreturnedQuery);
-    setShowReturnedOnly(effectiveReturnedQuery);
-    setShowPickupOnly(pickupQuery);
-    setShowShippingOnly(effectiveShippingQuery);
-    setShowLateOnly(lateQuery);
-    setShowRefund100Only(refund100Query);
-    setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
-    clearListState(listStateKey);
-  }, [
-    listStateKey,
-    searchQuery,
-    stageQuery,
-    effectiveUnreturnedQuery,
-    effectiveReturnedQuery,
-    pickupQuery,
-    effectiveShippingQuery,
-    lateQuery,
-    refund100Query,
-    dateFromQuery,
-    dateToQuery,
-  ]);
-
-  useEffect(() => {
-    if (pendingScrollY === null) return;
-    const target = pendingScrollY;
-    setPendingScrollY(null);
-    if (typeof window !== "undefined") {
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: target, behavior: "auto" });
-      });
-    }
-  }, [pendingScrollY]);
+  // Vraćena lista: snimak je jednokratan; skrol se vraća posle prvog crtanja.
+  useLayoutEffect(() => {
+    if (!initial.restored) return;
+    clearListState(initial.key);
+    const top = initial.restored.scrollY;
+    if (typeof top !== "number") return;
+    const frame = requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
+    return () => cancelAnimationFrame(frame);
+  }, [initial]);
 
   useEffect(() => {
     return () => {
       const snapshot = listStateRef.current;
-      if (!snapshot) return;
-      writeListState<Order, OrderListResponse["pagination"]>(listStateKey, {
+      writeListState<Order, Pagination>(listStateKey, {
         items: snapshot.orders,
         page: snapshot.page,
         pagination: snapshot.pagination,
         scrollY: scrollYRef.current,
         savedAt: Date.now(),
         extra: {
-          search: snapshot.search,
-          stageFilters: snapshot.stageFilters,
-          showUnreturnedOnly: snapshot.showUnreturnedOnly,
-          showReturnedOnly: snapshot.showReturnedOnly,
-          showPickupOnly: snapshot.showPickupOnly,
-          showShippingOnly: snapshot.showShippingOnly,
-          showLateOnly: snapshot.showLateOnly,
-          showRefund100Only: snapshot.showRefund100Only,
-          dateFrom: snapshot.dateFrom,
-          dateTo: snapshot.dateTo,
+          search: snapshot.filters.search,
+          stageFilters: snapshot.filters.stages,
+          showUnreturnedOnly: snapshot.filters.unreturned,
+          showReturnedOnly: snapshot.filters.returned,
+          showPickupOnly: snapshot.filters.pickup,
+          showShippingOnly: snapshot.filters.shipping,
+          showLateOnly: snapshot.filters.late,
+          showRefund100Only: snapshot.filters.refund100,
+          dateFrom: snapshot.filters.dateFrom,
+          dateTo: snapshot.filters.dateTo,
         },
       });
     };
   }, [listStateKey]);
 
-  const resetOrdersFeed = useCallback(() => {
-    if (loadMoreOrdersTimerRef.current !== null) {
-      window.clearTimeout(loadMoreOrdersTimerRef.current);
-      loadMoreOrdersTimerRef.current = null;
-    }
-    setOrders([]);
-    setDraggingOrderId(null);
-    setDragOverOrderId(null);
-    setPage(1);
-    setOrdersPagination((prev) => ({ ...prev, page: 1, total: 0, totalPages: 1 }));
-    setOrdersTotals(emptyOrderListTotals);
-    setIsLoadingMoreOrders(false);
-  }, []);
-
-  useEffect(() => {
-    const current = listStateRef.current;
-    const normalizedStageFilters = normalizeStageFilters(current.stageFilters);
-    const searchChanged = current.search !== searchQuery;
-    const dateFromChanged = current.dateFrom !== dateFromQuery;
-    const dateToChanged = current.dateTo !== dateToQuery;
-    const stagesChanged = !areArraysEqual(normalizedStageFilters, stageQuery);
-    const unreturnedChanged = current.showUnreturnedOnly !== effectiveUnreturnedQuery;
-    const returnedChanged = current.showReturnedOnly !== effectiveReturnedQuery;
-    const pickupChanged = current.showPickupOnly !== pickupQuery;
-    const shippingChanged = current.showShippingOnly !== effectiveShippingQuery;
-    const lateChanged = current.showLateOnly !== lateQuery;
-    const refund100Changed = current.showRefund100Only !== refund100Query;
-    if (!searchChanged && !dateFromChanged && !dateToChanged && !stagesChanged && !unreturnedChanged && !returnedChanged && !pickupChanged && !shippingChanged && !lateChanged && !refund100Changed) {
-      skipUrlSyncRef.current = false;
-      return;
-    }
-    if (searchChanged) {
-      setSearch(searchQuery);
-    }
-    if (dateFromChanged) {
-      setDateFrom(dateFromQuery);
-    }
-    if (dateToChanged) {
-      setDateTo(dateToQuery);
-    }
-    if (stagesChanged) {
-      setStageFilters(stageQuery);
-    }
-    if (unreturnedChanged) {
-      setShowUnreturnedOnly(effectiveUnreturnedQuery);
-    }
-    if (returnedChanged) {
-      setShowReturnedOnly(effectiveReturnedQuery);
-    }
-    if (pickupChanged) {
-      setShowPickupOnly(pickupQuery);
-    }
-    if (shippingChanged) {
-      setShowShippingOnly(effectiveShippingQuery);
-    }
-    if (lateChanged) {
-      setShowLateOnly(lateQuery);
-    }
-    if (refund100Changed) {
-      setShowRefund100Only(refund100Query);
-    }
-    if (!skipUrlSyncRef.current) {
-      resetOrdersFeed();
-    }
-    skipUrlSyncRef.current = false;
-  }, [
-    resetOrdersFeed,
-    searchQuery,
-    stageQuery,
-    effectiveUnreturnedQuery,
-    effectiveReturnedQuery,
-    pickupQuery,
-    effectiveShippingQuery,
-    lateQuery,
-    refund100Query,
-    dateFromQuery,
-    dateToQuery,
-  ]);
-
+  // Filteri → URL (ostali parametri ostaju).
   useEffect(() => {
     if (!searchParams) return;
-    const normalizedStages = normalizeStageFilters(stageFilters);
-    const nextSearch = search.trim();
-    const needsUpdate =
-      nextSearch !== searchQuery ||
-      dateFrom !== dateFromQuery ||
-      dateTo !== dateToQuery ||
-      !areArraysEqual(normalizedStages, stageQuery) ||
-      showUnreturnedOnly !== effectiveUnreturnedQuery ||
-      showReturnedOnly !== effectiveReturnedQuery ||
-      showPickupOnly !== pickupQuery ||
-      showShippingOnly !== effectiveShippingQuery ||
-      showLateOnly !== lateQuery ||
-      showRefund100Only !== refund100Query;
-    if (!needsUpdate) return;
-    const params = new URLSearchParams(searchParams.toString());
-    if (nextSearch) {
-      params.set("q", nextSearch);
-    } else {
-      params.delete("q");
-    }
-    if (dateFrom) {
-      params.set("from", dateFrom);
-    } else {
-      params.delete("from");
-    }
-    if (dateTo) {
-      params.set("to", dateTo);
-    } else {
-      params.delete("to");
-    }
-    params.delete("stage");
-    normalizedStages.forEach((stage) => params.append("stage", stage));
-    if (showUnreturnedOnly) {
-      params.set("unreturned", "1");
-    } else {
-      params.delete("unreturned");
-    }
-    if (showReturnedOnly) {
-      params.set("returned", "1");
-    } else {
-      params.delete("returned");
-    }
-    if (showPickupOnly) {
-      params.set("pickup", "1");
-    } else {
-      params.delete("pickup");
-    }
-    if (showShippingOnly) {
-      params.set("shipping", "1");
-    } else {
-      params.delete("shipping");
-    }
-    if (showLateOnly) {
-      params.set("late", "1");
-    } else {
-      params.delete("late");
-    }
-    if (showRefund100Only) {
-      params.set("povrat100", "1");
-    } else {
-      params.delete("povrat100");
-    }
-    const next = params.toString();
+    const current = searchParams.toString();
+    if (orderFiltersKey(filters) === orderFiltersKey(parseOrderFilters(new URLSearchParams(current)))) return;
+    const next = writeOrderFilters(new URLSearchParams(current), filters).toString();
     router.replace(next ? `${basePath}?${next}` : basePath, { scroll: false });
-  }, [
-    basePath,
-    router,
-    search,
-    searchParams,
-    searchQuery,
-    showUnreturnedOnly,
-    showReturnedOnly,
-    showPickupOnly,
-    showShippingOnly,
-    showLateOnly,
-    showRefund100Only,
-    stageFilters,
-    stageQuery,
-    effectiveUnreturnedQuery,
-    effectiveReturnedQuery,
-    pickupQuery,
-    effectiveShippingQuery,
-    lateQuery,
-    refund100Query,
-    dateFrom,
-    dateTo,
-    dateFromQuery,
-    dateToQuery,
-  ]);
+  }, [basePath, filters, router, searchParams]);
+
+  const updateFilters = useCallback(
+    (patch: Partial<OrderFilters>) => {
+      setFilters((prev) => ({ ...prev, ...patch }));
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
+
+  // Pretraga: polje odmah, lista posle pauze. Samo razmak na kraju ne menja primenjenu pretragu.
+  const applySearch = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      if (filtersRef.current.search === trimmed) return;
+      updateFilters({ search: trimmed });
+    },
+    [updateFilters],
+  );
+  const setSearchInput = useCallback(
+    (value: string) => {
+      setSearchInputState(value);
+      if (searchTimerRef.current !== null) window.clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = window.setTimeout(() => {
+        searchTimerRef.current = null;
+        applySearch(value);
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    [applySearch],
+  );
+  const clearSearch = useCallback(() => {
+    if (searchTimerRef.current !== null) window.clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = null;
+    setSearchInputState("");
+    applySearch("");
+  }, [applySearch]);
+  useEffect(
+    () => () => {
+      if (searchTimerRef.current !== null) window.clearTimeout(searchTimerRef.current);
+    },
+    [],
+  );
 
   const handleStageFilterToggle = useCallback(
     (stage: OrderStage) => {
-      setStageFilters((prev) => (prev.includes(stage) ? prev.filter((item) => item !== stage) : [...prev, stage]));
+      setFilters((prev) => ({
+        ...prev,
+        stages: prev.stages.includes(stage) ? prev.stages.filter((item) => item !== stage) : normalizeStageFilters([...prev.stages, stage]),
+      }));
       resetOrdersFeed();
     },
     [resetOrdersFeed],
   );
-
   const handleUnreturnedToggle = useCallback(
-    (checked: boolean) => {
-      setShowUnreturnedOnly(checked);
-      if (checked) {
-        setShowReturnedOnly(false);
-      }
-      resetOrdersFeed();
-    },
-    [resetOrdersFeed],
+    (checked: boolean) => updateFilters(checked ? { unreturned: true, returned: false } : { unreturned: false }),
+    [updateFilters],
   );
-
   const handleReturnedToggle = useCallback(
-    (checked: boolean) => {
-      setShowReturnedOnly(checked);
-      if (checked) {
-        setShowUnreturnedOnly(false);
-      }
-      resetOrdersFeed();
-    },
-    [resetOrdersFeed],
+    (checked: boolean) => updateFilters(checked ? { returned: true, unreturned: false } : { returned: false }),
+    [updateFilters],
   );
-
   const handlePickupToggle = useCallback(
-    (checked: boolean) => {
-      setShowPickupOnly(checked);
-      if (checked) {
-        setShowShippingOnly(false);
-      }
-      resetOrdersFeed();
-    },
-    [resetOrdersFeed],
+    (checked: boolean) => updateFilters(checked ? { pickup: true, shipping: false } : { pickup: false }),
+    [updateFilters],
   );
-
   const handleShippingToggle = useCallback(
-    (checked: boolean) => {
-      setShowShippingOnly(checked);
-      if (checked) {
-        setShowPickupOnly(false);
-      }
-      resetOrdersFeed();
-    },
-    [resetOrdersFeed],
+    (checked: boolean) => updateFilters(checked ? { shipping: true, pickup: false } : { shipping: false }),
+    [updateFilters],
   );
-
-  const handleLateToggle = useCallback(
-    (checked: boolean) => {
-      setShowLateOnly(checked);
-      resetOrdersFeed();
-    },
-    [resetOrdersFeed],
-  );
-
-  const handleRefund100Toggle = useCallback(
-    (checked: boolean) => {
-      setShowRefund100Only(checked);
-      resetOrdersFeed();
-    },
-    [resetOrdersFeed],
-  );
-
-  /** Postavlja ceo period odjednom (brzi izbori: Danas, 7 dana…). */
+  const handleLateToggle = useCallback((checked: boolean) => updateFilters({ late: checked }), [updateFilters]);
+  const handleRefund100Toggle = useCallback((checked: boolean) => updateFilters({ refund100: checked }), [updateFilters]);
+  const handleDateFromChange = useCallback((value: string) => updateFilters({ dateFrom: normalizeDateInput(value) }), [updateFilters]);
+  const handleDateToChange = useCallback((value: string) => updateFilters({ dateTo: normalizeDateInput(value) }), [updateFilters]);
+  /** Ceo period odjednom (brzi izbori: Danas, 7 dana…). */
   const handleDateRangeChange = useCallback(
-    (from: string, to: string) => {
-      setDateFrom(normalizeDateInput(from));
-      setDateTo(normalizeDateInput(to));
-      resetOrdersFeed();
-    },
-    [resetOrdersFeed],
+    (from: string, to: string) => updateFilters({ dateFrom: normalizeDateInput(from), dateTo: normalizeDateInput(to) }),
+    [updateFilters],
   );
-
+  const handleClearDateFilter = useCallback(() => updateFilters({ dateFrom: "", dateTo: "" }), [updateFilters]);
   /** Briše sve filtere (pretraga ostaje). */
-  const clearAllFilters = useCallback(() => {
-    setStageFilters([]);
-    setShowUnreturnedOnly(false);
-    setShowReturnedOnly(false);
-    setShowPickupOnly(false);
-    setShowShippingOnly(false);
-    setShowLateOnly(false);
-    setShowRefund100Only(false);
-    setDateFrom("");
-    setDateTo("");
-    resetOrdersFeed();
-  }, [resetOrdersFeed]);
-
-  const handleDateFromChange = useCallback(
-    (value: string) => {
-      setDateFrom(normalizeDateInput(value));
-      resetOrdersFeed();
-    },
-    [resetOrdersFeed],
+  const clearAllFilters = useCallback(
+    () =>
+      updateFilters({
+        stages: [],
+        unreturned: false,
+        returned: false,
+        pickup: false,
+        shipping: false,
+        late: false,
+        refund100: false,
+        dateFrom: "",
+        dateTo: "",
+      }),
+    [updateFilters],
   );
-
-  const handleDateToChange = useCallback(
-    (value: string) => {
-      setDateTo(normalizeDateInput(value));
-      resetOrdersFeed();
-    },
-    [resetOrdersFeed],
-  );
-
-  const handleClearDateFilter = useCallback(() => {
-    setDateFrom("");
-    setDateTo("");
-    resetOrdersFeed();
-  }, [resetOrdersFeed]);
-
-  const handleFilterMenuEnter = useCallback(() => {
-    setFilterMenuMode((prev) => (prev === "pinned" ? prev : "hover"));
-  }, []);
-
-  const handleFilterMenuLeave = useCallback(() => {
-    setFilterMenuMode((prev) => (prev === "hover" ? "closed" : prev));
-  }, []);
-
-  const handleFilterMenuToggle = useCallback(() => {
-    setFilterMenuMode((prev) => (prev === "pinned" ? "closed" : "pinned"));
-  }, []);
-
-  useEffect(() => {
-    if (skipInitialResetRef.current) {
-      skipInitialResetRef.current = false;
-      return;
-    }
-    resetOrdersFeed();
-  }, [resetOrdersFeed, sessionToken, orderScope]);
-
-  useEffect(() => {
-    if (!list) return;
-    if (loadMoreOrdersTimerRef.current !== null) {
-      window.clearTimeout(loadMoreOrdersTimerRef.current);
-      loadMoreOrdersTimerRef.current = null;
-    }
-    if (list.pagination) {
-      setOrdersPagination(list.pagination);
-    }
-    if (list.totals) {
-      setOrdersTotals(list.totals);
-    }
-    if (list.items) {
-      setOrders((prev) => {
-        const map = new Map(prev.map((entry) => [String(entry._id), entry]));
-        list.items.forEach((entry) => {
-          map.set(String(entry._id), entry);
-        });
-        return Array.from(map.values()).sort(
-          (a, b) => resolveOrderSortValue(b) - resolveOrderSortValue(a) || b.kreiranoAt - a.kreiranoAt,
-        );
-      });
-    }
-    setIsLoadingMoreOrders(false);
-  }, [list]);
-
-  useEffect(() => {
-    return () => {
-      if (loadMoreOrdersTimerRef.current !== null) {
-        window.clearTimeout(loadMoreOrdersTimerRef.current);
-      }
-    };
-  }, []);
 
   const handleLoadMoreOrders = useCallback(() => {
-    if (isLoadingMoreOrders) return;
-    if (!hasMoreOrders) return;
+    if (isLoadingMoreOrders || !hasMoreOrders) return;
     setIsLoadingMoreOrders(true);
     setPage((prev) => prev + 1);
   }, [hasMoreOrders, isLoadingMoreOrders]);
@@ -669,11 +410,8 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     const target = ordersLoaderRef.current;
     if (!target) return;
     const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-        if (entry?.isIntersecting) {
-          handleLoadMoreOrders();
-        }
+      ([entry]) => {
+        if (entry?.isIntersecting) handleLoadMoreOrders();
       },
       { rootMargin: "600px 0px" },
     );
@@ -681,7 +419,48 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     return () => observer.disconnect();
   }, [handleLoadMoreOrders]);
 
-
-  return { search, setSearch, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, showRefund100Only, setFilterMenuMode, page, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId, ordersPagination, ordersTotals, isLoadingMoreOrders, ordersLoaderRef, orderListQueryArgs, isOrdersLoading, hasMoreOrders, dateFilterActive, activeFilterCount, isFilterMenuOpen, resetOrdersFeed, handleStageFilterToggle, handleUnreturnedToggle, handleReturnedToggle, handlePickupToggle, handleShippingToggle, handleLateToggle, handleRefund100Toggle, handleDateRangeChange, clearAllFilters, handleDateFromChange, handleDateToChange, handleClearDateFilter, handleFilterMenuEnter, handleFilterMenuLeave, handleFilterMenuToggle };
+  return {
+    search: filters.search,
+    searchInput,
+    setSearchInput,
+    clearSearch,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    stageFilters: filters.stages,
+    showUnreturnedOnly: filters.unreturned,
+    showReturnedOnly: filters.returned,
+    showPickupOnly: filters.pickup,
+    showShippingOnly: filters.shipping,
+    showLateOnly: filters.late,
+    showRefund100Only: filters.refund100,
+    page,
+    orders,
+    setOrders,
+    draggingOrderId,
+    setDraggingOrderId,
+    dragOverOrderId,
+    setDragOverOrderId,
+    ordersPagination,
+    ordersTotals,
+    isLoadingMoreOrders,
+    ordersLoaderRef,
+    orderListQueryArgs,
+    isOrdersLoading,
+    hasMoreOrders,
+    dateFilterActive,
+    activeFilterCount,
+    resetOrdersFeed,
+    handleStageFilterToggle,
+    handleUnreturnedToggle,
+    handleReturnedToggle,
+    handlePickupToggle,
+    handleShippingToggle,
+    handleLateToggle,
+    handleRefund100Toggle,
+    handleDateRangeChange,
+    clearAllFilters,
+    handleDateFromChange,
+    handleDateToChange,
+    handleClearDateFilter,
+  };
 }
-

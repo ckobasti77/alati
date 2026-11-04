@@ -78,7 +78,7 @@ function OrdersContent() {
   const { editingOrder } = orderForm;
 
   const longPress = useLongPress();
-  const rowActions = useOrderRowActions({ orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, updateOrder });
+  const rowActions = useOrderRowActions({ convex, orderScope, sessionToken, stageFilters, showUnreturnedOnly, showReturnedOnly, setOrders, updateOrder });
   const formActions = useOrderFormActions({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, resetOrdersFeed, updateOrder, products, supplierMap, orderForm });
   const { resetOrderForm } = formActions;
 
@@ -149,7 +149,7 @@ function OrdersContent() {
           variant="outline"
           onClick={() => {
             feed.clearAllFilters();
-            feed.setSearch("");
+            feed.clearSearch();
           }}
         >
           Očisti filtere

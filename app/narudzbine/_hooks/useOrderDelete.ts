@@ -1,7 +1,7 @@
 "use client";
 
 // Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useConvexMutation } from "@/lib/convex";
 import type { Order } from "@/types/order";
@@ -21,6 +21,7 @@ export function useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, edit
   const [deleteCandidate, setDeleteCandidate] = useState<Order | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
+  const deletingRef = useRef(false);
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
   const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
@@ -47,7 +48,8 @@ export function useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, edit
 
   /** Vraća true kad je obrisano (ConfirmDialog ostaje otvoren na grešku). */
   const handleDelete = async (id: string) => {
-    if (isDeletingOrder) return false;
+    if (deletingRef.current) return false;
+    deletingRef.current = true;
     setIsDeletingOrder(true);
     try {
       await deleteOrder({ id, token: sessionToken, scope: orderScope });
@@ -63,6 +65,7 @@ export function useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, edit
       toast.error("Brisanje nije uspelo.");
       return false;
     } finally {
+      deletingRef.current = false;
       setIsDeletingOrder(false);
     }
   };

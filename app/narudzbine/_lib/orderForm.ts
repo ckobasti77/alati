@@ -16,7 +16,7 @@ export const orderSchema = z
         const parsed = Number(normalized);
         return Number.isFinite(parsed) ? parsed : undefined;
       },
-      z.number().min(0, "Transport je obavezan i mora biti 0 ili vise."),
+      z.number().min(0, "Transport je obavezan i mora biti 0 ili više."),
     ),
     slanjeMode: z.preprocess(
       (value) => {
@@ -39,7 +39,7 @@ export const orderSchema = z
         const parsed = Number(normalized);
         return Number.isFinite(parsed) ? parsed : undefined;
       },
-      z.number().min(0, "Pocetni iznos mora biti 0 ili vise.").optional(),
+      z.number().min(0, "Početni iznos mora biti 0 ili više.").optional(),
     ),
     myProfitPercent: z.preprocess(
       (value) => {
@@ -50,8 +50,8 @@ export const orderSchema = z
       },
       z
         .number()
-        .min(0, "Procenat profita mora biti izmedju 0 i 100.")
-        .max(100, "Procenat profita mora biti izmedju 0 i 100.")
+        .min(0, "Procenat profita mora biti između 0 i 100.")
+        .max(100, "Procenat profita mora biti između 0 i 100.")
         .optional(),
     ),
     pickup: z.boolean().optional(),
@@ -66,7 +66,7 @@ export const orderSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["customerName"],
-          message: "Ime i prezime porucioca je obavezno.",
+          message: "Ime i prezime naručioca je obavezno.",
         });
       }
       if (address.length < 5) {
@@ -85,7 +85,7 @@ export const orderSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["slanjeMode"],
-        message: "Izaberi nacin slanja.",
+        message: "Izaberi način slanja.",
       });
       return;
     }
@@ -93,7 +93,7 @@ export const orderSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["slanjeOwner"],
-        message: "Izaberi na cije ime lezu pare.",
+        message: "Izaberi na čije ime leže pare.",
       });
       return;
     }
@@ -101,7 +101,7 @@ export const orderSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["slanjeMode"],
-        message: "Izaberi nacin slanja.",
+        message: "Izaberi način slanja.",
       });
       return;
     }
@@ -119,7 +119,7 @@ export const orderSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["slanjeOwner"],
-        message: "Unesi na ciji racun lezu pare.",
+        message: "Unesi na čiji račun leže pare.",
       });
     }
   });

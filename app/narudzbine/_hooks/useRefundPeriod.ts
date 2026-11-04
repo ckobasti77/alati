@@ -1,7 +1,7 @@
 "use client";
 
 // Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import type { OrderRefundPeriodOverview } from "@/types/order";
@@ -31,6 +31,8 @@ export function useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed }: U
     token: string;
     scope: "default" | "kalaba";
   }>("orders:clearRefundPeriod");
+  // "U toku" preko ref-a (dvoklik na Sačuvaj/Ukloni).
+  const savingRef = useRef(false);
   const openRefundPeriodModal = useCallback(() => {
     setRefundPeriodStart(refundPeriodOverview?.period?.startDate ?? "");
     setRefundPeriodEnd(refundPeriodOverview?.period?.endDate ?? "");
@@ -39,14 +41,15 @@ export function useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed }: U
 
   const handleSaveRefundPeriod = useCallback(async () => {
     if (!refundPeriodStart || !refundPeriodEnd) {
-      toast.error('Izaberite oba datuma: "Od" i "Do".');
+      toast.error("Izaberi oba datuma: „Od“ i „Do“.");
       return;
     }
     if (refundPeriodStart > refundPeriodEnd) {
-      toast.error('Datum "Od" ne moze biti posle datuma "Do".');
+      toast.error("Datum „Od“ ne može biti posle datuma „Do“.");
       return;
     }
-
+    if (savingRef.current) return;
+    savingRef.current = true;
     setIsRefundPeriodSaving(true);
     try {
       await setRefundPeriod({
@@ -57,11 +60,12 @@ export function useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed }: U
       });
       resetOrdersFeed();
       setRefundPeriodModalOpen(false);
-      toast.success("Period 100% povrata je sacuvan.");
+      toast.success("Period 100% povrata je sačuvan.");
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Period nije sacuvan.");
+      toast.error(error instanceof Error ? error.message : "Period nije sačuvan.");
     } finally {
+      savingRef.current = false;
       setIsRefundPeriodSaving(false);
     }
   }, [
@@ -74,6 +78,8 @@ export function useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed }: U
   ]);
 
   const handleClearRefundPeriod = useCallback(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setIsRefundPeriodSaving(true);
     try {
       await clearRefundPeriod({ token: sessionToken, scope: orderScope });
@@ -81,11 +87,12 @@ export function useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed }: U
       setRefundPeriodStart("");
       setRefundPeriodEnd("");
       setRefundPeriodModalOpen(false);
-      toast.success("Poseban period povrata je uklonjen.");
+      toast.success("Period 100% povrata je uklonjen.");
     } catch (error) {
       console.error(error);
       toast.error("Period nije uklonjen.");
     } finally {
+      savingRef.current = false;
       setIsRefundPeriodSaving(false);
     }
   }, [clearRefundPeriod, orderScope, resetOrdersFeed, sessionToken]);

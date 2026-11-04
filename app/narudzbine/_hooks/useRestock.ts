@@ -34,6 +34,8 @@ export function useRestock({ basePath, orderScope, router, searchParams, searchP
   const [restockName, setRestockName] = useState("");
   const [restockPhone, setRestockPhone] = useState("");
   const [isCreatingRestock, setIsCreatingRestock] = useState(false);
+  // "U toku" preko ref-a (dvoklik).
+  const restockBusyRef = useRef(new Set<string>());
   const restockProductInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (restockModalOpen) return;
@@ -112,17 +114,22 @@ export function useRestock({ basePath, orderScope, router, searchParams, searchP
     }
   };
 
+  /** Vraća true kad je obrisano (ConfirmDialog ostaje otvoren na grešku). */
   const handleRestockDelete = async (id: string) => {
-    if (isDeletingRestock) return;
+    if (restockBusyRef.current.has(`delete:${id}`)) return false;
+    restockBusyRef.current.add(`delete:${id}`);
     setIsDeletingRestock(true);
     try {
       await deleteRestockRequest({ id, token: sessionToken, scope: orderScope });
       toast.success("Zahtev je obrisan.");
       closeRestockDeleteModal();
+      return true;
     } catch (error) {
       console.error(error);
       toast.error("Brisanje zahteva nije uspelo.");
+      return false;
     } finally {
+      restockBusyRef.current.delete(`delete:${id}`);
       setIsDeletingRestock(false);
     }
   };
@@ -138,7 +145,7 @@ export function useRestock({ basePath, orderScope, router, searchParams, searchP
   };
 
   const handleCreateRestockRequest = async () => {
-    if (isCreatingRestock) return;
+    if (restockBusyRef.current.has("create")) return;
     const name = restockName.trim();
     const phone = restockPhone.trim();
     const productId = restockProductId.trim();
@@ -161,6 +168,7 @@ export function useRestock({ basePath, orderScope, router, searchParams, searchP
       toast.error("Unesi broj telefona.");
       return;
     }
+    restockBusyRef.current.add("create");
     setIsCreatingRestock(true);
     try {
       await createRestockRequest({
@@ -172,12 +180,13 @@ export function useRestock({ basePath, orderScope, router, searchParams, searchP
         productTitle,
         variantLabel: selectedVariant?.label,
       });
-      toast.success("Zahtev je sacuvan.");
+      toast.success("Zahtev je sačuvan.");
       resetRestockForm();
     } catch (error) {
       console.error(error);
-      toast.error("Cuvanje zahteva nije uspelo.");
+      toast.error("Čuvanje zahteva nije uspelo.");
     } finally {
+      restockBusyRef.current.delete("create");
       setIsCreatingRestock(false);
     }
   };

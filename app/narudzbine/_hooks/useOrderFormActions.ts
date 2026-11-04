@@ -241,7 +241,7 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
 
   const handleAddItem = () => {
     if (!selectedProduct) {
-      toast.error("Izaberi proizvod koji dodajes u narudzbinu.");
+      toast.error("Izaberi proizvod koji dodaješ u narudžbinu.");
       focusOrderField("productSearch");
       return;
     }
@@ -266,12 +266,12 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
     if (useManualPurchasePrice) {
       const manualInput = manualPurchasePrice.trim();
       if (manualInput.length === 0) {
-        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
+        toast.error("Unesi ručnu nabavnu cenu (0 ili više).");
         return;
       }
       const parsed = Number(manualInput.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
-        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
+        toast.error("Unesi ručnu nabavnu cenu (0 ili više).");
         return;
       }
       nabavnaCena = parsed;
@@ -280,12 +280,12 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
     if (useManualSalePrice) {
       const manualInput = manualSalePrice.trim();
       if (manualInput.length === 0) {
-        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
+        toast.error("Unesi ručnu prodajnu cenu (0 ili više).");
         return;
       }
       const parsed = Number(manualInput.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
-        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
+        toast.error("Unesi ručnu prodajnu cenu (0 ili više).");
         return;
       }
       prodajnaCena = parsed;
@@ -422,7 +422,7 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
 
   const handleSubmitOrder = async (values: OrderFormValues) => {
     if (draftItems.length === 0) {
-      toast.error("Dodaj bar jedan proizvod u narudzbinu.");
+      toast.error("Dodaj bar jedan proizvod u narudžbinu.");
       focusOrderField("productSearch");
       return;
     }
@@ -448,7 +448,7 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
         !existingAksBexAccount;
       if (shouldCreateAksBexAccount) {
         if (values.slanjeOwnerStartingAmount === undefined) {
-          toast.error("Unesi pocetni iznos za novi racun.");
+          toast.error("Unesi početni iznos za novi račun.");
           focusOrderField("slanjeOwnerStartingAmount");
           return;
         }
@@ -492,16 +492,16 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
 
       if (editingOrder) {
         await updateOrder({ id: editingOrder._id, ...payload });
-        toast.success("Narudzbina je azurirana.");
+        toast.success("Narudžbina je ažurirana.");
         resetOrdersFeed();
       } else {
         await createOrder(payload);
-        toast.success("Narudzbina je dodata.");
+        toast.success("Narudžbina je dodata.");
       }
       resetOrderForm({ closeModal: true });
     } catch (error) {
       console.error(error);
-      toast.error("Nije moguce sacuvati narudzbinu.");
+      toast.error("Nije moguće sačuvati narudžbinu.");
     }
   };
 

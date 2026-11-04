@@ -1,7 +1,7 @@
 "use client";
 
 // Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { STAGES } from "@/lib/stages";
@@ -33,6 +33,7 @@ type UseOrdersPdfParams = {
 export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, showRefund100Only, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap }: UseOrdersPdfParams) {
   const [ordersPdfMode, setOrdersPdfMode] = useState<"download" | "share" | null>(null);
   const isOrdersPdfBusy = ordersPdfMode !== null;
+  const busyRef = useRef(false);
   const buildOrdersPdfSubtitle = useCallback(
     (count: number, total: number) => {
       const filters: string[] = [];
@@ -81,12 +82,13 @@ export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, s
 
   const handleOrdersPdf = useCallback(
     async (mode: "download" | "share") => {
-      if (isOrdersPdfBusy) return;
+      if (busyRef.current) return;
+      busyRef.current = true;
       setOrdersPdfMode(mode);
       try {
         const exportData = await fetchOrdersForPdf();
         if (exportData.orders.length === 0) {
-          toast.info("Nema narudzbina za izvoz.");
+          toast.info("Nema narudžbina za izvoz.");
           return;
         }
 
@@ -102,11 +104,11 @@ export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, s
 
         if (mode === "share") {
           const result = await sharePdfFile(file, {
-            title: "Narudzbine PDF",
-            text: "Izvoz narudzbina iz tabele.",
+            title: "Narudžbine PDF",
+            text: "Izvoz narudžbina iz tabele.",
           });
-          if (result === "shared") toast.success("PDF je poslat u share.");
-          if (result === "downloaded") toast.info("Uredjaj ne podrzava deljenje PDF fajla, PDF je preuzet.");
+          if (result === "shared") toast.success("PDF je podeljen.");
+          if (result === "downloaded") toast.info("Uređaj ne podržava deljenje PDF-a, pa je PDF preuzet.");
           return;
         }
 
@@ -116,10 +118,11 @@ export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, s
         console.error(error);
         toast.error("Izvoz PDF-a nije uspeo.");
       } finally {
+        busyRef.current = false;
         setOrdersPdfMode(null);
       }
     },
-    [buildOrdersPdfSubtitle, fetchOrdersForPdf, isOrdersPdfBusy, productMap, refundPeriodOverview?.period],
+    [buildOrdersPdfSubtitle, fetchOrdersForPdf, productMap, refundPeriodOverview?.period],
   );
 
 
