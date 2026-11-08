@@ -1,28 +1,36 @@
 "use client";
 
-import { useCallback, } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { Loader2, } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import { ArrowLeft, Clock, Copy, Download, FileText, Link2, Pencil, Share2, Trash2 } from "lucide-react";
+import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RequireAuth } from "@/components/RequireAuth";
-import { deleteConfirmPhrase, } from "../_lib/types";
-import { requiresDeleteConfirmation, } from "../_lib/helpers";
+import { HeaderActions, HeaderTitle } from "@/components/shell/ShellProvider";
 import { useOrderDetailData } from "./_hooks/useOrderDetailData";
 import { useOrderItemDraft } from "./_hooks/useOrderItemDraft";
 import { useOrderDetailUpdates } from "./_hooks/useOrderDetailUpdates";
 import { useOrderDetailDerived } from "./_hooks/useOrderDetailDerived";
 import { useOrderDetailShare } from "./_hooks/useOrderDetailShare";
 import { useOrderDetailDelete } from "./_hooks/useOrderDetailDelete";
-import { ShareDialog } from "./_components/ShareDialog";
-import { DeleteDialog } from "./_components/DeleteDialog";
-import { ShipmentDialog } from "./_components/ShipmentDialog";
-import { DetailHeader } from "./_components/DetailHeader";
-import { HistoryCard } from "./_components/HistoryCard";
-import { CustomerCardMobile } from "./_components/CustomerCardMobile";
-import { CustomerCardDesktop } from "./_components/CustomerCardDesktop";
-import { FinanceCard } from "./_components/FinanceCard";
-import { NoteCard } from "./_components/NoteCard";
-import { ItemsCard } from "./_components/ItemsCard";
+import { useOrderEditForm, type OrderEditSection } from "./_hooks/useOrderEditForm";
+import { StatusSection } from "./_components/StatusSection";
+import { CustomerSection } from "./_components/CustomerSection";
+import { ItemsSection } from "./_components/ItemsSection";
+import { MoneySection } from "./_components/MoneySection";
+import { ShippingSection } from "./_components/ShippingSection";
+import { TimelineSection } from "./_components/TimelineSection";
+import { NoteSection } from "./_components/NoteSection";
+import { OrderActionBar } from "./_components/OrderActionBar";
+import { OrderEditSheet } from "./_components/OrderEditSheet";
+import { AddItemSheet } from "./_components/AddItemSheet";
+import { DeleteOrderConfirm, ShipmentNumberSheet, StageSheet } from "./_components/OrderDetailSheets";
+
+const BASE_PATH = "/narudzbine";
+const ORDER_SCOPE = "default" as const;
 
 export default function OrderDetailsPage() {
   return (
@@ -32,112 +40,227 @@ export default function OrderDetailsPage() {
   );
 }
 
-function OrderDetailsContent() {
-  const params = useParams();
-  const basePath = "/narudzbine";
-  const backLabel = "Nazad na narudzbine";
-  const orderScope = "default";
+function useBack() {
   const router = useRouter();
-  const orderId = typeof params?.orderId === "string" ? params.orderId : "";
-  const handleBack = useCallback(() => {
+  return useCallback(() => {
     if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
       return;
     }
-    router.push(basePath);
-  }, [basePath, router]);
-
-  if (!orderId) {
-    return (
-      <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-4 text-center">
-        <p className="text-lg font-semibold text-slate-800">Nije prosledjen ID narudzbine.</p>
-        <Button onClick={handleBack}>{backLabel}</Button>
-      </div>
-    );
-  }
-
-  return <OrderDetails orderId={orderId} basePath={basePath} backLabel={backLabel} orderScope={orderScope} />;
+    router.push(BASE_PATH);
+  }, [router]);
 }
 
-function OrderDetails({
-  orderId,
-  basePath,
-  backLabel,
-  orderScope,
-}: {
-  orderId: string;
-  basePath: string;
-  backLabel: string;
-  orderScope: "default" | "kalaba";
-}) {
-  const router = useRouter();
-  const handleBack = useCallback(() => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
-      return;
-    }
-    router.push(basePath);
-  }, [basePath, router]);
-  const { sessionToken, updateOrder, setManualRefund100, deleteOrder, refundPeriodOverview, products, suppliers, shippingOwners, order, setOrder, isLoading, copyText } = useOrderDetailData({ orderId, orderScope });
-  const { productInput, setProductInput, setProductSearch, productMenuOpen, setProductMenuOpen, setItemProductId, itemVariantId, setItemVariantId, itemSupplierId, setItemSupplierId, itemQuantity, setItemQuantity, useManualPurchasePrice, setUseManualPurchasePrice, manualPurchasePrice, setManualPurchasePrice, useManualSalePrice, setUseManualSalePrice, manualSalePrice, setManualSalePrice, productInputRef, supplierMap, filteredProducts, selectedProduct, selectedVariants, selectedVariantForPreview, supplierOptionsWithNames, bestSupplierOption, resetItemDraft } = useOrderItemDraft({ products, suppliers });
-
-
-
-
-
-
-  const { isUpdatingStage, isAddingItem, isManualRefundSaving, shipmentStageModalOpen, shipmentNumberDraft, setShipmentNumberDraft, isShipmentStageSaving, handleOrderFieldSave, handlePickupToggle, handleAddItem, handleRemoveItem, closeShipmentStageModal, handleShipmentStageSubmit, handleStageChange, handlePovratToggle, handleManualRefund100Toggle } = useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, setManualRefund100, order, setOrder, itemVariantId, itemSupplierId, itemQuantity, useManualPurchasePrice, manualPurchasePrice, useManualSalePrice, manualSalePrice, productInputRef, supplierMap, selectedProduct, resetItemDraft });
-  const { totals, prodajnoUkupno, nabavnoUkupno, transport, prof, slanjeOwnerLabel, slanjeOwnerPlaceholder, isAksBexMode, aksBexOwnerOptions, aksBexOwnerQuickOptions, normalizedSlanjeOwnerLookupKey, myProfitPercent, myProfit, profitShare, calculatedProfitShare, profitSharePercent, povrat, calculatedPovrat, isInRefundPeriod, isManualRefund100, isFullRefund100, isExcludedBecauseReturned, telHref, shipmentNumber, hasShipmentNumber } = useOrderDetailDerived({ refundPeriodOverview, shippingOwners, order });
-  const { shareOpen, setShareOpen, orderPdfMode, canShare, handleCopyShareLink, handleShareLink, isOrderPdfBusy, handleOrderPdf, handleShipmentNumberCopy } = useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUkupno, transport, prof, profitShare, profitSharePercent, povrat, calculatedPovrat, isManualRefund100, isFullRefund100, isExcludedBecauseReturned, shipmentNumber, hasShipmentNumber });
-  const { deleteModalOpen, deleteConfirmText, setDeleteConfirmText, isDeletingOrder, openDeleteModal, closeDeleteModal, handleDeleteModalOpenChange, handleDeleteOrder } = useOrderDetailDelete({ handleBack, orderScope, sessionToken, deleteOrder, order });
-  if (isLoading) {
+function OrderDetailsContent() {
+  const params = useParams();
+  const orderId = typeof params?.orderId === "string" ? params.orderId : "";
+  const handleBack = useBack();
+  if (!orderId) {
     return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 shadow-sm">
-          <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
-          <span className="text-sm text-slate-600">Ucitavanje narudzbine...</span>
-        </div>
-      </div>
+      <EmptyState
+        title="Nije prosleđen ID narudžbine."
+        action={<Button onClick={handleBack}>Nazad na narudžbine</Button>}
+        className="mx-auto mt-16 max-w-md"
+      />
     );
   }
+  return <OrderDetails orderId={orderId} />;
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="mx-auto max-w-7xl space-y-3 md:space-y-6" aria-busy="true" aria-label="Učitavanje narudžbine">
+      <Skeleton className="hidden h-8 w-2/3 md:block" />
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_380px] md:gap-6">
+        <div className="space-y-3 md:space-y-6">
+          <Skeleton className="h-36 rounded-2xl" />
+          <Skeleton className="h-44 rounded-2xl" />
+        </div>
+        <Skeleton className="h-96 rounded-2xl" />
+      </div>
+    </div>
+  );
+}
+
+function OrderDetails({ orderId }: { orderId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const handleBack = useBack();
+  const data = useOrderDetailData({ orderId, orderScope: ORDER_SCOPE });
+  const { sessionToken, updateOrder, setManualRefund100, deleteOrder, refundPeriodOverview, products, shippingOwners, order, setOrder, isLoading, copyText } = data;
+  const draft = useOrderItemDraft({ products, suppliers: data.suppliers });
+  const updates = useOrderDetailUpdates({ orderScope: ORDER_SCOPE, sessionToken, updateOrder, setManualRefund100, order, setOrder, draft });
+  const derived = useOrderDetailDerived({ refundPeriodOverview, shippingOwners, order });
+  const share = useOrderDetailShare({ order, copyText, ...derived });
+  const orderDelete = useOrderDetailDelete({ handleBack, orderScope: ORDER_SCOPE, sessionToken, deleteOrder, order });
+  const edit = useOrderEditForm({ order, applyOrderUpdate: updates.applyOrderUpdate });
+  const [addOpen, setAddOpen] = useState(false);
+  const [stageOpen, setStageOpen] = useState(false);
+
+  // "Izmeni" iz ⋯ u listi vodi ovde sa ?izmeni=1: forma se otvara jednom, kad stigne narudžbina, pa se parametar čisti.
+  const openEditFromUrl = useEffectEvent(() => {
+    if (!order || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("izmeni") !== "1") return;
+    params.delete("izmeni");
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+    edit.openEdit();
+  });
+  const hasOrder = Boolean(order);
+  useEffect(() => {
+    if (hasOrder) openEditFromUrl();
+  }, [hasOrder]);
+
+  if (isLoading) return <DetailSkeleton />;
 
   if (!order) {
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-4 text-center">
-        <p className="text-lg font-semibold text-slate-800">Narudzbina nije pronadjena.</p>
-        <p className="text-sm text-slate-500">Proveri link ili se vrati na listu narudzbina.</p>
-        <Button onClick={handleBack}>{backLabel}</Button>
-      </div>
+      <EmptyState
+        title="Narudžbina nije pronađena."
+        description="Proveri link ili se vrati na listu narudžbina."
+        action={<Button onClick={handleBack}>Nazad na narudžbine</Button>}
+        className="mx-auto mt-16 max-w-md"
+      />
     );
   }
 
-  const deleteRequiresConfirmation = requiresDeleteConfirmation(order.stage);
-  const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
-  const isDeleteDisabled = isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
-
-  const mainImage = (() => {
-    const images = order.product?.images ?? [];
-    return images.find((image) => image.isMain) ?? images[0];
-  })();
+  const openEdit = (section?: OrderEditSection) => edit.openEdit(section);
+  const isSent = order.stage === "poslato";
+  const menuItems: ActionMenuItem[] = [
+    { label: "Izmeni", icon: Pencil, onSelect: () => openEdit() },
+    ...(isSent
+      ? [
+          {
+            label: order.kasni ? "Ukloni oznaku kašnjenja" : "Označi da kasni",
+            icon: Clock,
+            disabled: updates.isKasniSaving,
+            onSelect: () => void updates.handleKasniToggle(!order.kasni),
+          },
+        ]
+      : []),
+    { label: "Kopiraj telefon", icon: Copy, disabled: !order.phone, onSelect: () => void copyText(order.phone, "Broj telefona je kopiran."), separatorBefore: true },
+    { label: "Kopiraj ID", icon: Copy, onSelect: () => void copyText(order._id, "ID narudžbine je kopiran.") },
+    { label: "Kopiraj link", icon: Link2, onSelect: () => void share.handleCopyShareLink() },
+    { label: "Preuzmi PDF", icon: Download, disabled: share.isOrderPdfBusy, onSelect: () => void share.handleOrderPdf("download"), separatorBefore: true },
+    { label: "Podeli PDF", icon: FileText, disabled: share.isOrderPdfBusy, onSelect: () => void share.handleOrderPdf("share") },
+    ...(share.canShare ? [{ label: "Podeli link", icon: Share2, onSelect: () => void share.handleShareLink() }] : []),
+    { label: "Obriši", icon: Trash2, destructive: true, separatorBefore: true, onSelect: orderDelete.openDeleteModal },
+  ];
+  const menuLabel = "Akcije narudžbine";
 
   return (
-    <div className="mx-auto space-y-6">
-      <ShareDialog shareOpen={shareOpen} setShareOpen={setShareOpen} orderPdfMode={orderPdfMode} canShare={canShare} handleCopyShareLink={handleCopyShareLink} handleShareLink={handleShareLink} isOrderPdfBusy={isOrderPdfBusy} handleOrderPdf={handleOrderPdf} />
-      <DeleteDialog order={order} deleteModalOpen={deleteModalOpen} deleteConfirmText={deleteConfirmText} setDeleteConfirmText={setDeleteConfirmText} isDeletingOrder={isDeletingOrder} closeDeleteModal={closeDeleteModal} handleDeleteModalOpenChange={handleDeleteModalOpenChange} handleDeleteOrder={handleDeleteOrder} deleteRequiresConfirmation={deleteRequiresConfirmation} isDeleteDisabled={isDeleteDisabled} />
-      <ShipmentDialog order={order} shipmentStageModalOpen={shipmentStageModalOpen} shipmentNumberDraft={shipmentNumberDraft} setShipmentNumberDraft={setShipmentNumberDraft} isShipmentStageSaving={isShipmentStageSaving} closeShipmentStageModal={closeShipmentStageModal} handleShipmentStageSubmit={handleShipmentStageSubmit} />
-      <DetailHeader order={order} isUpdatingStage={isUpdatingStage} handleStageChange={handleStageChange} isManualRefund100={isManualRefund100} isFullRefund100={isFullRefund100} isExcludedBecauseReturned={isExcludedBecauseReturned} setShareOpen={setShareOpen} openDeleteModal={openDeleteModal} handleBack={handleBack} backLabel={backLabel} />
+    <>
+      <HeaderTitle>
+        <span className="line-clamp-2 text-[15px] leading-[19px] whitespace-normal">{order.title}</span>
+      </HeaderTitle>
+      <HeaderActions>
+        <ActionMenu items={menuItems} label={menuLabel} />
+      </HeaderActions>
 
-      <HistoryCard order={order} />
-      <ItemsCard products={products} order={order} productInput={productInput} setProductInput={setProductInput} setProductSearch={setProductSearch} productMenuOpen={productMenuOpen} setProductMenuOpen={setProductMenuOpen} setItemProductId={setItemProductId} itemVariantId={itemVariantId} setItemVariantId={setItemVariantId} itemSupplierId={itemSupplierId} setItemSupplierId={setItemSupplierId} itemQuantity={itemQuantity} setItemQuantity={setItemQuantity} useManualPurchasePrice={useManualPurchasePrice} setUseManualPurchasePrice={setUseManualPurchasePrice} manualPurchasePrice={manualPurchasePrice} setManualPurchasePrice={setManualPurchasePrice} useManualSalePrice={useManualSalePrice} setUseManualSalePrice={setUseManualSalePrice} manualSalePrice={manualSalePrice} setManualSalePrice={setManualSalePrice} productInputRef={productInputRef} filteredProducts={filteredProducts} selectedProduct={selectedProduct} selectedVariants={selectedVariants} selectedVariantForPreview={selectedVariantForPreview} supplierOptionsWithNames={supplierOptionsWithNames} bestSupplierOption={bestSupplierOption} resetItemDraft={resetItemDraft} isAddingItem={isAddingItem} handleOrderFieldSave={handleOrderFieldSave} handleAddItem={handleAddItem} handleRemoveItem={handleRemoveItem} />
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 hidden items-start gap-4 md:flex">
+          <div className="min-w-0 flex-1">
+            <Link
+              href={BASE_PATH}
+              onClick={(event) => {
+                event.preventDefault();
+                handleBack();
+              }}
+              className="-ml-2 inline-flex h-9 items-center gap-1.5 rounded-xl px-2 text-sm text-text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <ArrowLeft className="size-4" aria-hidden />
+              Narudžbine
+            </Link>
+            <h1 className="mt-1 line-clamp-2 text-2xl font-semibold tracking-tight text-text">{order.title}</h1>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 pt-10">
+            <Button type="button" variant="outline" className="gap-2 rounded-xl" onClick={() => openEdit()}>
+              <Pencil className="size-4" aria-hidden />
+              Izmeni
+            </Button>
+            <ActionMenu items={menuItems} label={menuLabel} />
+          </div>
+        </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <CustomerCardMobile order={order} handleOrderFieldSave={handleOrderFieldSave} handlePickupToggle={handlePickupToggle} transport={transport} slanjeOwnerLabel={slanjeOwnerLabel} slanjeOwnerPlaceholder={slanjeOwnerPlaceholder} isAksBexMode={isAksBexMode} aksBexOwnerOptions={aksBexOwnerOptions} aksBexOwnerQuickOptions={aksBexOwnerQuickOptions} normalizedSlanjeOwnerLookupKey={normalizedSlanjeOwnerLookupKey} shipmentNumber={shipmentNumber} hasShipmentNumber={hasShipmentNumber} handleShipmentNumberCopy={handleShipmentNumberCopy} />
-        <CustomerCardDesktop order={order} handleOrderFieldSave={handleOrderFieldSave} handlePickupToggle={handlePickupToggle} transport={transport} slanjeOwnerLabel={slanjeOwnerLabel} slanjeOwnerPlaceholder={slanjeOwnerPlaceholder} isAksBexMode={isAksBexMode} aksBexOwnerOptions={aksBexOwnerOptions} aksBexOwnerQuickOptions={aksBexOwnerQuickOptions} normalizedSlanjeOwnerLookupKey={normalizedSlanjeOwnerLookupKey} shipmentNumber={shipmentNumber} hasShipmentNumber={hasShipmentNumber} handleShipmentNumberCopy={handleShipmentNumberCopy} />
+        {/* Telefon: jedna kolona, redosled preko order-*. Desktop: levo stavke/tok/napomena, desno sticky kartica. */}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_380px] md:items-start md:gap-6">
+          <div className="contents md:block md:space-y-6">
+            <ItemsSection className="order-3 md:order-none" order={order} onAdd={() => setAddOpen(true)} onRemove={updates.handleRemoveItem} />
+            <ShippingSection
+              className="order-5 md:order-none"
+              order={order}
+              shipmentNumber={derived.shipmentNumber}
+              copyText={copyText}
+              onTrack={() => void share.handleShipmentNumberCopy()}
+              onEdit={() => openEdit("slanje")}
+            />
+            <TimelineSection className="order-6 md:order-none" order={order} />
+            <NoteSection className="order-7 md:order-none" order={order} onEdit={() => openEdit("napomena")} />
+          </div>
+          <aside
+            aria-label="Pregled narudžbine"
+            className="contents md:sticky md:top-[calc(var(--header-h)+24px)] md:block md:max-h-[calc(100dvh-var(--header-h)-48px)] md:divide-y md:divide-border md:overflow-y-auto md:rounded-2xl md:bg-surface md:p-5 md:ring-1 md:ring-border"
+          >
+            <StatusSection
+              aside
+              className="order-1 md:order-none"
+              order={order}
+              isUpdatingStage={updates.isUpdatingStage}
+              onStageChange={(stage) => void updates.handleStageChange(stage)}
+              isFullRefund100={derived.isFullRefund100}
+              isManualRefund100={derived.isManualRefund100}
+              isExcludedBecauseReturned={derived.isExcludedBecauseReturned}
+            />
+            <MoneySection
+              aside
+              className="order-4 md:order-none"
+              order={order}
+              derived={derived}
+              refundPeriodOverview={refundPeriodOverview}
+              isManualRefundSaving={updates.isManualRefundSaving}
+              onPovratToggle={(value) => void updates.handlePovratToggle(value)}
+              onManualRefund100Toggle={(value) => void updates.handleManualRefund100Toggle(value)}
+              onEdit={() => openEdit("novac")}
+            />
+            <CustomerSection aside className="order-2 md:order-none" order={order} copyText={copyText} onEdit={() => openEdit("kupac")} />
 
-        <FinanceCard refundPeriodOverview={refundPeriodOverview} order={order} isManualRefundSaving={isManualRefundSaving} handleOrderFieldSave={handleOrderFieldSave} handlePovratToggle={handlePovratToggle} handleManualRefund100Toggle={handleManualRefund100Toggle} totals={totals} prodajnoUkupno={prodajnoUkupno} nabavnoUkupno={nabavnoUkupno} transport={transport} prof={prof} myProfitPercent={myProfitPercent} myProfit={myProfit} profitShare={profitShare} calculatedProfitShare={calculatedProfitShare} profitSharePercent={profitSharePercent} povrat={povrat} calculatedPovrat={calculatedPovrat} isInRefundPeriod={isInRefundPeriod} isManualRefund100={isManualRefund100} isFullRefund100={isFullRefund100} isExcludedBecauseReturned={isExcludedBecauseReturned} />
+            <div className="hidden gap-2 pt-4 md:flex">
+              <Button type="button" variant="outline" className="flex-1 gap-2 rounded-xl" disabled={!order.phone} onClick={() => void copyText(order.phone, "Broj telefona je kopiran.")}>
+                <Copy className="size-4" aria-hidden />
+                Kopiraj broj
+              </Button>
+              <Button type="button" className="flex-1 gap-2 rounded-xl" onClick={() => openEdit()}>
+                <Pencil className="size-4" aria-hidden />
+                Izmeni
+              </Button>
+            </div>
+          </aside>
+        </div>
+        {/* Prostor da sticky traka akcija ne prekrije poslednju karticu. */}
+        <div aria-hidden className="h-20 md:hidden" />
       </div>
 
-      <NoteCard order={order} handleOrderFieldSave={handleOrderFieldSave} telHref={telHref} />
-    </div>
+      <OrderActionBar
+        phone={order.phone ?? ""}
+        hasShipmentNumber={derived.hasShipmentNumber}
+        onCopyPhone={() => void copyText(order.phone, "Broj telefona je kopiran.")}
+        onStatus={() => setStageOpen(true)}
+        onTrack={() => void share.handleShipmentNumberCopy()}
+      />
+
+      <StageSheet open={stageOpen} onOpenChange={setStageOpen} stage={order.stage} onSelect={(stage) => void updates.handleStageChange(stage)} />
+      <ShipmentNumberSheet order={order} updates={updates} />
+      <OrderEditSheet order={order} edit={edit} shippingOwners={shippingOwners} />
+      <AddItemSheet
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        draft={draft}
+        products={products}
+        isAddingItem={updates.isAddingItem}
+        onAdd={updates.handleAddItem}
+      />
+      <DeleteOrderConfirm order={order} orderDelete={orderDelete} />
+    </>
   );
 }

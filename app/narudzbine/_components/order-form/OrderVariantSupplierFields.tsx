@@ -7,8 +7,14 @@ import { cn } from "@/lib/utils";
 import { composeVariantLabel, resolveVariantPurchasePrice } from "../../_lib/helpers";
 import type { useOrderForm } from "../../_hooks/useOrderForm";
 
+/** Deo stanja forme za tip i dobavljača (isti oblik ima i nacrt stavke na detalju narudžbine). */
+export type VariantSupplierState = Pick<
+  ReturnType<typeof useOrderForm>,
+  "setProductInput" | "setProductMenuOpen" | "itemVariantId" | "setItemVariantId" | "itemSupplierId" | "setItemSupplierId" | "selectedProduct" | "selectedVariants" | "supplierOptionsWithNames" | "bestSupplierOption"
+>;
+
 type OrderVariantSupplierFieldsProps = {
-  orderForm: ReturnType<typeof useOrderForm>;
+  orderForm: VariantSupplierState;
 };
 
 /** Tip (varijanta) kao kartice-radio dugmad i dobavljač (native select). */

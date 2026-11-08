@@ -45,7 +45,7 @@ export function OrderActionsMenu({ entry, className }: { entry: OrderEntry; clas
   const position = positionOf(order._id);
 
   const items: ActionMenuItem[] = [
-    { label: "Izmeni", icon: Pencil, href: orderHref(order._id) },
+    { label: "Izmeni", icon: Pencil, href: `${orderHref(order._id)}?izmeni=1` },
     { label: "Transport…", icon: Truck, onSelect: () => rowActions.openQuickEdit(order, "transport"), separatorBefore: true },
     { label: "Profit %…", icon: Percent, onSelect: () => rowActions.openQuickEdit(order, "profit") },
     { label: "Kupac i telefon…", icon: UserRound, onSelect: () => rowActions.openQuickEdit(order, "contact") },

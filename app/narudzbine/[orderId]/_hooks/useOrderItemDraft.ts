@@ -1,7 +1,6 @@
 "use client";
 
-// Doslovno izvuceno iz app/narudzbine/[orderId]/page.tsx (refaktor bez promene ponasanja).
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { matchesAllTokensInNormalizedText, normalizeSearchText, toSearchTokens } from "@/lib/search";
 import { composeVariantLabel, getProductDisplayName, getProductVariants, pickBestSupplier, resolveSupplierOptions } from "../../_lib/helpers";
 import type { useOrderDetailData } from "./useOrderDetailData";
@@ -71,37 +70,27 @@ export function useOrderItemDraft({ products, suppliers }: UseOrderItemDraftPara
   );
   const bestSupplierOption = useMemo(() => pickBestSupplier(supplierOptionsWithNames), [supplierOptionsWithNames]);
 
-  useEffect(() => {
-    if (!selectedProduct || selectedVariants.length === 0) {
-      if (itemVariantId) {
-        setItemVariantId("");
-      }
-      return;
+  // Usklađivanje izbora tokom rendera (umesto efekata): tip mora da postoji u izabranom proizvodu,
+  // a dobavljač u ponudama tog tipa. Pravila su ista kao ranije.
+  if (!selectedProduct || selectedVariants.length === 0) {
+    if (itemVariantId) setItemVariantId("");
+  } else if (!selectedVariants.some((variant) => variant.id === itemVariantId)) {
+    const fallbackVariant = selectedVariants.find((variant) => variant.isDefault) ?? selectedVariants[0];
+    if (fallbackVariant) {
+      setItemVariantId(fallbackVariant.id);
+      setProductInput(composeVariantLabel(selectedProduct, fallbackVariant));
     }
-    const selectedExists = selectedVariants.some((variant) => variant.id === itemVariantId);
-    if (!selectedExists) {
-      const fallbackVariant = selectedVariants.find((variant) => variant.isDefault) ?? selectedVariants[0];
-      if (fallbackVariant) {
-        setItemVariantId(fallbackVariant.id);
-        setProductInput(composeVariantLabel(selectedProduct, fallbackVariant));
-      }
-    }
-  }, [itemVariantId, selectedProduct, selectedVariants]);
+  }
+  const supplierTarget =
+    supplierOptionsWithNames.length === 0
+      ? ""
+      : supplierOptionsWithNames.length === 1
+        ? supplierOptionsWithNames[0].supplierId
+        : supplierOptionsWithNames.some((option) => option.supplierId === itemSupplierId)
+          ? itemSupplierId
+          : "";
+  if (supplierTarget !== itemSupplierId) setItemSupplierId(supplierTarget);
 
-  useEffect(() => {
-    if (supplierOptionsWithNames.length === 0) {
-      setItemSupplierId("");
-      return;
-    }
-    if (supplierOptionsWithNames.length === 1) {
-      setItemSupplierId(supplierOptionsWithNames[0].supplierId);
-      return;
-    }
-    const hasCurrent = supplierOptionsWithNames.some((option) => option.supplierId === itemSupplierId);
-    if (!hasCurrent) {
-      setItemSupplierId("");
-    }
-  }, [itemSupplierId, supplierOptionsWithNames]);
   const resetItemDraft = () => {
     setItemProductId("");
     setItemVariantId("");
@@ -115,7 +104,6 @@ export function useOrderItemDraft({ products, suppliers }: UseOrderItemDraftPara
     setProductSearch("");
     setProductMenuOpen(false);
   };
-
 
   return { productInput, setProductInput, setProductSearch, productMenuOpen, setProductMenuOpen, setItemProductId, itemVariantId, setItemVariantId, itemSupplierId, setItemSupplierId, itemQuantity, setItemQuantity, useManualPurchasePrice, setUseManualPurchasePrice, manualPurchasePrice, setManualPurchasePrice, useManualSalePrice, setUseManualSalePrice, manualSalePrice, setManualSalePrice, productInputRef, supplierMap, filteredProducts, selectedProduct, selectedVariants, selectedVariantForPreview, supplierOptionsWithNames, bestSupplierOption, resetItemDraft };
 }

@@ -1,11 +1,9 @@
 "use client";
 
-// Doslovno izvuceno iz app/narudzbine/[orderId]/page.tsx (refaktor bez promene ponasanja).
-import { useCallback, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
-import type { OrderStage, OrderWithProduct } from "@/types/order";
+import type { OrderItem, OrderStage, OrderWithProduct } from "@/types/order";
 import { resolveShipmentNumber } from "../_lib/detailHelpers";
-import { slanjeModes } from "../../_lib/types";
 import { composeVariantLabel, generateId, getProductDisplayName, pickBestSupplier, resolveSupplierOptions } from "../../_lib/helpers";
 import type { useOrderDetailData } from "./useOrderDetailData";
 import type { useOrderItemDraft } from "./useOrderItemDraft";
@@ -17,26 +15,35 @@ type UseOrderDetailUpdatesParams = {
   setManualRefund100: ReturnType<typeof useOrderDetailData>["setManualRefund100"];
   order: ReturnType<typeof useOrderDetailData>["order"];
   setOrder: ReturnType<typeof useOrderDetailData>["setOrder"];
-  itemVariantId: ReturnType<typeof useOrderItemDraft>["itemVariantId"];
-  itemSupplierId: ReturnType<typeof useOrderItemDraft>["itemSupplierId"];
-  itemQuantity: ReturnType<typeof useOrderItemDraft>["itemQuantity"];
-  useManualPurchasePrice: ReturnType<typeof useOrderItemDraft>["useManualPurchasePrice"];
-  manualPurchasePrice: ReturnType<typeof useOrderItemDraft>["manualPurchasePrice"];
-  useManualSalePrice: ReturnType<typeof useOrderItemDraft>["useManualSalePrice"];
-  manualSalePrice: ReturnType<typeof useOrderItemDraft>["manualSalePrice"];
-  productInputRef: ReturnType<typeof useOrderItemDraft>["productInputRef"];
-  supplierMap: ReturnType<typeof useOrderItemDraft>["supplierMap"];
-  selectedProduct: ReturnType<typeof useOrderItemDraft>["selectedProduct"];
-  resetItemDraft: ReturnType<typeof useOrderItemDraft>["resetItemDraft"];
+  draft: ReturnType<typeof useOrderItemDraft>;
 };
 
-export function useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, setManualRefund100, order, setOrder, itemVariantId, itemSupplierId, itemQuantity, useManualPurchasePrice, manualPurchasePrice, useManualSalePrice, manualSalePrice, productInputRef, supplierMap, selectedProduct, resetItemDraft }: UseOrderDetailUpdatesParams) {
+/**
+ * Sve izmene narudžbine na detalju. Svaka ide kroz `applyOrderUpdate`: optimistički lokalni red, pun
+ * `orders:update` payload iz lokalne kopije, rollback na grešku (isto kao ranije). Ručni 100% ima svoju mutaciju.
+ */
+export function useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, setManualRefund100, order, setOrder, draft }: UseOrderDetailUpdatesParams) {
+  const { itemVariantId, itemSupplierId, itemQuantity, useManualPurchasePrice, manualPurchasePrice, useManualSalePrice, manualSalePrice, productInputRef, supplierMap, selectedProduct, resetItemDraft } = draft;
   const [isUpdatingStage, setIsUpdatingStage] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [isManualRefundSaving, setIsManualRefundSaving] = useState(false);
+  const [isKasniSaving, setIsKasniSaving] = useState(false);
   const [shipmentStageModalOpen, setShipmentStageModalOpen] = useState(false);
   const [shipmentNumberDraft, setShipmentNumberDraft] = useState("");
   const [isShipmentStageSaving, setIsShipmentStageSaving] = useState(false);
+  // "U toku" preko ref-a: dvoklik ne šalje dve izmene (state stiže tek u sledećem renderu).
+  const inFlightRef = useRef(new Set<string>());
+
+  const runGuarded = async (key: string, task: () => Promise<void>) => {
+    if (inFlightRef.current.has(key)) return;
+    inFlightRef.current.add(key);
+    try {
+      await task();
+    } finally {
+      inFlightRef.current.delete(key);
+    }
+  };
+
   const buildOrderUpdatePayload = (current: OrderWithProduct) => ({
     token: sessionToken,
     id: current._id,
@@ -60,17 +67,17 @@ export function useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, s
     address: current.address,
     phone: current.phone,
     povratVracen: current.povratVracen,
+    // Isto kao lista (updateFromFresh): server ga i inače čuva, a ovako može i da se menja sa detalja.
+    kasni: current.kasni,
     pickup: current.pickup ?? false,
-    items: current.items?.map((item) => {
-      const { product, ...rest } = item as any;
+    items: current.items?.map((item): OrderItem => {
+      const rest: OrderItem & { product?: unknown } = { ...item };
+      delete rest.product;
       return rest;
     }),
   });
 
-  const applyOrderUpdate = async (
-    updater: (current: OrderWithProduct) => OrderWithProduct,
-    successMessage?: string,
-  ) => {
+  const applyOrderUpdate = async (updater: (current: OrderWithProduct) => OrderWithProduct, successMessage?: string) => {
     if (!order) return;
     const previous = order;
     const next = updater(previous);
@@ -83,147 +90,16 @@ export function useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, s
     } catch (error) {
       console.error(error);
       setOrder(previous);
-      toast.error("Cuvanje nije uspelo.");
+      toast.error("Čuvanje nije uspelo.");
       throw error;
     }
   };
 
-  const handleOrderFieldSave = async (
-    field:
-      | "title"
-      | "variantLabel"
-      | "kolicina"
-      | "nabavnaCena"
-      | "prodajnaCena"
-      | "transportCost"
-      | "slanjeMode"
-      | "slanjeOwner"
-      | "myProfitPercent"
-      | "customerName"
-      | "address"
-      | "phone"
-      | "napomena",
-    value: string,
-  ) => {
-    if (!order) return;
-    const trimmed = value.trim();
-
-    const parseNumber = (input: string) => Number(input.replace(",", "."));
-
-    if (field === "kolicina") {
-      const qty = Number.parseInt(trimmed, 10);
-      if (!Number.isFinite(qty) || qty < 1) {
-        toast.error("Kolicina mora biti 1 ili vise.");
-        throw new Error("Invalid quantity");
-      }
-      await applyOrderUpdate((current) => ({ ...current, kolicina: qty }), "Sacuvano.");
-      return;
-    }
-
-    if (field === "nabavnaCena" || field === "prodajnaCena") {
-      const price = parseNumber(trimmed);
-      if (!Number.isFinite(price) || price < 0) {
-        toast.error("Cena mora biti 0 ili vise.");
-        throw new Error("Invalid price");
-      }
-      await applyOrderUpdate((current) => ({ ...current, [field]: price }), "Sacuvano.");
-      return;
-    }
-
-    if (field === "transportCost") {
-      if (!trimmed) {
-        await applyOrderUpdate((current) => ({ ...current, transportCost: undefined }), "Sacuvano.");
-        return;
-      }
-      const cost = parseNumber(trimmed);
-      if (!Number.isFinite(cost) || cost < 0) {
-        toast.error("Transport mora biti 0 ili vise.");
-        throw new Error("Invalid transport");
-      }
-      await applyOrderUpdate((current) => ({ ...current, transportCost: cost }), "Sacuvano.");
-      return;
-    }
-
-    if (field === "myProfitPercent") {
-      if (!trimmed) {
-        toast.error("Unesi procenat profita.");
-        throw new Error("Invalid percent");
-      }
-      const percent = parseNumber(trimmed);
-      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-        toast.error("Procenat mora biti izmedju 0 i 100.");
-        throw new Error("Invalid percent");
-      }
-      await applyOrderUpdate((current) => ({ ...current, myProfitPercent: percent }), "Sacuvano.");
-      return;
-    }
-
-    if (field === "slanjeMode") {
-      const normalized = slanjeModes.find((mode) => mode.toLowerCase() === trimmed.toLowerCase());
-      await applyOrderUpdate(
-        (current) => ({
-          ...current,
-          slanjeMode: normalized,
-          slanjeOwner: normalized ? current.slanjeOwner : undefined,
-        }),
-        "Sacuvano.",
-      );
-      return;
-    }
-
-    if (field === "slanjeOwner") {
-      if (!order.slanjeMode) {
-        toast.error("Prvo izaberi slanje.");
-        throw new Error("Missing slanje");
-      }
-      if (!trimmed) {
-        await applyOrderUpdate((current) => ({ ...current, slanjeOwner: undefined }), "Sacuvano.");
-        return;
-      }
-      await applyOrderUpdate((current) => ({ ...current, slanjeOwner: trimmed }), "Sacuvano.");
-      return;
-    }
-
-    if (field === "napomena") {
-      await applyOrderUpdate(
-        (current) => ({
-          ...current,
-          napomena: trimmed.length === 0 ? undefined : trimmed,
-        }),
-        "Sacuvano.",
-      );
-      return;
-    }
-
-    if (field === "variantLabel") {
-      await applyOrderUpdate((current) => ({ ...current, variantLabel: trimmed || undefined }), "Sacuvano.");
-      return;
-    }
-
-    if (field === "title" || field === "customerName" || field === "address" || field === "phone") {
-      if (trimmed.length < 2) {
-        toast.error("Popuni polje.");
-        throw new Error("Invalid field");
-      }
-      await applyOrderUpdate((current) => ({ ...current, [field]: trimmed }), "Sacuvano.");
-    }
-  };
-
-  const handlePickupToggle = async (value: boolean) => {
-    await applyOrderUpdate(
-      (current) => ({
-        ...current,
-        pickup: value,
-      }),
-      "Sacuvano.",
-    );
-  };
-
   const handleAddItem = async () => {
     if (!order) return;
-    if (isAddingItem) return;
+    if (isAddingItem || inFlightRef.current.has("item")) return;
     if (!selectedProduct) {
-      toast.error("Izaberi proizvod koji dodajes u narudzbinu.");
+      toast.error("Izaberi proizvod koji dodaješ u narudžbinu.");
       productInputRef.current?.focus();
       return;
     }
@@ -240,20 +116,15 @@ export function useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, s
     const bestSupplierLocal = pickBestSupplier(supplierOptionsWithNamesLocal);
     const supplierId =
       itemSupplierId || (supplierOptionsWithNamesLocal.length === 1 ? supplierOptionsWithNamesLocal[0].supplierId : undefined);
-    const supplierPrice =
-      supplierId
-        ? supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ?? bestSupplierLocal?.price
-        : bestSupplierLocal?.price;
+    const supplierPrice = supplierId
+      ? (supplierOptionsWithNamesLocal.find((option) => option.supplierId === supplierId)?.price ?? bestSupplierLocal?.price)
+      : bestSupplierLocal?.price;
     let nabavnaCena = supplierPrice ?? variant?.nabavnaCena ?? selectedProduct.nabavnaCena;
     if (useManualPurchasePrice) {
       const manualInput = manualPurchasePrice.trim();
-      if (manualInput.length === 0) {
-        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
-        return;
-      }
       const parsed = Number(manualInput.replace(",", "."));
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        toast.error("Unesi rucnu nabavnu cenu (0 ili vise).");
+      if (manualInput.length === 0 || !Number.isFinite(parsed) || parsed < 0) {
+        toast.error("Unesi ručnu nabavnu cenu (0 ili više).");
         return;
       }
       nabavnaCena = parsed;
@@ -261,13 +132,9 @@ export function useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, s
     let prodajnaCena = variant?.prodajnaCena ?? selectedProduct.prodajnaCena;
     if (useManualSalePrice) {
       const manualInput = manualSalePrice.trim();
-      if (manualInput.length === 0) {
-        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
-        return;
-      }
       const parsed = Number(manualInput.replace(",", "."));
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        toast.error("Unesi rucnu prodajnu cenu (0 ili vise).");
+      if (manualInput.length === 0 || !Number.isFinite(parsed) || parsed < 0) {
+        toast.error("Unesi ručnu prodajnu cenu (0 ili više).");
         return;
       }
       prodajnaCena = parsed;
@@ -290,64 +157,64 @@ export function useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, s
       product: selectedProduct,
     };
 
-    setIsAddingItem(true);
-    try {
-      await applyOrderUpdate(
-        (current) => ({
-          ...current,
-          items: [...(current.items ?? []), newItem],
-        }),
-        "Stavka je dodata.",
-      );
-      resetItemDraft();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsAddingItem(false);
-    }
+    let added = false;
+    await runGuarded("item", async () => {
+      setIsAddingItem(true);
+      try {
+        await applyOrderUpdate((current) => ({ ...current, items: [...(current.items ?? []), newItem] }), "Stavka je dodata.");
+        resetItemDraft();
+        added = true;
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsAddingItem(false);
+      }
+    });
+    return added;
   };
 
   const handleRemoveItem = async (itemId: string) => {
     if (!order) return;
     const currentItems = order.items ?? [];
     if (currentItems.length <= 1) {
-      toast.error("Ne mozes obrisati jedini proizvod u narudzbini.");
+      toast.error("Ne možeš obrisati jedini proizvod u narudžbini.");
       return;
     }
     const nextItems = currentItems.filter((item) => item.id !== itemId);
     if (nextItems.length === currentItems.length) return;
-    await applyOrderUpdate((current) => ({ ...current, items: nextItems }), "Stavka je obrisana.");
+    await runGuarded("item", async () => {
+      await applyOrderUpdate((current) => ({ ...current, items: nextItems }), "Stavka je obrisana.");
+    });
   };
 
-  const closeShipmentStageModal = useCallback(() => {
+  const closeShipmentStageModal = () => {
     if (isShipmentStageSaving) return;
     setShipmentStageModalOpen(false);
     setShipmentNumberDraft("");
-  }, [isShipmentStageSaving]);
+  };
 
-  const handleShipmentStageSubmit = useCallback(async () => {
+  const handleShipmentStageSubmit = async () => {
     if (!order || isShipmentStageSaving) return;
     const shipmentNumber = shipmentNumberDraft.trim();
     if (!shipmentNumber) {
-      toast.error("Unesi broj porudzbine.");
+      toast.error("Unesi broj pošiljke.");
       return;
     }
-    setIsShipmentStageSaving(true);
-    setIsUpdatingStage(true);
-    try {
-      await applyOrderUpdate(
-        (current) => ({ ...current, stage: "poslato", brojPosiljke: shipmentNumber }),
-        "Status narudzbine je azuriran.",
-      );
-      setShipmentStageModalOpen(false);
-      setShipmentNumberDraft("");
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsShipmentStageSaving(false);
-      setIsUpdatingStage(false);
-    }
-  }, [applyOrderUpdate, isShipmentStageSaving, order, shipmentNumberDraft]);
+    await runGuarded("stage", async () => {
+      setIsShipmentStageSaving(true);
+      setIsUpdatingStage(true);
+      try {
+        await applyOrderUpdate((current) => ({ ...current, stage: "poslato", brojPosiljke: shipmentNumber }), "Status narudžbine je ažuriran.");
+        setShipmentStageModalOpen(false);
+        setShipmentNumberDraft("");
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsShipmentStageSaving(false);
+        setIsUpdatingStage(false);
+      }
+    });
+  };
 
   const handleStageChange = async (nextStage: OrderStage) => {
     if (!order) return;
@@ -356,60 +223,101 @@ export function useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, s
       setShipmentNumberDraft(resolveShipmentNumber(order));
       return;
     }
-    setIsUpdatingStage(true);
-    try {
-      await applyOrderUpdate((current) => ({ ...current, stage: nextStage }), "Status narudzbine je azuriran.");
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsUpdatingStage(false);
-    }
+    if (nextStage === order.stage) return;
+    await runGuarded("stage", async () => {
+      setIsUpdatingStage(true);
+      try {
+        await applyOrderUpdate((current) => ({ ...current, stage: nextStage }), "Status narudžbine je ažuriran.");
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsUpdatingStage(false);
+      }
+    });
   };
 
   const handlePovratToggle = async (nextValue: boolean) => {
     if (!order) return;
-    try {
-      await applyOrderUpdate((current) => ({ ...current, povratVracen: nextValue }), "Povrat je sacuvan.");
-    } catch (error) {
-      console.error(error);
-    }
+    await runGuarded("povrat", async () => {
+      try {
+        await applyOrderUpdate((current) => ({ ...current, povratVracen: nextValue }), "Povrat je sačuvan.");
+      } catch (error) {
+        console.error(error);
+      }
+    });
+  };
+
+  const handleKasniToggle = async (nextValue: boolean) => {
+    if (!order) return;
+    await runGuarded("kasni", async () => {
+      setIsKasniSaving(true);
+      try {
+        await applyOrderUpdate(
+          (current) => ({ ...current, kasni: nextValue, kasniAt: nextValue ? Date.now() : undefined }),
+          nextValue ? "Označeno da kasni." : "Oznaka kašnjenja je uklonjena.",
+        );
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsKasniSaving(false);
+      }
+    });
   };
 
   const handleManualRefund100Toggle = async (enabled: boolean) => {
     if (!order || isManualRefundSaving) return;
-    const previous = order;
-    setIsManualRefundSaving(true);
-    setOrder({
-      ...order,
-      manualRefund100: enabled,
-      manualRefund100At: enabled ? Date.now() : undefined,
-    });
-    try {
-      const result = await setManualRefund100({
-        token: sessionToken,
-        id: order._id,
-        scope: orderScope,
-        enabled,
+    await runGuarded("manual100", async () => {
+      const previous = order;
+      setIsManualRefundSaving(true);
+      setOrder({
+        ...order,
+        manualRefund100: enabled,
+        manualRefund100At: enabled ? Date.now() : undefined,
       });
-      setOrder((current) =>
-        current
-          ? {
-              ...current,
-              manualRefund100: result.enabled,
-              manualRefund100At: result.changedAt ?? undefined,
-            }
-          : current,
-      );
-      toast.success(enabled ? "Porudžbina je ručno dodata u povrat 100%." : "Ručna oznaka 100% je uklonjena.");
-    } catch (error) {
-      console.error(error);
-      setOrder(previous);
-      toast.error("Nije moguće sačuvati ručni povrat 100%.");
-    } finally {
-      setIsManualRefundSaving(false);
-    }
+      try {
+        const result = await setManualRefund100({
+          token: sessionToken,
+          id: order._id,
+          scope: orderScope,
+          enabled,
+        });
+        setOrder((current) =>
+          current
+            ? {
+                ...current,
+                manualRefund100: result.enabled,
+                manualRefund100At: result.changedAt ?? undefined,
+              }
+            : current,
+        );
+        toast.success(enabled ? "Narudžbina je ručno dodata u 100% povrat." : "Ručna oznaka 100% je uklonjena.");
+      } catch (error) {
+        console.error(error);
+        setOrder(previous);
+        toast.error("Nije moguće sačuvati ručni 100% povrat.");
+      } finally {
+        setIsManualRefundSaving(false);
+      }
+    });
   };
 
-
-  return { isUpdatingStage, isAddingItem, isManualRefundSaving, shipmentStageModalOpen, shipmentNumberDraft, setShipmentNumberDraft, isShipmentStageSaving, handleOrderFieldSave, handlePickupToggle, handleAddItem, handleRemoveItem, closeShipmentStageModal, handleShipmentStageSubmit, handleStageChange, handlePovratToggle, handleManualRefund100Toggle };
+  return {
+    isUpdatingStage,
+    isAddingItem,
+    isManualRefundSaving,
+    isKasniSaving,
+    shipmentStageModalOpen,
+    shipmentNumberDraft,
+    setShipmentNumberDraft,
+    isShipmentStageSaving,
+    applyOrderUpdate,
+    handleAddItem,
+    handleRemoveItem,
+    closeShipmentStageModal,
+    handleShipmentStageSubmit,
+    handleStageChange,
+    handlePovratToggle,
+    handleKasniToggle,
+    handleManualRefund100Toggle,
+  };
 }

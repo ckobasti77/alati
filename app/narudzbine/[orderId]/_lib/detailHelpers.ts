@@ -1,8 +1,8 @@
-// Doslovno izvuceno iz app/narudzbine/[orderId]/page.tsx (refaktor bez promene ponasanja).
+// Pomoćne funkcije detalja narudžbine.
 import { orderTotals } from "@/lib/calc";
 import type { OrderDetailPdfItem } from "@/lib/pdfExport";
-import { STAGES } from "@/lib/stages";
-import type { OrderEvent, OrderWithProduct, Product } from "@/types/order";
+import { STAGE_FLOW, STAGES } from "@/lib/stages";
+import type { OrderEvent, OrderStage, OrderWithProduct, Product } from "@/types/order";
 import { getProductDisplayName } from "../../_lib/helpers";
 import { shippingModes, type ShippingMode } from "../../_lib/types";
 
@@ -24,18 +24,18 @@ export const resolveOrderShippingMode = (
 export const resolveShipmentNumber = (order?: Pick<OrderWithProduct, "brojPosiljke"> | null) => order?.brojPosiljke?.trim() ?? "";
 export const getOrderEventTitle = (event: OrderEvent) => {
   if (event.type === "povrat") {
-    return event.povratVracen ? "Povrat je oznacen kao vracen" : "Oznaka povrata je uklonjena";
+    return event.povratVracen ? "Povrat je označen kao vraćen" : "Oznaka povrata je uklonjena";
   }
 
   const stageLabel = event.stage ? (STAGES[event.stage]?.label ?? event.stage) : "Nepoznato stanje";
-  if (!event.previousStage) return `Narudzbina je kreirana kao: ${stageLabel}`;
+  if (!event.previousStage) return `Narudžbina je kreirana kao: ${stageLabel}`;
   const previousLabel = STAGES[event.previousStage]?.label ?? event.previousStage;
   return `Status: ${previousLabel} → ${stageLabel}`;
 };
 
 export const getOrderEventDetail = (event: OrderEvent) =>
   event.type === "stage" && event.stage === "poslato" && event.brojPosiljke
-    ? `Broj porudzbine: ${event.brojPosiljke}`
+    ? `Broj pošiljke: ${event.brojPosiljke}`
     : null;
 
 export const splitComposedVariantLabel = (value?: string) => {
@@ -95,4 +95,10 @@ export const resolveOrderDetailPdfItems = (order: OrderWithProduct): OrderDetail
       quantity: item.kolicina,
     };
   });
+};
+
+/** Položaj u glavnom toku (Poručeno → Leglo). Vraćeno je van toka. */
+export const stageProgress = (stage: OrderStage) => {
+  const index = STAGE_FLOW.findIndex((item) => item.value === stage);
+  return { index, total: STAGE_FLOW.length, returned: stage === "vraceno" };
 };

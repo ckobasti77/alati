@@ -12,9 +12,29 @@ import { useListboxNav } from "./useListboxNav";
 
 const productOptionId = (index: number) => `order-product-opt-${index}`;
 
+/** Deo stanja forme koji pretraga koristi (isti oblik ima i nacrt stavke na detalju narudžbine). */
+export type ProductPickerState = Pick<
+  ReturnType<typeof useOrderForm>,
+  | "productInput"
+  | "setProductInput"
+  | "setProductSearch"
+  | "productMenuOpen"
+  | "setProductMenuOpen"
+  | "setItemProductId"
+  | "setItemVariantId"
+  | "setItemSupplierId"
+  | "setItemQuantity"
+  | "setUseManualSalePrice"
+  | "setManualSalePrice"
+  | "productInputRef"
+  | "filteredProducts"
+  | "selectedProduct"
+  | "selectedVariantForPreview"
+>;
+
 type OrderProductPickerProps = {
-  orderForm: ReturnType<typeof useOrderForm>;
-  catalog: ReturnType<typeof useOrderCatalog>;
+  orderForm: ProductPickerState;
+  catalog: Pick<ReturnType<typeof useOrderCatalog>, "products" | "isProductsLoading">;
 };
 
 function ProductImage({ product, className }: { product: Product; className?: string }) {

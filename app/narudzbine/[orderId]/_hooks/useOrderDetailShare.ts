@@ -1,6 +1,6 @@
 "use client";
 
-// Doslovno izvuceno iz app/narudzbine/[orderId]/page.tsx (refaktor bez promene ponasanja).
+// PDF i deljenje narudžbine (⋯ meni detalja), kopiranje broja pošiljke uz praćenje.
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -30,7 +30,6 @@ type UseOrderDetailShareParams = {
 };
 
 export function useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUkupno, transport, prof, profitShare, profitSharePercent, povrat, calculatedPovrat, isManualRefund100, isFullRefund100, isExcludedBecauseReturned, shipmentNumber, hasShipmentNumber }: UseOrderDetailShareParams) {
-  const [shareOpen, setShareOpen] = useState(false);
   const [orderPdfMode, setOrderPdfMode] = useState<"download" | "share" | null>(null);
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   const resolveShareUrl = () => (typeof window !== "undefined" ? window.location.href : "");
@@ -40,10 +39,7 @@ export function useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUk
       toast.error("Link nije dostupan.");
       return;
     }
-    const copied = await copyText(shareUrl, "Link kopiran.");
-    if (copied) {
-      setShareOpen(false);
-    }
+    await copyText(shareUrl, "Link je kopiran.");
   };
 
   const handleShareLink = async () => {
@@ -53,10 +49,9 @@ export function useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUk
       return;
     }
     if (!canShare || typeof navigator === "undefined") {
-      toast.error("Share nije podrzan.");
+      toast.error("Deljenje nije podržano na ovom uređaju.");
       return;
     }
-    setShareOpen(false);
     try {
       await navigator.share({
         title: order?.title ?? "Narudzbina",
@@ -65,7 +60,7 @@ export function useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUk
     } catch (error) {
       if ((error as Error)?.name === "AbortError") return;
       console.error(error);
-      toast.error("Sharovanje nije uspelo.");
+      toast.error("Deljenje nije uspelo.");
     }
   };
   const isOrderPdfBusy = orderPdfMode !== null;
@@ -105,8 +100,7 @@ export function useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUk
           downloadPdfFile(file);
           toast.success("PDF je preuzet.");
         }
-        setShareOpen(false);
-      } catch (error) {
+          } catch (error) {
         console.error(error);
         toast.error("Izvoz PDF-a nije uspeo.");
       } finally {
@@ -134,9 +128,8 @@ export function useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUk
     if (!hasShipmentNumber) return;
     const target = resolveTrackingTarget(shipmentNumber, resolveOrderShippingMode(order));
     if (target) openTracking(target);
-    await copyText(shipmentNumber, "Broj posiljke je kopiran.");
+    await copyText(shipmentNumber, "Broj pošiljke je kopiran.");
   }, [copyText, hasShipmentNumber, order, shipmentNumber]);
 
-
-  return { shareOpen, setShareOpen, orderPdfMode, canShare, handleCopyShareLink, handleShareLink, isOrderPdfBusy, handleOrderPdf, handleShipmentNumberCopy };
+  return { orderPdfMode, canShare, handleCopyShareLink, handleShareLink, isOrderPdfBusy, handleOrderPdf, handleShipmentNumberCopy };
 }
