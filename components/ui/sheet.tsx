@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/ui/icon-button";
+import { captureFocusReturn, restoreFocus } from "@/lib/focusReturn";
 import { animateSheetIn, animateSheetOut } from "@/lib/motion";
 import { useIsDesktop } from "@/lib/useMediaQuery";
 import { cn } from "@/lib/utils";
@@ -59,7 +60,7 @@ export function Sheet({
   // Panel je u state-u: Radix Portal montira sadržaj tek u drugom prolazu, pa ref ne bi okinuo animaciju.
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const returnFocusRef = useRef<ReturnType<typeof captureFocusReturn> | null>(null);
   const lastPathnameRef = useRef(pathname);
   // `present` drži sheet u DOM-u dok traje izlazna animacija.
   const [present, setPresent] = useState(open);
@@ -122,12 +123,12 @@ export function Sheet({
             }}
             onOpenAutoFocus={(event) => {
               // Fokus se još nije pomerio: zapamti okidač da mu se fokus vrati pri zatvaranju.
-              returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+              returnFocusRef.current = captureFocusReturn();
               onOpenAutoFocus?.(event);
             }}
             onCloseAutoFocus={(event) => {
               event.preventDefault();
-              if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus();
+              restoreFocus(returnFocusRef.current);
             }}
             className={cn(
               "pointer-events-auto relative flex w-full flex-col overflow-hidden bg-surface text-text shadow-(--shadow-sheet) outline-none",

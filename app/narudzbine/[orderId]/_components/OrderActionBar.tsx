@@ -21,8 +21,9 @@ export function OrderActionBar({ phone, hasShipmentNumber, onCopyPhone, onStatus
   return (
     <div
       role="region"
-      aria-label="Akcije narudžbine"
+      aria-label="Brze akcije"
       data-probe-bottom-bar
+      data-action-bar
       className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom))] z-(--z-sticky) border-t border-border bg-raised px-2 md:hidden"
     >
       <div className={cn("mx-auto grid h-16 max-w-md gap-1 py-1.5", hasShipmentNumber ? "grid-cols-4" : "grid-cols-3")}>
@@ -34,7 +35,7 @@ export function OrderActionBar({ phone, hasShipmentNumber, onCopyPhone, onStatus
           <Copy aria-hidden />
           Kopiraj broj
         </button>
-        <button type="button" className={itemClass} onClick={onStatus}>
+        <button type="button" id="detail-bar-status" className={itemClass} onClick={onStatus}>
           <ArrowLeftRight aria-hidden />
           Status
         </button>

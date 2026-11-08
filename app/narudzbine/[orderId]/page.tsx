@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RequireAuth } from "@/components/RequireAuth";
 import { HeaderActions, HeaderTitle } from "@/components/shell/ShellProvider";
+import { setFocusReturn } from "@/lib/focusReturn";
 import { useOrderDetailData } from "./_hooks/useOrderDetailData";
 import { useOrderItemDraft } from "./_hooks/useOrderItemDraft";
 import { useOrderDetailUpdates } from "./_hooks/useOrderDetailUpdates";
@@ -152,7 +153,7 @@ function OrderDetails({ orderId }: { orderId: string }) {
   return (
     <>
       <HeaderTitle>
-        <span className="line-clamp-2 text-[15px] leading-[19px] whitespace-normal">{order.title}</span>
+        <h1 className="line-clamp-2 text-[15px] leading-[19px] font-semibold whitespace-normal">{order.title}</h1>
       </HeaderTitle>
       <HeaderActions>
         <ActionMenu items={menuItems} label={menuLabel} />
@@ -183,28 +184,15 @@ function OrderDetails({ orderId }: { orderId: string }) {
           </div>
         </div>
 
-        {/* Telefon: jedna kolona, redosled preko order-*. Desktop: levo stavke/tok/napomena, desno sticky kartica. */}
+        {/* DOM redosled = redosled na telefonu i redosled Tab-a: status, kupac, novac, pa stavke, slanje, tok, napomena.
+            Desktop: aside desno (sticky), ostalo levo. */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_380px] md:items-start md:gap-6">
-          <div className="contents md:block md:space-y-6">
-            <ItemsSection className="order-3 md:order-none" order={order} onAdd={() => setAddOpen(true)} onRemove={updates.handleRemoveItem} />
-            <ShippingSection
-              className="order-5 md:order-none"
-              order={order}
-              shipmentNumber={derived.shipmentNumber}
-              copyText={copyText}
-              onTrack={() => void share.handleShipmentNumberCopy()}
-              onEdit={() => openEdit("slanje")}
-            />
-            <TimelineSection className="order-6 md:order-none" order={order} />
-            <NoteSection className="order-7 md:order-none" order={order} onEdit={() => openEdit("napomena")} />
-          </div>
           <aside
             aria-label="Pregled narudžbine"
-            className="contents md:sticky md:top-[calc(var(--header-h)+24px)] md:block md:max-h-[calc(100dvh-var(--header-h)-48px)] md:divide-y md:divide-border md:overflow-y-auto md:rounded-2xl md:bg-surface md:p-5 md:ring-1 md:ring-border"
+            className="contents md:sticky md:col-start-2 md:row-start-1 md:top-[calc(var(--header-h)+24px)] md:block md:max-h-[calc(100dvh-var(--header-h)-48px)] md:divide-y md:divide-border md:overflow-y-auto md:rounded-2xl md:bg-surface md:p-5 md:ring-1 md:ring-border"
           >
             <StatusSection
               aside
-              className="order-1 md:order-none"
               order={order}
               isUpdatingStage={updates.isUpdatingStage}
               onStageChange={(stage) => void updates.handleStageChange(stage)}
@@ -212,9 +200,9 @@ function OrderDetails({ orderId }: { orderId: string }) {
               isManualRefund100={derived.isManualRefund100}
               isExcludedBecauseReturned={derived.isExcludedBecauseReturned}
             />
+            <CustomerSection aside order={order} copyText={copyText} onEdit={() => openEdit("kupac")} />
             <MoneySection
               aside
-              className="order-4 md:order-none"
               order={order}
               derived={derived}
               refundPeriodOverview={refundPeriodOverview}
@@ -223,7 +211,6 @@ function OrderDetails({ orderId }: { orderId: string }) {
               onManualRefund100Toggle={(value) => void updates.handleManualRefund100Toggle(value)}
               onEdit={() => openEdit("novac")}
             />
-            <CustomerSection aside className="order-2 md:order-none" order={order} copyText={copyText} onEdit={() => openEdit("kupac")} />
 
             <div className="hidden gap-2 pt-4 md:flex">
               <Button type="button" variant="outline" className="flex-1 gap-2 rounded-xl" disabled={!order.phone} onClick={() => void copyText(order.phone, "Broj telefona je kopiran.")}>
@@ -236,6 +223,18 @@ function OrderDetails({ orderId }: { orderId: string }) {
               </Button>
             </div>
           </aside>
+          <div className="contents md:col-start-1 md:row-start-1 md:block md:space-y-6">
+            <ItemsSection order={order} onAdd={() => setAddOpen(true)} onRemove={updates.handleRemoveItem} />
+            <ShippingSection
+              order={order}
+              shipmentNumber={derived.shipmentNumber}
+              copyText={copyText}
+              onTrack={() => void share.handleShipmentNumberCopy()}
+              onEdit={() => openEdit("slanje")}
+            />
+            <TimelineSection order={order} />
+            <NoteSection order={order} onEdit={() => openEdit("napomena")} />
+          </div>
         </div>
         {/* Prostor da sticky traka akcija ne prekrije poslednju karticu. */}
         <div aria-hidden className="h-20 md:hidden" />
@@ -249,7 +248,16 @@ function OrderDetails({ orderId }: { orderId: string }) {
         onTrack={() => void share.handleShipmentNumberCopy()}
       />
 
-      <StageSheet open={stageOpen} onOpenChange={setStageOpen} stage={order.stage} onSelect={(stage) => void updates.handleStageChange(stage)} />
+      <StageSheet
+        open={stageOpen}
+        onOpenChange={setStageOpen}
+        stage={order.stage}
+        onSelect={(stage) => {
+          // Sheet broja pošiljke se otvara dok se ovaj zatvara: fokus se posle vraća na "Status" u traci.
+          if (stage === "poslato") setFocusReturn(document.getElementById("detail-bar-status"));
+          void updates.handleStageChange(stage);
+        }}
+      />
       <ShipmentNumberSheet order={order} updates={updates} />
       <OrderEditSheet order={order} edit={edit} shippingOwners={shippingOwners} />
       <AddItemSheet

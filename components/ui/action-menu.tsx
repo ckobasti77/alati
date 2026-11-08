@@ -4,8 +4,9 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { LucideIcon } from "lucide-react";
 import { MoreHorizontal } from "lucide-react";
 import Link from "next/link";
-import { Fragment } from "react";
+import { Fragment, useRef } from "react";
 import { IconButton } from "@/components/ui/icon-button";
+import { setFocusReturn } from "@/lib/focusReturn";
 import { cn } from "@/lib/utils";
 
 export type ActionMenuItem = {
@@ -36,9 +37,10 @@ const itemClass =
   "flex min-h-11 cursor-pointer select-none items-center gap-2.5 rounded-lg px-3 text-sm text-text outline-none transition-colors duration-(--duration-fast) data-[highlighted]:bg-surface-2 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 md:min-h-9 md:px-2.5 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-text-muted";
 
 export function ActionMenu({ items, label = "Više akcija", align = "end", trigger, triggerClassName, heading }: ActionMenuProps) {
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   return (
     <DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger asChild>
+      <DropdownMenu.Trigger asChild ref={triggerRef}>
         {trigger ?? (
           <IconButton aria-label={label} className={triggerClassName}>
             <MoreHorizontal />
@@ -70,7 +72,15 @@ export function ActionMenu({ items, label = "Više akcija", align = "end", trigg
                     <Link href={item.href}>{body}</Link>
                   </DropdownMenu.Item>
                 ) : (
-                  <DropdownMenu.Item disabled={item.disabled} onSelect={item.onSelect} className={className}>
+                  <DropdownMenu.Item
+                    disabled={item.disabled}
+                    onSelect={() => {
+                      // Ako akcija otvori dijalog, fokus se posle zatvaranja vraća na ⋯.
+                      setFocusReturn(triggerRef.current);
+                      item.onSelect?.();
+                    }}
+                    className={className}
+                  >
                     {body}
                   </DropdownMenu.Item>
                 )}

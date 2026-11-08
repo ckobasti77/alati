@@ -418,6 +418,10 @@ h6 {
     html {
       scroll-padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + 8px);
     }
+    /* Stranice sa sticky trakom akcija iznad donje navigacije (detalj narudžbine/proizvoda). */
+    html:has([data-action-bar]) {
+      scroll-padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + 72px);
+    }
   }
 
   :where(a, button, [role="button"], input, select, textarea, label, summary) {

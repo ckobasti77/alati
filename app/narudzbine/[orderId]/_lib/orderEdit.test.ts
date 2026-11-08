@@ -66,11 +66,13 @@ describe("validateOrderEdit", () => {
     expect(validateOrderEdit(base, { ...base, slanjeOwner: "" }).patch).toEqual({ slanjeOwner: undefined });
   });
 
-  it("napomena i broj pošiljke: prazno je undefined", () => {
+  it("napomena: prazno je undefined; broj pošiljke: prazno je \"\" (briše)", () => {
     expect(validateOrderEdit(base, { ...base, napomena: "  " }).patch).toEqual({ napomena: undefined });
     const withNote = toOrderEditValues({ ...order, napomena: "zvati" });
     expect(validateOrderEdit(withNote, { ...withNote, napomena: " " }).patch).toEqual({ napomena: undefined });
     expect(validateOrderEdit(base, { ...base, brojPosiljke: " AB12 " }).patch).toEqual({ brojPosiljke: "AB12" });
+    const sent = toOrderEditValues({ ...order, brojPosiljke: "AB12" });
+    expect(validateOrderEdit(sent, { ...sent, brojPosiljke: "" }).patch).toEqual({ brojPosiljke: "" });
   });
 });
 

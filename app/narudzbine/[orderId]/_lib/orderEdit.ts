@@ -108,7 +108,8 @@ export function validateOrderEdit(initial: OrderEditValues, values: OrderEditVal
   }
 
   if (changed("pickup")) patch.pickup = values.pickup;
-  if (changed("brojPosiljke")) patch.brojPosiljke = values.brojPosiljke.trim() || undefined;
+  // Prazan string briše broj na serveru (undefined bi zadržao stari).
+  if (changed("brojPosiljke")) patch.brojPosiljke = values.brojPosiljke.trim();
   if (changed("napomena")) {
     const trimmed = values.napomena.trim();
     patch.napomena = trimmed.length === 0 ? undefined : trimmed;

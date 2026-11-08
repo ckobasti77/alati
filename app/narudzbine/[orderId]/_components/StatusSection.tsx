@@ -59,7 +59,7 @@ export function StatusSection({ order, isUpdatingStage, onStageChange, isFullRef
                 aria-hidden
                 className={cn(
                   "h-1.5 rounded-full",
-                  progress.returned ? "bg-stage-vraceno/30" : done ? meta.dotClass : "bg-border-strong",
+                  progress.returned ? "bg-stage-vraceno/30" : done ? meta.dotClass : "bg-text-muted/70",
                 )}
               />
               <span className="sr-only">

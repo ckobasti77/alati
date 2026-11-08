@@ -18,7 +18,7 @@ export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(({ className, l
       ref={ref}
       id={switchId}
       className={cn(
-        "relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full bg-border-strong transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent",
+        "relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full bg-text-muted/70 transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent",
         !label && "after:absolute after:-inset-2.5 after:content-['']",
         className,
       )}

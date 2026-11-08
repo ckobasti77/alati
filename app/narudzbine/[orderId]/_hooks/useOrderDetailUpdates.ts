@@ -227,7 +227,11 @@ export function useOrderDetailUpdates({ orderScope, sessionToken, updateOrder, s
     await runGuarded("stage", async () => {
       setIsUpdatingStage(true);
       try {
-        await applyOrderUpdate((current) => ({ ...current, stage: nextStage }), "Status narudžbine je ažuriran.");
+        await applyOrderUpdate(
+          // Kao server: "kasni" važi samo za Poslato (ovde je novi status uvek drugi).
+          (current) => ({ ...current, stage: nextStage, kasni: false }),
+          "Status narudžbine je ažuriran.",
+        );
       } catch (error) {
         console.error(error);
       } finally {

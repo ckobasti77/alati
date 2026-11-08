@@ -153,10 +153,11 @@ export function OrderEditSheet({ order, edit, shippingOwners }: OrderEditSheetPr
                   {...errorProps("phone", errors.phone)}
                 />
               </Field>
-              <Field field="address" label="Adresa" error={errors.address} hint={values.pickup ? "Lično preuzimanje: adresa nije potrebna za slanje." : undefined}>
+              <Field field="address" label="Adresa" error={errors.address} hint={values.pickup ? "Lično preuzimanje: adresa se ne čuva." : undefined}>
                 <Input
                   id={orderEditFieldId("address")}
                   value={values.address}
+                  disabled={values.pickup}
                   autoComplete="street-address"
                   enterKeyHint="next"
                   onChange={(event) => setField("address", event.target.value)}
@@ -170,6 +171,10 @@ export function OrderEditSheet({ order, edit, shippingOwners }: OrderEditSheetPr
               <div className="-my-1">
                 <Switch label="Lično preuzimanje" checked={values.pickup} onCheckedChange={(value) => setField("pickup", value)} />
               </div>
+              {values.pickup ? (
+                <p className="-mt-2 text-[13px] text-text-muted">Uz lično preuzimanje slanje i račun se ne čuvaju (server ih briše).</p>
+              ) : (
+                <>
               <div id={orderEditFieldId("slanjeMode")} className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-text" aria-hidden>
                   Slanje
@@ -212,6 +217,8 @@ export function OrderEditSheet({ order, edit, shippingOwners }: OrderEditSheetPr
                   {...errorProps("slanjeOwner", errors.slanjeOwner)}
                 />
               </Field>
+                </>
+              )}
               <Field field="brojPosiljke" label="Broj pošiljke" error={errors.brojPosiljke}>
                 <Input
                   id={orderEditFieldId("brojPosiljke")}
