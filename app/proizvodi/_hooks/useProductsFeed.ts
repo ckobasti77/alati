@@ -1,0 +1,237 @@
+"use client";
+
+// Doslovno izvuceno iz app/proizvodi/page.tsx (refaktor bez promene ponasanja).
+import { useCallback, useEffect } from "react";
+import { clearListState, readListState, writeListState } from "@/lib/listState";
+import type { Product, ProductListResponse } from "@/types/order";
+import { sortOptions, archiveViewOptions, viewModeOptions, type SortOption } from "../_lib/productHelpers";
+import type { useProductsState } from "./useProductsState";
+
+type UseProductsFeedParams = {
+  router: ReturnType<typeof useProductsState>["router"];
+  pathname: ReturnType<typeof useProductsState>["pathname"];
+  searchParams: ReturnType<typeof useProductsState>["searchParams"];
+  searchQuery: ReturnType<typeof useProductsState>["searchQuery"];
+  sessionToken: ReturnType<typeof useProductsState>["sessionToken"];
+  viewMode: ReturnType<typeof useProductsState>["viewMode"];
+  setViewMode: ReturnType<typeof useProductsState>["setViewMode"];
+  archiveView: ReturnType<typeof useProductsState>["archiveView"];
+  setArchiveView: ReturnType<typeof useProductsState>["setArchiveView"];
+  sortBy: ReturnType<typeof useProductsState>["sortBy"];
+  setSortBy: ReturnType<typeof useProductsState>["setSortBy"];
+  productSearch: ReturnType<typeof useProductsState>["productSearch"];
+  setProductSearch: ReturnType<typeof useProductsState>["setProductSearch"];
+  productPage: ReturnType<typeof useProductsState>["productPage"];
+  setProductPage: ReturnType<typeof useProductsState>["setProductPage"];
+  productFeed: ReturnType<typeof useProductsState>["productFeed"];
+  setProductFeed: ReturnType<typeof useProductsState>["setProductFeed"];
+  productPagination: ReturnType<typeof useProductsState>["productPagination"];
+  setProductPagination: ReturnType<typeof useProductsState>["setProductPagination"];
+  isLoadingMoreProducts: ReturnType<typeof useProductsState>["isLoadingMoreProducts"];
+  setIsLoadingMoreProducts: ReturnType<typeof useProductsState>["setIsLoadingMoreProducts"];
+  productsLoaderRef: ReturnType<typeof useProductsState>["productsLoaderRef"];
+  loadMoreProductsTimerRef: ReturnType<typeof useProductsState>["loadMoreProductsTimerRef"];
+  scrollYRef: ReturnType<typeof useProductsState>["scrollYRef"];
+  skipUrlSyncRef: ReturnType<typeof useProductsState>["skipUrlSyncRef"];
+  skipInitialResetRef: ReturnType<typeof useProductsState>["skipInitialResetRef"];
+  didRestoreRef: ReturnType<typeof useProductsState>["didRestoreRef"];
+  listStateRef: ReturnType<typeof useProductsState>["listStateRef"];
+  pendingScrollY: ReturnType<typeof useProductsState>["pendingScrollY"];
+  setPendingScrollY: ReturnType<typeof useProductsState>["setPendingScrollY"];
+  listStateKey: ReturnType<typeof useProductsState>["listStateKey"];
+  productList: ReturnType<typeof useProductsState>["productList"];
+};
+
+export function useProductsFeed({ router, pathname, searchParams, searchQuery, sessionToken, viewMode, setViewMode, archiveView, setArchiveView, sortBy, setSortBy, productSearch, setProductSearch, productPage, setProductPage, productFeed, setProductFeed, productPagination, setProductPagination, isLoadingMoreProducts, setIsLoadingMoreProducts, productsLoaderRef, loadMoreProductsTimerRef, scrollYRef, skipUrlSyncRef, skipInitialResetRef, didRestoreRef, listStateRef, pendingScrollY, setPendingScrollY, listStateKey, productList }: UseProductsFeedParams) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleScroll = () => {
+      scrollYRef.current = window.scrollY;
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [scrollYRef]);
+
+  useEffect(() => {
+    listStateRef.current = {
+      feed: productFeed,
+      page: productPage,
+      pagination: productPagination,
+      search: productSearch,
+      sortBy,
+      archiveView,
+      viewMode,
+    };
+  }, [archiveView, productFeed, productPage, productPagination, productSearch, sortBy, viewMode, listStateRef]);
+
+  useEffect(() => {
+    if (didRestoreRef.current) return;
+    didRestoreRef.current = true;
+    const stored = readListState<Product, ProductListResponse["pagination"]>(listStateKey);
+    if (!stored) return;
+    const storedSearch = typeof stored.extra?.search === "string" ? stored.extra.search : "";
+    if (storedSearch !== searchQuery) return;
+    const storedSort = stored.extra?.sortBy;
+    const storedArchive = stored.extra?.archiveView;
+    const storedView = stored.extra?.viewMode;
+    skipInitialResetRef.current = true;
+    skipUrlSyncRef.current = true;
+    if (typeof storedSort === "string" && sortOptions.includes(storedSort as SortOption)) {
+      setSortBy(storedSort as SortOption);
+    }
+    if (typeof storedArchive === "string" && archiveViewOptions.includes(storedArchive as (typeof archiveViewOptions)[number])) {
+      setArchiveView(storedArchive as (typeof archiveViewOptions)[number]);
+    }
+    if (typeof storedView === "string" && viewModeOptions.includes(storedView as (typeof viewModeOptions)[number])) {
+      setViewMode(storedView as (typeof viewModeOptions)[number]);
+    }
+    setProductFeed(stored.items ?? []);
+    setProductPage(stored.page ?? 1);
+    if (stored.pagination) {
+      setProductPagination(stored.pagination);
+    }
+    setProductSearch(searchQuery);
+    setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
+    clearListState(listStateKey);
+  }, [listStateKey, searchQuery, didRestoreRef, setArchiveView, setPendingScrollY, setProductFeed, setProductPage, setProductPagination, setProductSearch, setSortBy, setViewMode, skipInitialResetRef, skipUrlSyncRef]);
+
+  useEffect(() => {
+    if (pendingScrollY === null) return;
+    const target = pendingScrollY;
+    setPendingScrollY(null);
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: target, behavior: "auto" });
+      });
+    }
+  }, [pendingScrollY, setPendingScrollY]);
+
+  useEffect(() => {
+    return () => {
+      const snapshot = listStateRef.current;
+      if (!snapshot) return;
+      writeListState<Product, ProductListResponse["pagination"]>(listStateKey, {
+        items: snapshot.feed,
+        page: snapshot.page,
+        pagination: snapshot.pagination,
+        scrollY: scrollYRef.current,
+        savedAt: Date.now(),
+        extra: {
+          search: snapshot.search,
+          sortBy: snapshot.sortBy,
+          archiveView: snapshot.archiveView,
+          viewMode: snapshot.viewMode,
+        },
+      });
+    };
+  }, [listStateKey, listStateRef, scrollYRef]);
+
+  const resetProductsFeed = useCallback(() => {
+    if (loadMoreProductsTimerRef.current !== null) {
+      window.clearTimeout(loadMoreProductsTimerRef.current);
+      loadMoreProductsTimerRef.current = null;
+    }
+    setProductFeed([]);
+    setProductPage(1);
+    setProductPagination((prev) => ({ ...prev, page: 1, total: 0, totalPages: 1 }));
+    setIsLoadingMoreProducts(false);
+  }, [loadMoreProductsTimerRef, setIsLoadingMoreProducts, setProductFeed, setProductPage, setProductPagination]);
+
+  useEffect(() => {
+    if (skipInitialResetRef.current) {
+      skipInitialResetRef.current = false;
+      return;
+    }
+    resetProductsFeed();
+  }, [resetProductsFeed, sessionToken, archiveView, skipInitialResetRef]);
+
+  useEffect(() => {
+    const current = listStateRef.current;
+    const searchChanged = current.search !== searchQuery;
+    if (!searchChanged) {
+      skipUrlSyncRef.current = false;
+      return;
+    }
+    setProductSearch(searchQuery);
+    if (!skipUrlSyncRef.current) {
+      resetProductsFeed();
+    }
+    skipUrlSyncRef.current = false;
+  }, [resetProductsFeed, searchQuery, listStateRef, setProductSearch, skipUrlSyncRef]);
+
+  useEffect(() => {
+    if (!searchParams) return;
+    const nextSearch = productSearch.trim();
+    if (nextSearch === searchQuery) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextSearch) {
+      params.set("q", nextSearch);
+    } else {
+      params.delete("q");
+    }
+    const next = params.toString();
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [pathname, productSearch, router, searchParams, searchQuery]);
+
+  useEffect(() => {
+    if (!productList) return;
+    if (loadMoreProductsTimerRef.current !== null) {
+      window.clearTimeout(loadMoreProductsTimerRef.current);
+      loadMoreProductsTimerRef.current = null;
+    }
+    if (productList.pagination) {
+      setProductPagination(productList.pagination);
+    }
+    if (productList.items) {
+      setProductFeed((prev) => {
+        const map = new Map(prev.map((entry) => [String(entry._id), entry]));
+        productList.items.forEach((entry) => {
+          map.set(String(entry._id), entry);
+        });
+        return Array.from(map.values()).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+      });
+    }
+    setIsLoadingMoreProducts(false);
+  }, [productList, loadMoreProductsTimerRef, setIsLoadingMoreProducts, setProductFeed, setProductPagination]);
+
+  useEffect(() => {
+    return () => {
+      if (loadMoreProductsTimerRef.current !== null) {
+        window.clearTimeout(loadMoreProductsTimerRef.current);
+      }
+    };
+  }, [loadMoreProductsTimerRef]);
+
+  const hasMoreProducts = productPagination.totalPages > productPage;
+
+  const handleLoadMoreProducts = useCallback(() => {
+    if (isLoadingMoreProducts) return;
+    if (!hasMoreProducts) return;
+    setIsLoadingMoreProducts(true);
+    if (loadMoreProductsTimerRef.current !== null) {
+      window.clearTimeout(loadMoreProductsTimerRef.current);
+    }
+    loadMoreProductsTimerRef.current = window.setTimeout(() => {
+      setProductPage((prev) => prev + 1);
+    }, 850);
+  }, [hasMoreProducts, isLoadingMoreProducts, loadMoreProductsTimerRef, setIsLoadingMoreProducts, setProductPage]);
+
+  useEffect(() => {
+    const target = productsLoaderRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry?.isIntersecting) {
+          handleLoadMoreProducts();
+        }
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [handleLoadMoreProducts, productsLoaderRef]);
+
+  return { resetProductsFeed, hasMoreProducts };
+}
