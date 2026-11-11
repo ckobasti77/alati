@@ -120,6 +120,8 @@ export function Sheet({
               if (target instanceof HTMLElement && target.getAttribute("role") === "combobox" && target.getAttribute("aria-expanded") === "true") {
                 event.preventDefault();
               }
+              // Ugnježdeni sloj (npr. pregled slike iz Sheet-a) sam obrađuje Esc.
+              if (target instanceof HTMLElement && target.closest("[data-nested-layer]")) event.preventDefault();
             }}
             onOpenAutoFocus={(event) => {
               // Fokus se još nije pomerio: zapamti okidač da mu se fokus vrati pri zatvaranju.

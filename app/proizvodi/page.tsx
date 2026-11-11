@@ -18,6 +18,7 @@ import { useProductFormFields } from "./_hooks/useProductFormFields";
 import { useProductMediaInbox } from "./_hooks/useProductMediaInbox";
 import { useProductImages } from "./_hooks/useProductImages";
 import { useProductEdit } from "./_hooks/useProductEdit";
+import { useEditFromUrl } from "./_hooks/useEditFromUrl";
 import { InboxDropOverlay } from "./_components/InboxDropOverlay";
 import { FormDropOverlay } from "./_components/FormDropOverlay";
 import { ProductsPageHeader } from "./_components/ProductsPageHeader";
@@ -60,6 +61,7 @@ function ProductsContent() {
 
   const { handleStartEdit, handleRowClick, handleCreateOrderFromProduct } = useProductEdit({ router, setIsModalOpen, setEditingProduct, setImages, setVariantImages, setAdImage, categoryMenuOpen, setCategoryMenuOpen, categoryDropdownRef, form, resetNewCategoryState });
 
+  useEditFromUrl({ sessionToken, searchParams, pathname, router, isModalOpen, handleStartEdit });
   const isDesktop = useIsDesktop();
   const [openPanel, setOpenPanel] = useState<"dobavljaci" | "slike" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);

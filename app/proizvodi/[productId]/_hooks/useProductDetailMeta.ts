@@ -57,11 +57,6 @@ export function useProductDetailMeta({ categories, suppliers, product, setIsGall
     const map = new Map(categories.map((category) => [category._id, category]));
     return (product.categoryIds ?? []).map((id) => map.get(id)).filter(Boolean) as Category[];
   }, [categories, product]);
-  const categoryMap = useMemo(() => {
-    const map = new Map<string, Category>();
-    (categories ?? []).forEach((category) => map.set(category._id, category));
-    return map;
-  }, [categories]);
   const filteredCategories = useMemo(() => {
     const list = categories ?? [];
     const searchTokens = toSearchTokens(categorySearch.trim());

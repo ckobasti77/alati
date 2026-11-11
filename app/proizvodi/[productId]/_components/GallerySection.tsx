@@ -56,7 +56,6 @@ type GallerySectionProps = {
   handleAdDropZoneDrop: ReturnType<typeof useProductGalleryManager>["handleAdDropZoneDrop"];
   handleFilesSelected: ReturnType<typeof useProductGalleryManager>["handleFilesSelected"];
   handleDownloadImage: ReturnType<typeof useProductGalleryManager>["handleDownloadImage"];
-  gallery: ReturnType<typeof useProductGalleryManager>["gallery"];
   filteredGallery: ReturnType<typeof useProductGalleryManager>["filteredGallery"];
   handleOpenPreview: ReturnType<typeof useProductGalleryManager>["handleOpenPreview"];
   draggingSameGroup: ReturnType<typeof useProductGalleryManager>["draggingSameGroup"];
@@ -64,9 +63,9 @@ type GallerySectionProps = {
   showAdDropOverlay: ReturnType<typeof useProductGalleryManager>["showAdDropOverlay"];
 };
 
-export function GallerySection({ uploadInputId, adUploadInputId, product, isUploadingImages, isUploadingAdImage, imageUploadTarget, setImageUploadTarget, adImageInputRef, dragOverId, reorderEditingId, reorderInputValue, setReorderInputValue, uploadTargetLabel, handleRemoveAllImages, handleAdImageChange, handleRemoveAdImage, handleRemoveSingleImage, handleSetAsMain, handleImagePublishToggle, touchDragActiveRef, handleGalleryDragStart, handleGalleryTouchStart, handleGalleryTouchMove, handleGalleryTouchEnd, handleGalleryDragOver, handleGalleryDrop, handleGalleryDragEnd, handleGalleryTouchCancel, handleGalleryDragLeave, getGalleryGroup, handleOpenReorderInput, handleCancelReorderInput, handleConfirmReorderInput, getShiftClass, handleGalleryDropZoneDragEnter, handleGalleryDropZoneDragOver, handleGalleryDropZoneDragLeave, handleGalleryDropZoneDrop, handleAdDropZoneDragEnter, handleAdDropZoneDragOver, handleAdDropZoneDragLeave, handleAdDropZoneDrop, handleFilesSelected, handleDownloadImage, gallery, filteredGallery, handleOpenPreview, draggingSameGroup, showGalleryDropOverlay, showAdDropOverlay }: GallerySectionProps) {
+export function GallerySection({ uploadInputId, adUploadInputId, product, isUploadingImages, isUploadingAdImage, imageUploadTarget, setImageUploadTarget, adImageInputRef, dragOverId, reorderEditingId, reorderInputValue, setReorderInputValue, uploadTargetLabel, handleRemoveAllImages, handleAdImageChange, handleRemoveAdImage, handleRemoveSingleImage, handleSetAsMain, handleImagePublishToggle, touchDragActiveRef, handleGalleryDragStart, handleGalleryTouchStart, handleGalleryTouchMove, handleGalleryTouchEnd, handleGalleryDragOver, handleGalleryDrop, handleGalleryDragEnd, handleGalleryTouchCancel, handleGalleryDragLeave, getGalleryGroup, handleOpenReorderInput, handleCancelReorderInput, handleConfirmReorderInput, getShiftClass, handleGalleryDropZoneDragEnter, handleGalleryDropZoneDragOver, handleGalleryDropZoneDragLeave, handleGalleryDropZoneDrop, handleAdDropZoneDragEnter, handleAdDropZoneDragOver, handleAdDropZoneDragLeave, handleAdDropZoneDrop, handleFilesSelected, handleDownloadImage, filteredGallery, handleOpenPreview, draggingSameGroup, showGalleryDropOverlay, showAdDropOverlay }: GallerySectionProps) {
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
+    <div className="@container grid gap-6">
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -143,7 +142,7 @@ export function GallerySection({ uploadInputId, adUploadInputId, product, isUplo
                 <p className="text-xs text-slate-500">Prevuci fotografije ovde ili klikni na dugme iznad.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 @md:grid-cols-2 @2xl:grid-cols-3">
                 {filteredGallery.map((item, index) => {
                 const shiftClass = getShiftClass(item, index);
                 const isDragOver = dragOverId === item.id && draggingSameGroup;
@@ -176,7 +175,7 @@ export function GallerySection({ uploadInputId, adUploadInputId, product, isUplo
                       handleOpenPreview(item);
                     }}
                   >
-                    <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-white/90 p-1 text-slate-600 shadow-sm opacity-100 transition md:opacity-0 md:group-hover:opacity-100">
+                    <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-white/90 p-1 text-slate-600 shadow-sm opacity-100 transition ">
                       <button
                         type="button"
                         className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
