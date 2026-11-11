@@ -35,8 +35,6 @@ export function useProductAdminActions({ sessionToken, editingProduct, newSuppli
   };
 
   const handleDelete = async (id: string) => {
-    const confirmed = window.confirm("Da li sigurno zelis da trajno obrises ovaj proizvod?");
-    if (!confirmed) return;
     try {
       await removeProduct({ id, token: sessionToken });
       toast.success("Proizvod je trajno obrisan.");
@@ -44,9 +42,11 @@ export function useProductAdminActions({ sessionToken, editingProduct, newSuppli
         closeModal();
       }
       resetProductsFeed();
+      return true;
     } catch (error: any) {
       console.error(error);
       toast.error(error?.message ?? "Brisanje nije uspelo.");
+      return false;
     }
   };
 

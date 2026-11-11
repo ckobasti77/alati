@@ -43,10 +43,9 @@ type UseProductFormSubmitParams = {
   updateProduct: ReturnType<typeof useProductsState>["updateProduct"];
   resetProductsFeed: ReturnType<typeof useProductsFeed>["resetProductsFeed"];
   form: ReturnType<typeof useProductFormState>["form"];
-  variants: ReturnType<typeof useProductFormState>["variants"];
 };
 
-export function useProductFormSubmit({ sessionToken, isKodMajstor, isModalOpen, setIsModalOpen, exitConfirmOpen, setExitConfirmOpen, editingProduct, setEditingProduct, editingProductId, images, setImages, variantImages, setVariantImages, adImage, setAdImage, setIsUploadingAdImage, setIsDraggingFiles, setIsAdDragActive, categorySearch, setCategorySearch, setCategoryMenuOpen, setIsAddingCategory, newCategoryName, setNewCategoryName, newCategoryIcon, setNewCategoryIcon, setIsUploadingCategoryIcon, variantUploadInputsRef, modalSnapshotRef, createProduct, updateProduct, resetProductsFeed, form, variants }: UseProductFormSubmitParams) {
+export function useProductFormSubmit({ sessionToken, isKodMajstor, isModalOpen, setIsModalOpen, exitConfirmOpen, setExitConfirmOpen, editingProduct, setEditingProduct, editingProductId, images, setImages, variantImages, setVariantImages, adImage, setAdImage, setIsUploadingAdImage, setIsDraggingFiles, setIsAdDragActive, categorySearch, setCategorySearch, setCategoryMenuOpen, setIsAddingCategory, newCategoryName, setNewCategoryName, newCategoryIcon, setNewCategoryIcon, setIsUploadingCategoryIcon, variantUploadInputsRef, modalSnapshotRef, createProduct, updateProduct, resetProductsFeed, form }: UseProductFormSubmitParams) {
   const buildModalSnapshot = useCallback(() => {
     const values = form.getValues();
     const normalizeImage = (image: DraftImage) => ({

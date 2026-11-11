@@ -3,8 +3,7 @@
 // Doslovno izvuceno iz app/proizvodi/page.tsx (refaktor bez promene ponasanja).
 import { AlertCircle, Check, CloudUpload, Facebook, Images, Instagram, Loader2, Plus, Tag, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet } from "@/components/ui/sheet";
 import { Form, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -112,7 +111,7 @@ type ProductFormDialogProps = {
 
 export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, editingProduct, images, variantImages, adImage, isUploadingImages, isUploadingAdImage, isDraggingFiles, isAdDragActive, categorySearch, setCategorySearch, categoryMenuOpen, setCategoryMenuOpen, isAddingCategory, setIsAddingCategory, newCategoryName, setNewCategoryName, newCategoryIcon, isCreatingCategory, isUploadingCategoryIcon, showSupplierForm, setShowSupplierForm, variantUploadInputsRef, productUploadInputRef, adImageInputRef, categoryIconInputRef, categoryDropdownRef, dialogScrollRef, fileInputId, adUploadInputId, hiddenFileInputStyle, categories, suppliers, form, categoryIds, supplierOffersField, publishIgSelected, resolvedProductType, normalizedVariants, normalizedSupplierOffers, supplierMap, hasSupplierOffers, requestCloseModal, handleSubmit, resetNewCategoryState, handleSelectCategory, handleRemoveCategory, handleCategoryIconChange, handleCategoryIconDrop, handleCreateCategory, handleRequestDeleteCategory, filteredCategories, selectedCategories, variantsError, defaultVariantEntry, bestFormOffer, bestFormSupplierName, handleProductTypeChange, handleAddVariant, handleAddVariantFromSingle, handleRemoveVariant, handleSetDefaultVariant, handleClearVariants, handleAddSupplierOffer, handleUpdateSupplierOffer, handleRemoveSupplierOffer, handleAdImageChange, handleAdDrop, handleAdDragOver, handleAdDragLeave, handleRemoveAdImage, handleFilesSelected, handleDropFiles, handleVariantFilesSelected, handleDragEnter, handleDragOver, handleDragLeave, handleOpenVariantPicker, handleOpenProductPicker, handleSetMainImage, handleOpenImageGroup, handleSetVariantMainImage, handleToggleImagePublish, handleToggleVariantImagePublish, handleRemoveImage, handleRemoveVariantImage }: ProductFormDialogProps) {
   return (
-    <Dialog
+    <Sheet
       open={isModalOpen}
       onOpenChange={(open) => {
         if (open) {
@@ -121,20 +120,24 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
         }
         requestCloseModal();
       }}
+      title={editingProduct ? "Izmeni proizvod" : "Novi proizvod"}
+      description={editingProduct ? (editingProduct.kpName ?? editingProduct.name) : "Nabavna i prodajna cena su u evrima."}
+      size="full"
+      desktopWidth="xl"
+      closeSide="start"
+      headerActions={
+        <Button type="submit" form="product-form" size="sm" disabled={form.formState.isSubmitting} className="h-11 rounded-xl px-4 md:h-9">
+          Sačuvaj
+        </Button>
+      }
+      footer={
+        <Button type="submit" form="product-form" disabled={form.formState.isSubmitting} className="w-full gap-2">
+          {form.formState.isSubmitting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+          {editingProduct ? "Sačuvaj izmene" : "Sačuvaj proizvod"}
+        </Button>
+      }
     >
-      <DialogContent className="max-w-5xl overflow-hidden p-0">
-        <div
-          ref={dialogScrollRef}
-          className="max-h-[85vh] overflow-y-auto px-6 pb-6 pt-4 space-y-4"
-        >
-          <DialogHeader className="space-y-1">
-            <DialogTitle>{editingProduct ? "Izmeni proizvod" : "Novi proizvod"}</DialogTitle>
-            <p className="text-sm text-slate-500">
-              {editingProduct
-                ? `Trenutno menjas: ${editingProduct.kpName ?? editingProduct.name}`
-                : "Sacuvaj nabavnu i prodajnu cenu u evrima."}
-            </p>
-          </DialogHeader>
+      <div ref={dialogScrollRef} className="space-y-4">
 
           <div className="space-y-2">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -160,27 +163,15 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
             </p>
           </div>
 
-    <div className="mx-auto w-full max-w-4xl">
-      <Card className="w-full">
-      <CardHeader>
-        <CardTitle>{editingProduct ? "Izmeni proizvod" : "Novi proizvod"}</CardTitle>
-        {editingProduct && (
-          <p className="text-sm text-slate-500">
-            Trenutno menjas:{" "}
-            <span className="font-medium text-slate-700">{editingProduct.kpName ?? editingProduct.name}</span>
-          </p>
-        )}
-      </CardHeader>
-      <CardContent>
-        <Form form={form} onSubmit={handleSubmit} className="space-y-4">
+        <Form id="product-form" form={form} onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <FormField
               name="kpName"
               render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel>KP naziv (glavni na sajtu)</FormLabel>
-                  <Input placeholder="npr. Samohodni trimer" {...field} />
-                  <FormMessage>{fieldState.error?.message}</FormMessage>
+                  <FormLabel htmlFor="pf-kpName">KP naziv (glavni na sajtu)</FormLabel>
+                  <Input id="pf-kpName" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-kpName-greska" : undefined} placeholder="npr. Samohodni trimer" {...field} />
+                  <FormMessage id="pf-kpName-greska">{fieldState.error?.message}</FormMessage>
                 </FormItem>
               )}
             />
@@ -188,9 +179,9 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               name="name"
               render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel>FB / Insta naziv</FormLabel>
-                  <Input placeholder="npr. Trimer za FB/IG objavu" {...field} />
-                  <FormMessage>{fieldState.error?.message}</FormMessage>
+                  <FormLabel htmlFor="pf-name">FB / Insta naziv</FormLabel>
+                  <Input id="pf-name" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-name-greska" : undefined} placeholder="npr. Trimer za FB/IG objavu" {...field} />
+                  <FormMessage id="pf-name-greska">{fieldState.error?.message}</FormMessage>
                 </FormItem>
               )}
             />
@@ -238,6 +229,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               <input
                 ref={categoryIconInputRef}
                 type="file"
+                aria-label="Ikonica kategorije"
                 accept="image/*"
                 className="sr-only"
                 onChange={handleCategoryIconChange}
@@ -392,9 +384,9 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               name="opisKp"
               render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel>KupujemProdajem opis</FormLabel>
-                  <Textarea rows={3} placeholder="Opis za KP" autoResize {...field} />
-                  <FormMessage>{fieldState.error?.message}</FormMessage>
+                  <FormLabel htmlFor="pf-opisKp">KupujemProdajem opis</FormLabel>
+                  <Textarea id="pf-opisKp" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-opisKp-greska" : undefined} rows={3} placeholder="Opis za KP" autoResize {...field} />
+                  <FormMessage id="pf-opisKp-greska">{fieldState.error?.message}</FormMessage>
                 </FormItem>
               )}
             />
@@ -402,9 +394,9 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               name="opisFbInsta"
               render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel>FB / Insta opis</FormLabel>
-                  <Textarea rows={3} placeholder="Opis za drustvene mreze" autoResize {...field} />
-                  <FormMessage>{fieldState.error?.message}</FormMessage>
+                  <FormLabel htmlFor="pf-opisFbInsta">FB / Insta opis</FormLabel>
+                  <Textarea id="pf-opisFbInsta" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-opisFbInsta-greska" : undefined} rows={3} placeholder="Opis za drustvene mreze" autoResize {...field} />
+                  <FormMessage id="pf-opisFbInsta-greska">{fieldState.error?.message}</FormMessage>
                 </FormItem>
               )}
             />
@@ -421,9 +413,9 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                       type="checkbox"
                       checked={!!field.value}
                       onChange={(event) => field.onChange(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="size-5 shrink-0 cursor-pointer accent-accent"
                     />
-                    <FormLabel htmlFor="publish-kp" className="m-0 flex items-center gap-2 cursor-pointer">
+                    <FormLabel htmlFor="publish-kp" className="m-0 flex min-h-11 flex-1 items-center gap-2 cursor-pointer">
                       <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white shadow-sm ring-1 ring-slate-200">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/kp.png" alt="KP" className="h-7 w-7 object-contain" />
@@ -442,11 +434,11 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                       type="checkbox"
                       checked={!!field.value}
                       onChange={(event) => field.onChange(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="size-5 shrink-0 cursor-pointer accent-accent"
                     />
                     <FormLabel
                       htmlFor="publish-fb-profile"
-                      className="m-0 flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      className="m-0 flex min-h-11 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
                     >
                       <Facebook className="h-5 w-5 text-blue-600" />
                       <span>Kod Majstora</span>
@@ -463,11 +455,11 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                       type="checkbox"
                       checked={!!field.value}
                       onChange={(event) => field.onChange(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="size-5 shrink-0 cursor-pointer accent-accent"
                     />
                     <FormLabel
                       htmlFor="publish-ig"
-                      className="m-0 flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      className="m-0 flex min-h-11 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
                     >
                       <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-tr from-pink-500 to-rose-500 text-white shadow-sm">
                         <Instagram className="h-4 w-4" />
@@ -486,11 +478,11 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                       type="checkbox"
                       checked={!!field.value}
                       onChange={(event) => field.onChange(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="size-5 shrink-0 cursor-pointer accent-accent"
                     />
                     <FormLabel
                       htmlFor="publish-marketplace"
-                      className="m-0 flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      className="m-0 flex min-h-11 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
                     >
                       <Facebook className="h-5 w-5 text-blue-600" />
                       <span>Marketplace</span>
@@ -517,9 +509,9 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                     type="checkbox"
                     checked={!!field.value}
                     onChange={(event) => field.onChange(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="size-5 shrink-0 cursor-pointer accent-accent"
                   />
-                  <FormLabel htmlFor="pickup-available" className="m-0 cursor-pointer">
+                  <FormLabel htmlFor="pickup-available" className="m-0 flex min-h-11 flex-1 cursor-pointer items-center">
                     Licno preuzimanje
                   </FormLabel>
                 </FormItem>
@@ -531,9 +523,9 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               name="nabavnaCena"
               render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel>Nabavna cena (EUR)</FormLabel>
+                  <FormLabel htmlFor="pf-nabavnaCena">Nabavna cena (EUR)</FormLabel>
                   <div className="space-y-2">
-                    <Input
+                    <Input id="pf-nabavnaCena" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-nabavnaCena-greska" : undefined}
                       ref={field.ref}
                       name={field.name}
                       type="text"
@@ -565,7 +557,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                         })}
                       </div>
                     ) : null}
-                    <FormMessage>{fieldState.error?.message}</FormMessage>
+                    <FormMessage id="pf-nabavnaCena-greska">{fieldState.error?.message}</FormMessage>
                   </div>
                 </FormItem>
               )}
@@ -574,8 +566,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
             name="prodajnaCena"
             render={({ field, fieldState }) => (
               <FormItem>
-                <FormLabel>Prodajna cena (EUR)</FormLabel>
-                  <Input
+                <FormLabel htmlFor="pf-prodajnaCena">Prodajna cena (EUR)</FormLabel>
+                  <Input id="pf-prodajnaCena" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-prodajnaCena-greska" : undefined}
                     ref={field.ref}
                     name={field.name}
                     type="text"
@@ -585,7 +577,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                     onChange={(event) => field.onChange(event.target.value)}
                     onBlur={field.onBlur}
                   />
-                  <FormMessage>{fieldState.error?.message}</FormMessage>
+                  <FormMessage id="pf-prodajnaCena-greska">{fieldState.error?.message}</FormMessage>
                 </FormItem>
               )}
             />
@@ -854,6 +846,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                           <input
                             id={`variant-upload-${variant.id}`}
                             type="file"
+                            aria-label="Dodaj slike tipa"
                             accept="image/*"
                             multiple
                             disabled={isUploadingImages}
@@ -985,6 +978,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                   id={adUploadInputId}
                   ref={adImageInputRef}
                   type="file"
+                  aria-label="Slika za društvene mreže"
                   accept="image/*"
                   className="sr-only"
                   onChange={handleAdImageChange}
@@ -1079,6 +1073,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               <input
                 id={fileInputId}
                 type="file"
+                aria-label="Dodaj slike proizvoda"
                 accept="image/*"
                 multiple
                 disabled={isUploadingImages}
@@ -1200,20 +1195,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               </div>
             )}
           </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={requestCloseModal}>
-              {editingProduct ? "Otkazi izmene" : "Ponisti"}
-            </Button>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {editingProduct ? "Azuriraj" : "Sacuvaj"}
-            </Button>
-          </div>
         </Form>
-      </CardContent>
-      </Card>
-    </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </Sheet>
   );
 }

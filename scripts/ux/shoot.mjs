@@ -308,7 +308,7 @@ try {
       await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
       if (args.style) await page.addStyleTag({ content: args.style });
       if (args.click) {
-        await page.locator(args.click).first().click();
+        await page.locator(args.click).filter({ visible: true }).first().click();
         await page.waitForTimeout(700);
       }
       if (args.press) {

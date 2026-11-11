@@ -15,7 +15,6 @@ type UseProductMediaInboxParams = {
   setImageLightbox: ReturnType<typeof useProductsState>["setImageLightbox"];
   setIsUploadingAdImage: ReturnType<typeof useProductsState>["setIsUploadingAdImage"];
   setIsAdDragActive: ReturnType<typeof useProductsState>["setIsAdDragActive"];
-  isMobile: ReturnType<typeof useProductsState>["isMobile"];
   isUploadingInboxImages: ReturnType<typeof useProductsState>["isUploadingInboxImages"];
   setIsUploadingInboxImages: ReturnType<typeof useProductsState>["setIsUploadingInboxImages"];
   inboxView: ReturnType<typeof useProductsState>["inboxView"];
@@ -25,11 +24,10 @@ type UseProductMediaInboxParams = {
   updateInboxImage: ReturnType<typeof useProductsState>["updateInboxImage"];
   deleteInboxImage: ReturnType<typeof useProductsState>["deleteInboxImage"];
   generateUploadUrl: ReturnType<typeof useProductsState>["generateUploadUrl"];
-  items: ReturnType<typeof useProductsView>["items"];
   inboxList: ReturnType<typeof useProductsView>["inboxList"];
 };
 
-export function useProductMediaInbox({ sessionToken, adImage, setAdImage, setImageLightbox, setIsUploadingAdImage, setIsAdDragActive, isMobile, isUploadingInboxImages, setIsUploadingInboxImages, inboxView, setInboxContextMenu, inboxUploadInputRef, addInboxImage, updateInboxImage, deleteInboxImage, generateUploadUrl, items, inboxList }: UseProductMediaInboxParams) {
+export function useProductMediaInbox({ sessionToken, adImage, setAdImage, setImageLightbox, setIsUploadingAdImage, setIsAdDragActive, isUploadingInboxImages, setIsUploadingInboxImages, inboxView, setInboxContextMenu, inboxUploadInputRef, addInboxImage, updateInboxImage, deleteInboxImage, generateUploadUrl, inboxList }: UseProductMediaInboxParams) {
   const openLightbox = useCallback((items: LightboxItem[], targetId?: string) => {
     const validItems = items.filter((item) => Boolean(item.url));
     if (validItems.length === 0) return;

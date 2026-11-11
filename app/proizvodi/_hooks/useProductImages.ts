@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { type DraftImage, type LightboxItem } from "../_lib/productHelpers";
 import type { useProductMediaInbox } from "./useProductMediaInbox";
 import type { useProductsState } from "./useProductsState";
-import type { useProductsView } from "./useProductsView";
+import type { } from "./useProductsView";
 
 type UseProductImagesParams = {
   sessionToken: ReturnType<typeof useProductsState>["sessionToken"];
@@ -25,12 +25,11 @@ type UseProductImagesParams = {
   productUploadInputRef: ReturnType<typeof useProductsState>["productUploadInputRef"];
   dialogScrollRef: ReturnType<typeof useProductsState>["dialogScrollRef"];
   generateUploadUrl: ReturnType<typeof useProductsState>["generateUploadUrl"];
-  items: ReturnType<typeof useProductsView>["items"];
   openLightbox: ReturnType<typeof useProductMediaInbox>["openLightbox"];
   uploadInboxImages: ReturnType<typeof useProductMediaInbox>["uploadInboxImages"];
 };
 
-export function useProductImages({ sessionToken, isModalOpen, images, setImages, setVariantImages, imageLightbox, setImageLightbox, isUploadingImages, setIsUploadingImages, setIsDraggingFiles, setIsInboxDragActive, variantUploadInputsRef, productUploadInputRef, dialogScrollRef, generateUploadUrl, items, openLightbox, uploadInboxImages }: UseProductImagesParams) {
+export function useProductImages({ sessionToken, isModalOpen, images, setImages, setVariantImages, imageLightbox, setImageLightbox, isUploadingImages, setIsUploadingImages, setIsDraggingFiles, setIsInboxDragActive, variantUploadInputsRef, productUploadInputRef, dialogScrollRef, generateUploadUrl, openLightbox, uploadInboxImages }: UseProductImagesParams) {
   const uploadImages = useCallback(
     async (
       fileList: FileList | File[],

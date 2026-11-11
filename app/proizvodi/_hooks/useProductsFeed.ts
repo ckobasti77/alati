@@ -4,10 +4,11 @@
 import { useCallback, useEffect } from "react";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
 import type { Product, ProductListResponse } from "@/types/order";
-import { sortOptions, archiveViewOptions, viewModeOptions, type SortOption } from "../_lib/productHelpers";
+import { sortOptions, archiveViewOptions, type SortOption } from "../_lib/productHelpers";
 import type { useProductsState } from "./useProductsState";
 
 type UseProductsFeedParams = {
+  restore: ReturnType<typeof useProductsState>["restore"];
   router: ReturnType<typeof useProductsState>["router"];
   pathname: ReturnType<typeof useProductsState>["pathname"];
   searchParams: ReturnType<typeof useProductsState>["searchParams"];
@@ -42,7 +43,7 @@ type UseProductsFeedParams = {
   productList: ReturnType<typeof useProductsState>["productList"];
 };
 
-export function useProductsFeed({ router, pathname, searchParams, searchQuery, sessionToken, viewMode, setViewMode, archiveView, setArchiveView, sortBy, setSortBy, productSearch, setProductSearch, productPage, setProductPage, productFeed, setProductFeed, productPagination, setProductPagination, isLoadingMoreProducts, setIsLoadingMoreProducts, productsLoaderRef, loadMoreProductsTimerRef, scrollYRef, skipUrlSyncRef, skipInitialResetRef, didRestoreRef, listStateRef, pendingScrollY, setPendingScrollY, listStateKey, productList }: UseProductsFeedParams) {
+export function useProductsFeed({ restore, router, pathname, searchParams, searchQuery, sessionToken, viewMode, setViewMode, archiveView, setArchiveView, sortBy, setSortBy, productSearch, setProductSearch, productPage, setProductPage, productFeed, setProductFeed, productPagination, setProductPagination, isLoadingMoreProducts, setIsLoadingMoreProducts, productsLoaderRef, loadMoreProductsTimerRef, scrollYRef, skipUrlSyncRef, skipInitialResetRef, didRestoreRef, listStateRef, pendingScrollY, setPendingScrollY, listStateKey, productList }: UseProductsFeedParams) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleScroll = () => {
@@ -65,6 +66,11 @@ export function useProductsFeed({ router, pathname, searchParams, searchQuery, s
     };
   }, [archiveView, productFeed, productPage, productPagination, productSearch, sortBy, viewMode, listStateRef]);
 
+  // Snimak liste je jednokratan: pročitan je u prvom renderu (useProductsState), ovde se briše.
+  useEffect(() => {
+    if (restore.restored) clearListState(restore.key);
+  }, [restore]);
+
   useEffect(() => {
     if (didRestoreRef.current) return;
     didRestoreRef.current = true;
@@ -74,7 +80,6 @@ export function useProductsFeed({ router, pathname, searchParams, searchQuery, s
     if (storedSearch !== searchQuery) return;
     const storedSort = stored.extra?.sortBy;
     const storedArchive = stored.extra?.archiveView;
-    const storedView = stored.extra?.viewMode;
     skipInitialResetRef.current = true;
     skipUrlSyncRef.current = true;
     if (typeof storedSort === "string" && sortOptions.includes(storedSort as SortOption)) {
@@ -83,9 +88,7 @@ export function useProductsFeed({ router, pathname, searchParams, searchQuery, s
     if (typeof storedArchive === "string" && archiveViewOptions.includes(storedArchive as (typeof archiveViewOptions)[number])) {
       setArchiveView(storedArchive as (typeof archiveViewOptions)[number]);
     }
-    if (typeof storedView === "string" && viewModeOptions.includes(storedView as (typeof viewModeOptions)[number])) {
-      setViewMode(storedView as (typeof viewModeOptions)[number]);
-    }
+    // Prikaz (mreža/lista) je zapamćen izbor (localStorage), ne deo snimka liste.
     setProductFeed(stored.items ?? []);
     setProductPage(stored.page ?? 1);
     if (stored.pagination) {
@@ -100,11 +103,25 @@ export function useProductsFeed({ router, pathname, searchParams, searchQuery, s
     if (pendingScrollY === null) return;
     const target = pendingScrollY;
     setPendingScrollY(null);
-    if (typeof window !== "undefined") {
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: target, behavior: "auto" });
-      });
-    }
+    if (typeof window === "undefined") return;
+    // Router posle povratka može sam da postavi skrol na vrh (htmlElement.scrollTop = 0) posle našeg poziva,
+    // pa se cilj ponovo primenjuje još kratko, osim ako korisnik u međuvremenu sam skroluje.
+    let userScrolled = false;
+    const markUser = () => {
+      userScrolled = true;
+    };
+    window.addEventListener("wheel", markUser, { passive: true, once: true });
+    window.addEventListener("touchstart", markUser, { passive: true, once: true });
+    const apply = () => {
+      if (!userScrolled && Math.abs(window.scrollY - target) > 2) window.scrollTo({ top: target, behavior: "auto" });
+    };
+    requestAnimationFrame(apply);
+    // Bez cleanup-a: setPendingScrollY(null) odmah ponovo pokreće efekat, a ponavljanja moraju da prežive taj render.
+    [60, 160, 320].forEach((delay) => window.setTimeout(apply, delay));
+    window.setTimeout(() => {
+      window.removeEventListener("wheel", markUser);
+      window.removeEventListener("touchstart", markUser);
+    }, 400);
   }, [pendingScrollY, setPendingScrollY]);
 
   useEffect(() => {
@@ -212,9 +229,8 @@ export function useProductsFeed({ router, pathname, searchParams, searchQuery, s
     if (loadMoreProductsTimerRef.current !== null) {
       window.clearTimeout(loadMoreProductsTimerRef.current);
     }
-    loadMoreProductsTimerRef.current = window.setTimeout(() => {
-      setProductPage((prev) => prev + 1);
-    }, 850);
+    // Sledeća strana odmah (ranije veštačko čekanje od 850 ms); skeleton pokriva učitavanje.
+    setProductPage((prev) => prev + 1);
   }, [hasMoreProducts, isLoadingMoreProducts, loadMoreProductsTimerRef, setIsLoadingMoreProducts, setProductPage]);
 
   useEffect(() => {
@@ -227,7 +243,7 @@ export function useProductsFeed({ router, pathname, searchParams, searchQuery, s
           handleLoadMoreProducts();
         }
       },
-      { rootMargin: "240px" },
+      { rootMargin: "600px 0px" },
     );
     observer.observe(target);
     return () => observer.disconnect();

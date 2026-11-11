@@ -379,7 +379,7 @@ function UvozContent() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <div className="rounded-full bg-surface-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-text-muted ring-1 ring-border">
             {candidates === undefined ? "..." : `${waitingCount} ceka slanje`}
           </div>
           <Button asChild variant="outline" className="gap-2">

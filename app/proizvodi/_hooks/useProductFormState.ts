@@ -10,8 +10,6 @@ import type { useProductsState } from "./useProductsState";
 
 type UseProductFormStateParams = {
   sessionToken: ReturnType<typeof useProductsState>["sessionToken"];
-  setViewMode: ReturnType<typeof useProductsState>["setViewMode"];
-  isMobile: ReturnType<typeof useProductsState>["isMobile"];
   setIsMobile: ReturnType<typeof useProductsState>["setIsMobile"];
   hasSeededCategories: ReturnType<typeof useProductsState>["hasSeededCategories"];
   setHasSeededCategories: ReturnType<typeof useProductsState>["setHasSeededCategories"];
@@ -24,7 +22,7 @@ type UseProductFormStateParams = {
   ensureDefaultSuppliers: ReturnType<typeof useProductsState>["ensureDefaultSuppliers"];
 };
 
-export function useProductFormState({ sessionToken, setViewMode, isMobile, setIsMobile, hasSeededCategories, setHasSeededCategories, hasSeededSuppliers, setHasSeededSuppliers, setShowSupplierForm, categories, suppliers, ensureDefaultCategories, ensureDefaultSuppliers }: UseProductFormStateParams) {
+export function useProductFormState({ sessionToken, setIsMobile, hasSeededCategories, setHasSeededCategories, hasSeededSuppliers, setHasSeededSuppliers, setShowSupplierForm, categories, suppliers, ensureDefaultCategories, ensureDefaultSuppliers }: UseProductFormStateParams) {
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: emptyProductForm(),
@@ -89,11 +87,6 @@ export function useProductFormState({ sessionToken, setViewMode, isMobile, setIs
     return () => media.removeEventListener("change", update);
   }, [setIsMobile]);
 
-  useEffect(() => {
-    if (isMobile) {
-      setViewMode("grid");
-    }
-  }, [isMobile, setViewMode]);
 
   useEffect(() => {
     if (supplierOffersField.length > 0) {

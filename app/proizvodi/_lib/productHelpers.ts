@@ -7,7 +7,7 @@ export const parsePrice = (value: string) => {
   return Number(normalized);
 };
 
-export const PRODUCTS_PAGE_SIZE = 20;
+export const PRODUCTS_PAGE_SIZE = 30;
 
 export type DraftImage = {
   storageId: string;
@@ -113,3 +113,27 @@ export const pickBestSupplierOffer = (
   });
   return best;
 };
+
+/** Prikaz liste (mreža/lista) se pamti posebno za telefon i desktop; `?prikaz=lista|mreza` ima prednost. */
+export const productsViewKey = () =>
+  typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches ? "proizvodi:prikaz:desktop" : "proizvodi:prikaz:telefon";
+
+export function readProductsViewPref(): "grid" | "list" {
+  if (typeof window === "undefined") return "grid";
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get("prikaz");
+    if (fromUrl === "lista") return "list";
+    if (fromUrl === "mreza") return "grid";
+    return window.localStorage.getItem(productsViewKey()) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+}
+
+export function writeProductsViewPref(value: "grid" | "list") {
+  try {
+    window.localStorage.setItem(productsViewKey(), value);
+  } catch {
+    // privatni režim / blokiran storage: izbor važi samo do osvežavanja
+  }
+}

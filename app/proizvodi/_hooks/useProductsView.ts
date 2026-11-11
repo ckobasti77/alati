@@ -10,7 +10,6 @@ import type { useProductFormState } from "./useProductFormState";
 import type { useProductsState } from "./useProductsState";
 
 type UseProductsViewParams = {
-  images: ReturnType<typeof useProductsState>["images"];
   archiveView: ReturnType<typeof useProductsState>["archiveView"];
   sortBy: ReturnType<typeof useProductsState>["sortBy"];
   productSearch: ReturnType<typeof useProductsState>["productSearch"];
@@ -31,7 +30,7 @@ type UseProductsViewParams = {
   bestSupplierForVariant: ReturnType<typeof useProductFormState>["bestSupplierForVariant"];
 };
 
-export function useProductsView({ images, archiveView, sortBy, productSearch, productFeed, categorySearch, inboxView, inboxContextMenu, setInboxContextMenu, productStats, categories, suppliers, inboxImages, form, categoryIds, resolvedProductType, normalizedVariants, supplierMap, bestSupplierForVariant }: UseProductsViewParams) {
+export function useProductsView({ archiveView, sortBy, productSearch, productFeed, categorySearch, inboxView, inboxContextMenu, setInboxContextMenu, productStats, categories, suppliers, inboxImages, form, categoryIds, resolvedProductType, normalizedVariants, supplierMap, bestSupplierForVariant }: UseProductsViewParams) {
   const items = useMemo(() => productFeed, [productFeed]);
   const statsMap = useMemo(() => {
     const map = new Map<string, ProductStats>();
@@ -205,5 +204,5 @@ export function useProductsView({ images, archiveView, sortBy, productSearch, pr
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [inboxContextMenu, setInboxContextMenu]);
 
-  return { items, categoryMap, filteredCategories, hasProductSearch, selectedCategories, variantsError, getDisplayPrice, getBestSupplier, getMainImage, hasSocialMainImage, getSalesCount, sortedProducts, visibleProducts, defaultVariantEntry, bestFormOffer, bestFormSupplierName, inboxWithPriceCount, inboxWithoutPriceCount, inboxSkipCount, inboxList, supplierCount, inboxTotalCount, inboxEmptyMessage, emptyProductsMessage };
+  return { getPrimaryVariant, getProductPrice, getProfit, items, categoryMap, filteredCategories, hasProductSearch, selectedCategories, variantsError, getDisplayPrice, getBestSupplier, getMainImage, hasSocialMainImage, getSalesCount, sortedProducts, visibleProducts, defaultVariantEntry, bestFormOffer, bestFormSupplierName, inboxWithPriceCount, inboxWithoutPriceCount, inboxSkipCount, inboxList, supplierCount, inboxTotalCount, inboxEmptyMessage, emptyProductsMessage };
 }
