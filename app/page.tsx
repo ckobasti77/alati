@@ -107,7 +107,7 @@ function DashboardContent() {
 
   return (
     <div className="flex flex-col gap-4 md:gap-6">
-      <ActionList actions={overview?.actions} />
+      <ActionList actions={overview?.actions} token={sessionToken} />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-12 md:gap-x-6 md:gap-y-4">
         <div className="md:col-span-12 md:flex md:items-center md:justify-between md:gap-4">

@@ -1,6 +1,7 @@
 "use client";
 
 import gsap from "gsap";
+import { Flip } from "gsap/Flip";
 import { useGSAP } from "@gsap/react";
 
 // Motion tokeni. Sve animacije idu kroz ove vrednosti i helpere (bez magičnih brojeva po
@@ -36,7 +37,22 @@ export function dur(seconds: number): number {
 }
 
 if (typeof window !== "undefined") {
-  gsap.registerPlugin(useGSAP);
+  gsap.registerPlugin(useGSAP, Flip);
+}
+
+/** Izlazak stavke iz liste (npr. više ne prolazi filter): fade + blago smanjenje, ostale kliznu (Flip). */
+export const LIST_EXIT = { scale: 0.98, duration: DURATION.base, ease: EASE.in } as const;
+/** Najviše stavki koje izlaze animirano odjednom; više od toga (npr. promena filtera) menja se odmah. */
+export const LIST_EXIT_MAX = 12;
+/** Pomeranje ostalih stavki posle izlaska. */
+export const LIST_REFLOW = { duration: DURATION.base, ease: EASE.out } as const;
+
+export function animateListExit(element: Element, onComplete: () => void) {
+  if (prefersReducedMotion()) {
+    onComplete();
+    return null;
+  }
+  return gsap.to(element, { opacity: 0, scale: LIST_EXIT.scale, duration: LIST_EXIT.duration, ease: LIST_EXIT.ease, onComplete });
 }
 
 type SheetTargets = {
@@ -103,4 +119,4 @@ export function animateRouteIn(element: HTMLElement) {
   );
 }
 
-export { gsap, useGSAP };
+export { Flip, gsap, useGSAP };

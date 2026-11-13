@@ -44,7 +44,7 @@ export function StatusSection({ order, isUpdatingStage, onStageChange, isFullRef
             )}
           >
             <BadgePercent className="size-3.5" aria-hidden />
-            {isExcludedBecauseReturned ? "100% · već vraćeno" : isManualRefund100 ? "100% povrat · ručno" : "100% povrat"}
+            {isExcludedBecauseReturned ? "100% · povrat urađen" : isManualRefund100 ? "100% povrat · ručno" : "100% povrat"}
           </span>
         ) : null}
       </div>

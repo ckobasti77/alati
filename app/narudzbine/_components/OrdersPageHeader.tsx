@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, BellRing, CalendarRange, CheckSquare, Download, LayoutList, List, MessageCircle, ReceiptText, Share2 } from "lucide-react";
+import { Banknote, CalendarRange, CheckSquare, Download, LayoutList, List, MessageCircle, ReceiptText, Share2 } from "lucide-react";
 import { HeaderActions } from "@/components/shell/ShellProvider";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { IconButton } from "@/components/ui/icon-button";
@@ -13,13 +13,11 @@ type OrdersPageHeaderProps = {
   pdfMode: "download" | "share" | null;
   onPdf: (mode: "download" | "share") => void;
   onEditRefundPeriod: () => void;
-  onOpenRestock: () => void;
-  restockCount: number;
   onStartSelection: () => void;
 };
 
 /** Desktop: H1 + broj + ⋯. Telefon: naslov je u headeru aplikacije, a prekidač prikaza i ⋯ idu u njegov slot. */
-export function OrdersPageHeader({ ordersView, total, pdfBusy, pdfMode, onPdf, onEditRefundPeriod, onOpenRestock, restockCount, onStartSelection }: OrdersPageHeaderProps) {
+export function OrdersPageHeader({ ordersView, total, pdfBusy, pdfMode, onPdf, onEditRefundPeriod, onStartSelection }: OrdersPageHeaderProps) {
   const items: ActionMenuItem[] = [
     ...(ordersView.isDesktop ? [] : [{ label: "Izaberi", icon: CheckSquare, onSelect: onStartSelection }]),
     {
@@ -31,7 +29,6 @@ export function OrdersPageHeader({ ordersView, total, pdfBusy, pdfMode, onPdf, o
     },
     { label: pdfMode === "share" ? "Deljenje…" : "Podeli PDF", icon: Share2, disabled: pdfBusy, onSelect: () => onPdf("share") },
     { label: "Period 100% povrata…", icon: CalendarRange, onSelect: onEditRefundPeriod, separatorBefore: true },
-    { label: restockCount > 0 ? `Zahtevi za dopunu (${restockCount})` : "Zahtevi za dopunu", icon: BellRing, onSelect: onOpenRestock },
     { label: "Uvoz priznanica", icon: ReceiptText, href: "/narudzbine/uvoz", separatorBefore: true },
     { label: "WA uvoz", icon: MessageCircle, href: "/narudzbine/wa-uvoz" },
     { label: "Legle pare", icon: Banknote, href: "/narudzbine/pare" },

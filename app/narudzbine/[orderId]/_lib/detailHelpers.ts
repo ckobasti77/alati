@@ -24,7 +24,7 @@ export const resolveOrderShippingMode = (
 export const resolveShipmentNumber = (order?: Pick<OrderWithProduct, "brojPosiljke"> | null) => order?.brojPosiljke?.trim() ?? "";
 export const getOrderEventTitle = (event: OrderEvent) => {
   if (event.type === "povrat") {
-    return event.povratVracen ? "Povrat je označen kao vraćen" : "Oznaka povrata je uklonjena";
+    return event.povratVracen ? "Označeno: povrat urađen" : "Poništeno: povrat urađen";
   }
 
   const stageLabel = event.stage ? (STAGES[event.stage]?.label ?? event.stage) : "Nepoznato stanje";

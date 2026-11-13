@@ -22,6 +22,7 @@ import type { Order } from "@/types/order";
 import { resolveOrderShippingMode, resolveShipmentNumber } from "../../_lib/helpers";
 import type { OrderEntry } from "../../_hooks/useOrderEntries";
 import { useOrdersList } from "./OrdersListContext";
+import { showsPovratToggle } from "./PovratToggle";
 
 /** Kopira broj pošiljke i otvara praćenje kad postoji pouzdan cilj (isto kao ranije). */
 export function useOpenShipment() {
@@ -72,11 +73,15 @@ export function OrderActionsMenu({ entry, className }: { entry: OrderEntry; clas
           },
         ]
       : []),
-    {
-      label: order.povratVracen ? "Poništi vraćen povrat" : "Označi povrat vraćen",
-      icon: order.povratVracen ? Banknote : CheckCheck,
-      onSelect: () => void rowActions.handlePovratToggle(order, !order.povratVracen),
-    },
+    ...(showsPovratToggle(order)
+      ? [
+          {
+            label: order.povratVracen ? "Poništi: povrat urađen" : "Označi: povrat urađen",
+            icon: order.povratVracen ? Banknote : CheckCheck,
+            onSelect: () => void rowActions.handlePovratToggle(order, !order.povratVracen),
+          },
+        ]
+      : []),
     ...(shipmentNumber ? [{ label: "Prati pošiljku", icon: ExternalLink, onSelect: () => openShipment(order), separatorBefore: true }] : []),
     {
       label: "Kopiraj telefon",

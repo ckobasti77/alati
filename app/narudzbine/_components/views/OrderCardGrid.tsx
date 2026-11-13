@@ -7,11 +7,13 @@ import { OrderCard } from "./OrderCard";
 /** Prikaz Kartice na desktopu: 2/3/4 kolone. */
 export function OrderCardGrid({
   entries,
+  listRef,
   loading,
   loadingMore,
   empty,
 }: {
   entries: OrderEntry[];
+  listRef: React.RefObject<HTMLElement | null>;
   loading: boolean;
   loadingMore: boolean;
   empty: React.ReactNode;
@@ -20,7 +22,7 @@ export function OrderCardGrid({
     return <div className="rounded-2xl bg-surface ring-1 ring-border">{empty}</div>;
   }
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
+    <div ref={listRef as React.RefObject<HTMLDivElement | null>} className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
       {loading ? (
         <CardSkeletons count={8} />
       ) : (

@@ -3,10 +3,12 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useConvex } from "convex/react";
-import { Plus, SearchX } from "lucide-react";
+import { Plus, SearchX, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useConvexMutation } from "@/lib/convex";
+import { usePresenceList } from "@/lib/usePresenceList";
+import { isZaPovratFilter } from "@/lib/zaPovrat";
 import type { Order, OrderStage } from "@/types/order";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
@@ -15,8 +17,8 @@ import { orderMatchesFilters } from "./_lib/orderFilters";
 import { useOrdersFeed } from "./_hooks/useOrdersFeed";
 import { useRefundPeriod } from "./_hooks/useRefundPeriod";
 import { useOrderCatalog } from "./_hooks/useOrderCatalog";
-import { useRestock } from "./_hooks/useRestock";
 import { useOrdersPdf } from "./_hooks/useOrdersPdf";
+import { useZaPovratTotals } from "./_hooks/useZaPovratTotals";
 import { useOrderEntries } from "./_hooks/useOrderEntries";
 import { useOrderSelection } from "./_hooks/useOrderSelection";
 import { useOrderReorder } from "./_hooks/useOrderReorder";
@@ -32,17 +34,17 @@ import { OrderFormSheet } from "./_components/order-form/OrderFormSheet";
 import { ExitConfirmDialog } from "./_components/modals/ExitConfirmDialog";
 import { DeleteOrderDialog } from "./_components/modals/DeleteOrderDialog";
 import { QuickEditDialog } from "./_components/modals/QuickEditDialog";
-import { RestockDialog } from "./_components/modals/RestockDialog";
-import { DeleteRestockDialog } from "./_components/modals/DeleteRestockDialog";
 import { ShipmentNumberDialog } from "./_components/modals/ShipmentNumberDialog";
 import { OrdersPageHeader } from "./_components/OrdersPageHeader";
 import { OrdersToolbar } from "./_components/OrdersToolbar";
-import { SummaryStrip } from "./_components/SummaryStrip";
+import { ObracunStrip } from "./_components/ObracunStrip";
 import { SelectionBar } from "./_components/SelectionBar";
 import { OrdersListProvider, type OrderPreview, type OrdersListContextValue } from "./_components/list/OrdersListContext";
 import { OrdersTableView } from "./_components/views/OrdersTableView";
 import { OrderCardGrid } from "./_components/views/OrderCardGrid";
 import { OrderMobileList } from "./_components/views/OrderMobileList";
+
+const getEntryKey = (entry: { order: Order }) => entry.order._id;
 
 export default function OrdersPage() {
   return (
@@ -68,12 +70,21 @@ function OrdersContent() {
   const updateOrder = useConvexMutation("orders:update");
   const catalog = useOrderCatalog({ sessionToken });
   const { products, productMap, supplierMap } = catalog;
-  const restock = useRestock({ basePath, orderScope, router, searchParams, searchParamsString, sessionToken, products, productMap });
 
   const refundPeriod = refundPeriodOverview?.period;
   const matchesFilters = useCallback((order: Order) => orderMatchesFilters(order, feed.filters, refundPeriod), [feed.filters, refundPeriod]);
   const entries = useOrderEntries({ orders, refundPeriodOverview });
   const { orderEntries, visibleOrderIds } = entries;
+  // Red koji posle akcije ispadne iz filtera (npr. „Povrat urađen“ u Za povrat) glatko izlazi.
+  const presence = usePresenceList(orderEntries, getEntryKey);
+  const shownEntries = useMemo(() => presence.rendered.map((entry) => entry.item), [presence.rendered]);
+  const zaPovrat = useZaPovratTotals({
+    filters: feed.filters,
+    listArgs: orderListQueryArgs,
+    listTotals: feed.ordersTotals,
+    listTotal: feed.ordersPagination.total,
+    listLoading: feed.isOrdersLoading,
+  });
   const selection = useOrderSelection({ orderScope, sessionToken, matchesFilters, setOrders, visibleOrderIds });
 
   const pdf = useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, showUnreturnedOnly, showReturnedOnly, showPickupOnly, showShippingOnly, showLateOnly, showRefund100Only, orderListQueryArgs, dateFilterActive, refundPeriodOverview, productMap });
@@ -175,6 +186,35 @@ function OrdersContent() {
     />
   );
 
+  // Greška query-ja liste ne obara stranicu: sa filterom nudi njegovo uklanjanje.
+  const listError = (
+    <div className="rounded-2xl bg-surface ring-1 ring-border">
+      <EmptyState
+        tone="danger"
+        icon={TriangleAlert}
+        title={hasQuery ? "Filter trenutno ne radi" : "Narudžbine trenutno ne mogu da se učitaju"}
+        description={hasQuery ? "Lista sa ovim filterom nije mogla da se učita. Ostatak aplikacije radi." : "Proveri vezu i pokušaj ponovo."}
+        action={
+          hasQuery ? (
+            <Button
+              type="button"
+              onClick={() => {
+                feed.clearAllFilters();
+                feed.clearSearch();
+              }}
+            >
+              Ukloni filter
+            </Button>
+          ) : (
+            <Button type="button" onClick={() => window.location.reload()}>
+              Pokušaj ponovo
+            </Button>
+          )
+        }
+      />
+    </div>
+  );
+
   const isDesktop = ordersView.isDesktop;
   const view = ordersView.view;
   const loading = feed.isOrdersLoading;
@@ -188,8 +228,6 @@ function OrdersContent() {
       <ExitConfirmDialog orderForm={orderForm} formActions={formActions} />
       <DeleteOrderDialog orderDelete={orderDelete} />
       <QuickEditDialog rowActions={rowActions} />
-      <RestockDialog catalog={catalog} restock={restock} />
-      <DeleteRestockDialog restock={restock} />
       <ShipmentNumberDialog rowActions={rowActions} />
 
       <OrdersPageHeader
@@ -199,31 +237,29 @@ function OrdersContent() {
         pdfMode={pdf.ordersPdfMode}
         onPdf={(mode) => void pdf.handleOrdersPdf(mode)}
         onEditRefundPeriod={refund.openRefundPeriodModal}
-        onOpenRestock={() => restock.setRestockModalOpen(true)}
-        restockCount={restock.restockEntries?.length ?? 0}
         onStartSelection={() => selection.enterSelection()}
       />
-      <OrdersToolbar feed={feed} ordersView={ordersView} refundPendingCount={refundPeriodOverview?.pendingCount} searchRef={searchRef} now={now} />
-      <SummaryStrip
-        isDesktop={isDesktop}
-        showTotals={!isDesktop || view === "kartice"}
-        overview={refundPeriodOverview}
+      <OrdersToolbar feed={feed} ordersView={ordersView} refund={{ overview: refundPeriodOverview, onEditPeriod: refund.openRefundPeriodModal }} searchRef={searchRef} now={now} />
+      <ObracunStrip
         totals={feed.ordersTotals}
-        total={feed.ordersPagination.total}
         loading={loading}
-        showRefund100Only={showRefund100Only}
-        onToggleRefundFilter={() => feed.handleRefund100Toggle(!showRefund100Only)}
-        onEditRefundPeriod={refund.openRefundPeriodModal}
+        unavailable={Boolean(feed.listError)}
+        zaPovrat={zaPovrat}
+        zaPovratActive={isZaPovratFilter(feed.filters)}
+        onShowZaPovrat={() => feed.handleQuickFilter("zaPovrat")}
       />
 
       <OrdersListProvider value={listContext}>
-        {!isDesktop ? (
-          <OrderMobileList entries={orderEntries} detailed={view === "detaljno"} longPress={longPress} loading={loading} loadingMore={loadingMore} empty={empty} />
+        {feed.listError ? (
+          listError
+        ) : !isDesktop ? (
+          <OrderMobileList entries={shownEntries} listRef={presence.containerRef} detailed={view === "detaljno"} longPress={longPress} loading={loading} loadingMore={loadingMore} empty={empty} />
         ) : view === "kartice" ? (
-          <OrderCardGrid entries={orderEntries} loading={loading} loadingMore={loadingMore} empty={empty} />
+          <OrderCardGrid entries={shownEntries} listRef={presence.containerRef} loading={loading} loadingMore={loadingMore} empty={empty} />
         ) : (
           <OrdersTableView
-            entries={orderEntries}
+            entries={shownEntries}
+            listRef={presence.containerRef}
             columns={ordersView.columns}
             density={ordersView.density}
             drag={{
@@ -235,8 +271,6 @@ function OrdersContent() {
               onDragLeave: reorder.handleOrderDragLeave,
               onDrop: reorder.handleOrderDrop,
             }}
-            totals={feed.ordersTotals}
-            total={feed.ordersPagination.total}
             allVisibleSelected={selection.allVisibleSelected}
             onToggleAll={selection.toggleAllVisibleOrders}
             selectionDisabled={selection.bulkAction !== null}
@@ -247,7 +281,7 @@ function OrdersContent() {
         )}
       </OrdersListProvider>
       <div ref={ordersLoaderRef} aria-hidden className="h-px" />
-      {!hasMoreOrders && orderEntries.length > 0 && !loading ? (
+      {!hasMoreOrders && orderEntries.length > 0 && !loading && !feed.listError ? (
         <p className="py-2 text-center text-[13px] text-text-muted">To su sve narudžbine.</p>
       ) : null}
 

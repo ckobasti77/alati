@@ -1,8 +1,6 @@
 "use client";
 
-import { Money } from "@/components/ui/money";
 import { cn } from "@/lib/utils";
-import type { OrderListResponse } from "@/types/order";
 import { ORDER_COLUMNS, type OrderColumnKey, type OrdersDensity } from "../../_lib/orderView";
 import type { OrderEntry } from "../../_hooks/useOrderEntries";
 import { OrderTableRow, type RowDragHandlers } from "./OrderTableRow";
@@ -23,25 +21,18 @@ const WIDTHS: Record<OrderColumnKey | "izbor" | "status" | "akcije", number> = {
   akcije: 48,
 };
 
-const MONEY_TOTALS: Partial<Record<OrderColumnKey, keyof OrderListResponse["totals"]>> = {
-  prodajno: "prodajno",
-  nabavno: "nabavno",
-  transport: "transport",
-  profit: "profit",
-  povrat: "povrat",
-};
+/** Kolone sa iznosima (desno poravnate). Zbirovi su u obračunu iznad liste. */
+const MONEY_COLUMNS = new Set<OrderColumnKey>(["prodajno", "nabavno", "transport", "profit", "povrat"]);
 
 const thBase =
   "sticky top-(--header-h) z-(--z-sticky) bg-surface px-2 py-2 align-bottom text-[11px] leading-4 font-medium uppercase tracking-[0.06em] text-text-muted shadow-[inset_0_-1px_0_var(--color-border)]";
-const tfBase = "sticky bottom-0 z-(--z-sticky) bg-surface px-2 py-2.5 shadow-[inset_0_1px_0_var(--color-border)]";
 
 export function OrdersTableView({
   entries,
   columns,
   density,
   drag,
-  totals,
-  total,
+  listRef,
   allVisibleSelected,
   onToggleAll,
   selectionDisabled,
@@ -53,8 +44,8 @@ export function OrdersTableView({
   columns: OrderColumnKey[];
   density: OrdersDensity;
   drag: RowDragHandlers;
-  totals: OrderListResponse["totals"];
-  total: number;
+  /** Kontejner stavki za glatki izlazak reda (usePresenceList). */
+  listRef: React.RefObject<HTMLElement | null>;
   allVisibleSelected: boolean;
   onToggleAll: () => void;
   selectionDisabled: boolean;
@@ -99,7 +90,7 @@ export function OrdersTableView({
               <th
                 key={column.key}
                 scope="col"
-                className={cn(thBase, MONEY_TOTALS[column.key] ? "text-right" : "text-left")}
+                className={cn(thBase, MONEY_COLUMNS.has(column.key) ? "text-right" : "text-left")}
               >
                 {column.label}
               </th>
@@ -109,7 +100,7 @@ export function OrdersTableView({
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody ref={listRef as React.RefObject<HTMLTableSectionElement | null>}>
           {loading ? (
             <TableSkeletonRows columns={colCount} density={density} rows={8} />
           ) : entries.length === 0 ? (
@@ -125,27 +116,6 @@ export function OrdersTableView({
             </>
           )}
         </tbody>
-        {entries.length > 0 ? (
-          <tfoot>
-            <tr className="text-[13px]">
-              <td className={cn(tfBase, "rounded-bl-2xl")} />
-              <td colSpan={2} className={cn(tfBase, "text-left font-medium text-text")}>
-                Zbir <span className="font-normal text-text-muted">· <span className="num">{total.toLocaleString("sr-RS")}</span> narudžbina</span>
-              </td>
-              {shownColumns.map((column) => {
-                const key = MONEY_TOTALS[column.key];
-                return (
-                  <td key={column.key} className={cn(tfBase, "text-right font-semibold")}>
-                    {key ? (
-                      <Money value={totals[key]} tone={key === "profit" ? "profit" : "default"} trimZeroCents className={key === "nabavno" || key === "transport" ? "font-medium text-text-muted" : undefined} />
-                    ) : null}
-                  </td>
-                );
-              })}
-              <td className={cn(tfBase, "rounded-br-2xl")} />
-            </tr>
-          </tfoot>
-        ) : null}
       </table>
     </div>
   );

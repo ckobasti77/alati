@@ -84,7 +84,7 @@ export function useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUk
           refundProfit: formatCurrency(profitShare, "EUR"),
           refundNote: isFullRefund100
             ? isExcludedBecauseReturned
-              ? `Povrat 100% - vec vraceno (obracunato ${formatCurrency(calculatedPovrat, "EUR")})`
+              ? `Povrat 100% - povrat uradjen (obracunato ${formatCurrency(calculatedPovrat, "EUR")})`
               : `${isManualRefund100 ? "Rucno dodat 100%" : "Period 100%"}: nabavna + ceo profit + transport`
             : `Standardni obracun (${formatPercent(profitSharePercent)})`,
         });

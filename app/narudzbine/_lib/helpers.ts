@@ -135,12 +135,16 @@ export const resolveProfitPercent = (value?: number) =>
 export const formatPercent = (value: number) =>
   `${value.toLocaleString("sr-RS", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
 
-export const formatRefundPeriodDate = (value: string) =>
-  new Intl.DateTimeFormat("sr-RS", {
+/** "2026-07-19" → "19.07.2026."; neispravan datum se vraća kakav jeste (ne baca RangeError u renderu). */
+export const formatRefundPeriodDate = (value: string) => {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("sr-RS", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-  }).format(new Date(`${value}T12:00:00`));
+  }).format(date);
+};
 
 export const resolveOrderSortValue = (order: Order) => order.sortIndex ?? order.kreiranoAt;
 

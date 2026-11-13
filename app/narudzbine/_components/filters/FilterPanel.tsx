@@ -1,10 +1,13 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { STAGE_OPTIONS } from "@/lib/stages";
+import type { OrderRefundPeriodOverview } from "@/types/order";
+import { formatRefundPeriodDate } from "../../_lib/helpers";
 import { getPeriodPresets } from "../../_lib/orderView";
 import type { useOrdersFeed } from "../../_hooks/useOrdersFeed";
 
@@ -12,10 +15,23 @@ export type FeedState = ReturnType<typeof useOrdersFeed>;
 
 const sectionTitle = "mb-2 text-[13px] font-medium text-text-muted";
 
+export type RefundPeriodInfo = { overview: OrderRefundPeriodOverview | undefined; onEditPeriod: () => void };
+
+function refundPeriodText(overview: OrderRefundPeriodOverview | undefined) {
+  if (!overview) return "Učitavanje perioda…";
+  const parts = [
+    overview.period
+      ? `Period ${formatRefundPeriodDate(overview.period.startDate)} – ${formatRefundPeriodDate(overview.period.endDate)}`
+      : "Period nije postavljen",
+  ];
+  if (overview.manualCount > 0) parts.push(`ručno dodatih ${overview.manualCount}`);
+  return parts.join(" · ");
+}
+
 /** Sadržaj filtera: isti u Sheet-u (telefon) i Popover-u (desktop). Svaka promena se odmah primenjuje. */
-export function FilterPanel({ feed, now }: { feed: FeedState; now: number }) {
+export function FilterPanel({ feed, now, refund, onDone }: { feed: FeedState; now: number; refund: RefundPeriodInfo; onDone?: () => void }) {
   const presets = getPeriodPresets(now);
-  const returnValue = feed.showReturnedOnly ? "vraceno" : feed.showUnreturnedOnly ? "nevraceno" : "svi";
+  const returnValue = feed.showReturnedOnly ? "uradjen" : feed.showUnreturnedOnly ? "nije" : "svi";
   const pickupValue = feed.showPickupOnly ? "licno" : feed.showShippingOnly ? "slanje" : "svi";
 
   return (
@@ -74,13 +90,7 @@ export function FilterPanel({ feed, now }: { feed: FeedState; now: number }) {
         )}
       </section>
 
-      <section className="flex flex-col divide-y divide-border" aria-label="Brzi filteri">
-        <Switch
-          label="100% povrat"
-          description="U periodu ili ručno dodate, povrat nije vraćen"
-          checked={feed.showRefund100Only}
-          onCheckedChange={feed.handleRefund100Toggle}
-        />
+      <section className="flex flex-col divide-y divide-border" aria-label="Oznake">
         <Switch
           label="Kasni"
           description="Poslato, a označeno da kasni"
@@ -96,17 +106,40 @@ export function FilterPanel({ feed, now }: { feed: FeedState; now: number }) {
           fullWidth
           value={returnValue}
           onChange={(value) => {
-            if (value === "vraceno") feed.handleReturnedToggle(true);
-            else if (value === "nevraceno") feed.handleUnreturnedToggle(true);
+            if (value === "uradjen") feed.handleReturnedToggle(true);
+            else if (value === "nije") feed.handleUnreturnedToggle(true);
             else if (feed.showReturnedOnly) feed.handleReturnedToggle(false);
             else feed.handleUnreturnedToggle(false);
           }}
           options={[
             { value: "svi", label: "Svi" },
-            { value: "nevraceno", label: "Nevraćeni" },
-            { value: "vraceno", label: "Vraćeni" },
+            { value: "nije", label: "Nije urađen" },
+            { value: "uradjen", label: "Urađen" },
           ]}
         />
+        <p className="mt-2 text-[13px] leading-5 text-text-muted">Za povrat = Leglo + povrat nije urađen.</p>
+      </section>
+
+      <section aria-labelledby="filter-povrat100" className="flex flex-col">
+        <h3 id="filter-povrat100" className={sectionTitle}>100% povrat</h3>
+        <Switch
+          label="Samo 100% povrat"
+          description={refundPeriodText(refund.overview)}
+          checked={feed.showRefund100Only}
+          onCheckedChange={feed.handleRefund100Toggle}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-2 self-start"
+          onClick={() => {
+            onDone?.();
+            refund.onEditPeriod();
+          }}
+        >
+          Izmeni period 100% povrata
+        </Button>
       </section>
 
       <section aria-labelledby="filter-preuzimanje">

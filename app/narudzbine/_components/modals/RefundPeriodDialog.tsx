@@ -70,7 +70,7 @@ export function RefundPeriodDialog({ refund }: RefundPeriodDialogProps) {
           </div>
         </div>
         <p className="text-[13px] text-text-muted">
-          Nevraćene porudžbine iz ovog perioda (datumi su uključivi) računaju se kao nabavna cena + 100% profita − transport.
+          Narudžbine iz ovog perioda (datumi su uključivi) kojima povrat nije urađen vraćaju se 100%: nabavna + transport + ceo profit.
         </p>
       </div>
     </Sheet>

@@ -1,7 +1,8 @@
 import { orderTotals } from "@/lib/calc";
 import { calculateOrderRefund, type OrderRefundPeriod } from "@/lib/refund-policy";
+import { isZaPovratFilter, ZA_POVRAT_STAGE } from "@/lib/zaPovrat";
 import type { Order, OrderListResponse, OrderStage } from "@/types/order";
-import { resolveOrderSortValue } from "./helpers";
+import { normalizeStageFilters, resolveOrderSortValue } from "./helpers";
 
 /** Filteri liste (isto značenje kao argumenti `orders:list`). */
 export type OrderFilters = {
@@ -44,6 +45,28 @@ export function orderMatchesFilters(order: Order, filters: OrderFilters, refundP
     if (!refund.isFullRefund100 || refund.isExcludedBecauseReturned) return false;
   }
   return true;
+}
+
+/** Brzi čipovi iznad liste: prečice za stage ili za skup Za povrat (Leglo + povrat nije urađen). */
+export type QuickFilterKey = "poruceno" | "poslato" | "zaPovrat";
+
+export function isQuickFilterActive(filters: OrderFilters, key: QuickFilterKey) {
+  if (key === "zaPovrat") return isZaPovratFilter(filters);
+  return !isZaPovratFilter(filters) && filters.stages.includes(key);
+}
+
+/**
+ * Izmena filtera za tap na brzi čip. „Za povrat“ upisuje Leglo + Nije urađen (i skida ih kad je aktivan).
+ * Stage čip dok je Za povrat aktivan izlazi iz Za povrat i bira samo taj stage; inače se stage-ovi sabiraju.
+ */
+export function applyQuickFilter(filters: OrderFilters, key: QuickFilterKey): Partial<OrderFilters> {
+  const zaPovrat = isZaPovratFilter(filters);
+  if (key === "zaPovrat") {
+    return zaPovrat ? { stages: [], unreturned: false } : { stages: [ZA_POVRAT_STAGE], unreturned: true, returned: false };
+  }
+  const base = zaPovrat ? [] : filters.stages;
+  const stages = base.includes(key) ? base.filter((stage) => stage !== key) : normalizeStageFilters([...base, key]);
+  return zaPovrat ? { stages, unreturned: false } : { stages };
 }
 
 /** Redosled liste: kao server (sortIndex ili kreiranoAt, novije gore). */

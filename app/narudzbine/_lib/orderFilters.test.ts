@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Order } from "@/types/order";
-import { mergeListPage, orderMatchesFilters, type OrderFilters } from "./orderFilters";
+import { applyQuickFilter, isQuickFilterActive, mergeListPage, orderMatchesFilters, type OrderFilters } from "./orderFilters";
 
 const base: OrderFilters = {
   search: "",
@@ -70,5 +70,42 @@ describe("mergeListPage", () => {
     expect(mergeListPage([order("a", 1)], { items: [], pagination: { page: 1, pageSize: 30, total: 0, totalPages: 1 } })).toEqual([]);
     const next = mergeListPage([order("a", 1, { stage: "aks" })], { items: [order("a", 1, { stage: "poslato" })], pagination: { page: 1, pageSize: 30, total: 1, totalPages: 1 } });
     expect(next[0].stage).toBe("poslato");
+  });
+});
+
+describe("brzi čipovi", () => {
+  const apply = (filters: OrderFilters, key: Parameters<typeof applyQuickFilter>[1]) => ({ ...filters, ...applyQuickFilter(filters, key) });
+
+  it("Za povrat upisuje Leglo + Nije urađen i skida ih drugim tapom", () => {
+    const on = apply(base, "zaPovrat");
+    expect(on.stages).toEqual(["legle_pare"]);
+    expect(on.unreturned).toBe(true);
+    expect(on.returned).toBe(false);
+    expect(isQuickFilterActive(on, "zaPovrat")).toBe(true);
+    const off = apply(on, "zaPovrat");
+    expect(off.stages).toEqual([]);
+    expect(off.unreturned).toBe(false);
+  });
+
+  it("Za povrat zamenjuje stage-ove i poništava filter Urađen", () => {
+    const on = apply({ ...base, stages: ["poruceno", "poslato"], returned: true }, "zaPovrat");
+    expect(on).toMatchObject({ stages: ["legle_pare"], unreturned: true, returned: false });
+  });
+
+  it("stage čipovi se sabiraju", () => {
+    const both = apply(apply(base, "poruceno"), "poslato");
+    expect(both.stages).toEqual(["poruceno", "poslato"]);
+    expect(isQuickFilterActive(both, "poruceno")).toBe(true);
+    expect(apply(both, "poruceno").stages).toEqual(["poslato"]);
+  });
+
+  it("stage čip dok je Za povrat aktivan bira samo taj stage", () => {
+    const next = apply(apply(base, "zaPovrat"), "poruceno");
+    expect(next).toMatchObject({ stages: ["poruceno"], unreturned: false });
+    expect(isQuickFilterActive(next, "zaPovrat")).toBe(false);
+  });
+
+  it("Leglo bez Nije urađen nije Za povrat", () => {
+    expect(isQuickFilterActive({ ...base, stages: ["legle_pare"] }, "zaPovrat")).toBe(false);
   });
 });

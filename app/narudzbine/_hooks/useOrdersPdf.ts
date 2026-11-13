@@ -42,12 +42,12 @@ export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, s
       if (stageFilters.length > 0) {
         filters.push(`Stage: ${stageFilters.map((stage) => STAGES[stage]?.label ?? stage).join(", ")}`);
       }
-      if (showUnreturnedOnly) filters.push("Povrat: nepovraceni");
-      if (showReturnedOnly) filters.push("Povrat: povraceno");
+      if (showUnreturnedOnly) filters.push("Povrat: nije urađen");
+      if (showReturnedOnly) filters.push("Povrat: urađen");
       if (showPickupOnly) filters.push("Preuzimanje: licno");
       if (showShippingOnly) filters.push("Preuzimanje: slanje");
       if (showLateOnly) filters.push("Isporuka: kasni");
-      if (showRefund100Only) filters.push("Povrat: 100% (za povrat)");
+      if (showRefund100Only) filters.push("Povrat: samo 100%");
       if (dateFilterActive) {
         filters.push(`Datum: ${dateFrom || "pocetak"} - ${dateTo || "danas"}`);
       }

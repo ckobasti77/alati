@@ -78,10 +78,10 @@ export function SelectionBar({ selection, isDesktop, hasMore }: { selection: Sel
         size="sm"
         disabled={disabled}
         className="h-11 rounded-xl md:h-9"
-        onClick={() => void selection.handleBulkAction({ povratVracen: true, message: "Povrat označen" })}
+        onClick={() => void selection.handleBulkAction({ povratVracen: true, message: "Povrat urađen" })}
       >
         {bulkAction === "povrat" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-        Povrati
+        Povrat urađen
       </Button>
       <ActionMenu
         label="Još akcija za izabrane"
@@ -92,9 +92,9 @@ export function SelectionBar({ selection, isDesktop, hasMore }: { selection: Sel
             disabled: busy,
           },
           {
-            label: "Poništi povrat",
+            label: "Poništi: povrat urađen",
             disabled,
-            onSelect: () => void selection.handleBulkAction({ povratVracen: false, message: "Povrat poništen" }),
+            onSelect: () => void selection.handleBulkAction({ povratVracen: false, message: "Povrat nije urađen" }),
           },
         ]}
       />

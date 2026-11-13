@@ -25,7 +25,6 @@ export type DashboardOverview = {
       pendingCount: number;
       pendingAmount: number;
     };
-    restock: number;
   };
   latest: {
     _id: string;

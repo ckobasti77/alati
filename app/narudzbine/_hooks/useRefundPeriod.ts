@@ -3,7 +3,7 @@
 // Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useConvexMutation, useConvexQuery } from "@/lib/convex";
+import { useConvexMutation, useConvexQueryState } from "@/lib/convex";
 import type { OrderRefundPeriodOverview } from "@/types/order";
 
 type UseRefundPeriodParams = {
@@ -17,7 +17,8 @@ export function useRefundPeriod({ orderScope, sessionToken, resetOrdersFeed }: U
   const [refundPeriodStart, setRefundPeriodStart] = useState("");
   const [refundPeriodEnd, setRefundPeriodEnd] = useState("");
   const [isRefundPeriodSaving, setIsRefundPeriodSaving] = useState(false);
-  const refundPeriodOverview = useConvexQuery<OrderRefundPeriodOverview>("orders:refundPeriod", {
+  // Greška ne obara listu: period 100% se tada samo ne prikazuje.
+  const { data: refundPeriodOverview } = useConvexQueryState<OrderRefundPeriodOverview>("orders:refundPeriod", {
     token: sessionToken,
     scope: orderScope,
   });

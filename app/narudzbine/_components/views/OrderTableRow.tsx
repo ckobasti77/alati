@@ -1,18 +1,19 @@
 "use client";
 
-import { Copy, GripVertical } from "lucide-react";
+import { Copy, GripVertical, Phone } from "lucide-react";
 import Link from "next/link";
 import type { DragEvent } from "react";
 import { Money } from "@/components/ui/money";
 import { StageBadge } from "@/components/ui/stage-badge";
 import { cn } from "@/lib/utils";
 import { resolveShipmentNumber } from "../../_lib/helpers";
-import { formatShortDate, getAddressPlace, getOrderTitle, type OrderColumnKey, type OrdersDensity } from "../../_lib/orderView";
+import { formatShortDate, getAddressPlace, getOrderTitle, phoneHref, type OrderColumnKey, type OrdersDensity } from "../../_lib/orderView";
 import type { OrderEntry } from "../../_hooks/useOrderEntries";
 import { OrderActionsMenu, useOpenShipment } from "../list/OrderActionsMenu";
 import { OrderFlags } from "../list/OrderFlags";
 import { OrderThumb } from "../list/OrderThumb";
 import { useOrdersList } from "../list/OrdersListContext";
+import { PovratToggle, showsPovratToggle } from "../list/PovratToggle";
 
 export type RowDragHandlers = {
   draggingId: string | null;
@@ -100,7 +101,7 @@ export function OrderTableRow({
             <span className="num" title={`Kreirano ${formatShortDate(order.kreiranoAt, ctx.now)}`}>
               {formatShortDate(order.kreiranoAt, ctx.now, true)}
             </span>
-            <OrderFlags entry={entry} />
+            <OrderFlags entry={entry} hidePovrat={columns.has("povrat") && showsPovratToggle(order)} />
           </span>
         </div>
       </td>
@@ -122,11 +123,21 @@ export function OrderTableRow({
       </td>
       {columns.has("kupac") ? (
         <td className="px-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 truncate font-medium text-text" title={order.customerName}>
-              {order.customerName || "—"}
-            </span>
-            {order.phone ? (
+          <p className="truncate font-medium text-text" title={order.customerName}>
+            {order.customerName || "—"}
+          </p>
+          {order.phone ? (
+            <div className="-ml-1 flex min-w-0 items-center gap-0.5">
+              <a
+                href={phoneHref(order.phone)}
+                onClick={stop}
+                title={`Pozovi ${order.phone}`}
+                aria-label={`Pozovi ${order.phone}`}
+                className="inline-flex min-w-0 items-center gap-1 rounded-md px-1 text-xs leading-5 text-accent-text transition-colors hover:bg-surface-3 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                <Phone className="size-3 shrink-0" aria-hidden />
+                <span className="num truncate">{order.phone}</span>
+              </a>
               <button
                 type="button"
                 onClick={(event) => {
@@ -134,14 +145,13 @@ export function OrderTableRow({
                   void ctx.rowActions.copyText(order.phone, "Broj telefona je kopiran.");
                 }}
                 title="Kopiraj broj telefona"
-                aria-label={`${order.phone}, kopiraj broj telefona`}
-                className="group/phone inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 text-text-muted transition-colors hover:bg-surface-3 hover:text-text focus-visible:outline-2 focus-visible:outline-ring"
+                aria-label={`Kopiraj broj ${order.phone}`}
+                className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-muted opacity-0 transition hover:bg-surface-3 hover:text-text focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring group-hover:opacity-100"
               >
-                <span className="num">{order.phone}</span>
-                <Copy className="size-3 opacity-0 transition-opacity group-hover/phone:opacity-100 group-focus-visible/phone:opacity-100" aria-hidden />
+                <Copy className="size-3" aria-hidden />
               </button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
           {comfy && place ? <p className="mt-0.5 truncate text-xs text-text-muted">{place}</p> : null}
         </td>
       ) : null}
@@ -167,19 +177,17 @@ export function OrderTableRow({
       ) : null}
       {columns.has("povrat") ? (
         <td className="px-2 text-right" onClick={stop}>
-          <label className="inline-flex cursor-pointer items-center justify-end gap-2" title={order.povratVracen ? "Povrat je vraćen" : "Označi da je povrat vraćen"}>
+          <label className="inline-flex cursor-pointer items-center justify-end gap-2">
             <Money
               value={povrat}
               trimZeroCents
               className={cn(isFullRefund100 && !isExcludedBecauseReturned ? "font-medium text-success" : "text-text-muted", order.povratVracen && "line-through decoration-text-muted/60")}
             />
-            <input
-              type="checkbox"
-              checked={Boolean(order.povratVracen)}
-              onChange={(event) => void ctx.rowActions.handlePovratToggle(order, event.target.checked)}
-              aria-label={`Povrat vraćen: ${title.primary}`}
-              className="size-4 cursor-pointer accent-accent"
-            />
+            {showsPovratToggle(order) ? (
+              <PovratToggle order={order} title={title.primary} variant="checkbox" />
+            ) : (
+              <span aria-hidden className="size-4" />
+            )}
           </label>
           {comfy && isExcludedBecauseReturned ? (
             <p className="mt-0.5 text-[11px] text-text-muted">

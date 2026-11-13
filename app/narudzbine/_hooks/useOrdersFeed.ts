@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useConvexQuery } from "@/lib/convex";
+import { useConvexQueryState } from "@/lib/convex";
 import { clearListState, readListState, writeListState } from "@/lib/listState";
 import type { Order, OrderListResponse, OrderStage } from "@/types/order";
 import { emptyOrderListTotals } from "../_lib/types";
 import { normalizeStageFilters, areArraysEqual, normalizeDateInput, resolveDateTimestamp, resolveTodayEndTimestamp } from "../_lib/helpers";
-import { mergeListPage, type OrderFilters } from "../_lib/orderFilters";
+import { applyQuickFilter, mergeListPage, type OrderFilters, type QuickFilterKey } from "../_lib/orderFilters";
 import type { useRouter, useSearchParams } from "next/navigation";
 
 /** Veličina strane liste (infinite scroll). */
@@ -74,7 +74,7 @@ export function writeOrderFilters(params: URLSearchParams, filters: OrderFilters
 /** Ključ za čuvanje liste (sessionStorage). Parametri koji ne menjaju listu se izostavljaju. */
 export function buildListStateKey(basePath: string, searchParamsString: string) {
   const params = new URLSearchParams(searchParamsString);
-  ["productId", "orderModal", "nova", "restock", "prikaz"].forEach((key) => params.delete(key));
+  ["productId", "orderModal", "nova", "prikaz"].forEach((key) => params.delete(key));
   const suffix = params.toString();
   return `listState:${basePath}${suffix ? `?${suffix}` : ""}`;
 }
@@ -205,7 +205,9 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     [dateFromTimestamp, dateToTimestamp, filters, orderScope, sessionToken],
   );
 
-  const list = useConvexQuery<OrderListResponse>("orders:list", { ...orderListQueryArgs, page, pageSize: PAGE_SIZE });
+  // Greška query-ja (npr. filter koji backend ne podržava) se vraća, ne baca: lista prikazuje poruku sa
+  // "Ukloni filter", a ostatak stranice radi.
+  const { data: list, error: listError } = useConvexQueryState<OrderListResponse>("orders:list", { ...orderListQueryArgs, page, pageSize: PAGE_SIZE });
 
   // Rezultat strane → lista (spaja se po ID-u, pa realtime izmene učitanih stavki stižu same).
   if (list !== mergedList) {
@@ -220,7 +222,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     }
   }
 
-  const isOrdersLoading = list === undefined && orders.length === 0;
+  const isOrdersLoading = list === undefined && orders.length === 0 && !listError;
   const hasMoreOrders = ordersPagination.totalPages > page;
   const dateFilterActive = Boolean(filters.dateFrom || filters.dateTo);
   const activeFilterCount =
@@ -366,6 +368,14 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
   );
   const handleLateToggle = useCallback((checked: boolean) => updateFilters({ late: checked }), [updateFilters]);
   const handleRefund100Toggle = useCallback((checked: boolean) => updateFilters({ refund100: checked }), [updateFilters]);
+  /** Brzi čip (Poručeno, Poslato, Za povrat): menja filtere iz poslednjeg stanja. */
+  const handleQuickFilter = useCallback(
+    (key: QuickFilterKey) => {
+      setFilters((prev) => ({ ...prev, ...applyQuickFilter(prev, key) }));
+      resetOrdersFeed();
+    },
+    [resetOrdersFeed],
+  );
   const handleDateFromChange = useCallback((value: string) => updateFilters({ dateFrom: normalizeDateInput(value) }), [updateFilters]);
   const handleDateToChange = useCallback((value: string) => updateFilters({ dateTo: normalizeDateInput(value) }), [updateFilters]);
   /** Ceo period odjednom (brzi izbori: Danas, 7 dana…). */
@@ -438,6 +448,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     ordersLoaderRef,
     orderListQueryArgs,
     isOrdersLoading,
+    listError,
     hasMoreOrders,
     dateFilterActive,
     activeFilterCount,
@@ -449,6 +460,7 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     handleShippingToggle,
     handleLateToggle,
     handleRefund100Toggle,
+    handleQuickFilter,
     handleDateRangeChange,
     clearAllFilters,
     handleDateFromChange,

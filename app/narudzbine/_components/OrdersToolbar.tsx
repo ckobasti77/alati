@@ -1,24 +1,25 @@
 "use client";
 
-import { BadgePercent, CalendarRange, Clock, SlidersHorizontal } from "lucide-react";
-import { useRef, useState, type RefObject } from "react";
+import { RotateCcw, SlidersHorizontal } from "lucide-react";
+import { useState, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet } from "@/components/ui/sheet";
 import { ViewToggle } from "@/components/ui/view-toggle";
-import { STAGE_OPTIONS } from "@/lib/stages";
+import { STAGES } from "@/lib/stages";
 import { cn } from "@/lib/utils";
-import { formatPeriodLabel, pluralOrders } from "../_lib/orderView";
+import { isQuickFilterActive, type QuickFilterKey } from "../_lib/orderFilters";
+import { pluralOrders } from "../_lib/orderView";
 import type { OrdersViewState } from "../_hooks/useOrdersView";
-import { FilterPanel, type FeedState } from "./filters/FilterPanel";
+import { FilterPanel, type FeedState, type RefundPeriodInfo } from "./filters/FilterPanel";
 import { SearchField } from "./filters/SearchField";
 import { ViewSettingsMenu } from "./ViewSettingsMenu";
 
 type OrdersToolbarProps = {
   feed: FeedState;
   ordersView: OrdersViewState;
-  refundPendingCount: number | undefined;
+  refund: RefundPeriodInfo;
   searchRef: RefObject<HTMLInputElement | null>;
   now: number;
 };
@@ -41,9 +42,15 @@ function ResultCount({ feed, className }: { feed: FeedState; className?: string 
   );
 }
 
-export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef, now }: OrdersToolbarProps) {
+/** Brzi čipovi: telefon Poručeno · Za povrat, desktop Poručeno · Poslato · Za povrat. Ostalo je u Filterima. */
+const QUICK_CHIPS: { key: QuickFilterKey; label: string; icon: React.ComponentProps<typeof Chip>["icon"]; desktopOnly?: boolean }[] = [
+  { key: "poruceno", label: STAGES.poruceno.label, icon: STAGES.poruceno.icon },
+  { key: "poslato", label: STAGES.poslato.label, icon: STAGES.poslato.icon, desktopOnly: true },
+  { key: "zaPovrat", label: "Za povrat", icon: RotateCcw },
+];
+
+export function OrdersToolbar({ feed, ordersView, refund, searchRef, now }: OrdersToolbarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const periodRequestRef = useRef(false);
   const searchInput = (
     <SearchField
       ref={searchRef}
@@ -53,16 +60,17 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
       className={ordersView.isDesktop ? "w-72" : "min-w-0 flex-1"}
     />
   );
-  const refundChip = (
+  const quickChips = QUICK_CHIPS.filter((chip) => ordersView.isDesktop || !chip.desktopOnly).map((chip) => (
     <Chip
-      label="100% povrat"
-      icon={BadgePercent}
-      count={refundPendingCount || undefined}
-      selected={feed.showRefund100Only}
-      onClick={() => feed.handleRefund100Toggle(!feed.showRefund100Only)}
+      key={chip.key}
+      label={chip.label}
+      icon={chip.icon}
+      selected={isQuickFilterActive(feed.filters, chip.key)}
+      onClick={() => feed.handleQuickFilter(chip.key)}
+      className={ordersView.isDesktop ? undefined : "snap-start"}
     />
-  );
-  const lateChip = <Chip label="Kasni" icon={Clock} selected={feed.showLateOnly} onClick={() => feed.handleLateToggle(!feed.showLateOnly)} />;
+  ));
+  const panel = <FilterPanel feed={feed} now={now} refund={refund} onDone={() => setFiltersOpen(false)} />;
 
   if (ordersView.isDesktop) {
     return (
@@ -77,7 +85,7 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
             </Button>
           </PopoverTrigger>
           <PopoverContent className="max-h-[min(80dvh,640px)] w-[380px] overflow-y-auto p-4" align="start" aria-label="Filteri">
-            <FilterPanel feed={feed} now={now} />
+            {panel}
             {feed.activeFilterCount > 0 ? (
               <div className="mt-4 flex justify-end border-t border-border pt-3">
                 <Button type="button" variant="ghost" size="sm" onClick={feed.clearAllFilters}>
@@ -87,8 +95,9 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
             ) : null}
           </PopoverContent>
         </Popover>
-        {lateChip}
-        {refundChip}
+        <div role="group" aria-label="Brzi filteri" className="flex items-center gap-2">
+          {quickChips}
+        </div>
         {feed.activeFilterCount > 0 ? (
           <button
             type="button"
@@ -105,7 +114,6 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
     );
   }
 
-  const periodActive = feed.dateFilterActive;
   return (
     <>
       <div className="sticky top-[calc(var(--header-h)+env(safe-area-inset-top))] z-(--z-sticky) -mx-4 -mt-4 border-b border-border bg-(--header-bg) pt-2 pb-2 backdrop-blur-xl">
@@ -127,27 +135,7 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
           {feed.isOrdersLoading ? "" : `${feed.ordersPagination.total.toLocaleString("sr-RS")} ${pluralOrders(feed.ordersPagination.total)}`}
         </span>
         <div className="mt-2 flex snap-x scroll-px-4 gap-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Brzi filteri">
-          {STAGE_OPTIONS.map((stage) => (
-            <Chip
-              key={stage.value}
-              label={stage.label}
-              selected={feed.stageFilters.includes(stage.value)}
-              onClick={() => feed.handleStageFilterToggle(stage.value)}
-              className="snap-start"
-            />
-          ))}
-          <Chip
-            label={formatPeriodLabel(feed.dateFrom, feed.dateTo, now)}
-            icon={CalendarRange}
-            selected={periodActive}
-            onClick={() => {
-              periodRequestRef.current = true;
-              setFiltersOpen(true);
-            }}
-            className="snap-start"
-          />
-          {lateChip}
-          {refundChip}
+          {quickChips}
         </div>
       </div>
       <Sheet
@@ -155,12 +143,6 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
         onOpenChange={setFiltersOpen}
         title="Filteri"
         description={feed.activeFilterCount ? `Aktivno: ${feed.activeFilterCount}` : undefined}
-        onOpenAutoFocus={(event) => {
-          if (!periodRequestRef.current) return;
-          periodRequestRef.current = false;
-          event.preventDefault();
-          requestAnimationFrame(() => document.getElementById("filter-period-section")?.scrollIntoView({ block: "start" }));
-        }}
         footer={
           <div className="grid grid-cols-[auto_1fr] gap-2">
             <Button type="button" variant="ghost" className="px-4" disabled={feed.activeFilterCount === 0} onClick={feed.clearAllFilters}>
@@ -172,7 +154,7 @@ export function OrdersToolbar({ feed, ordersView, refundPendingCount, searchRef,
           </div>
         }
       >
-        <FilterPanel feed={feed} now={now} />
+        {panel}
       </Sheet>
     </>
   );

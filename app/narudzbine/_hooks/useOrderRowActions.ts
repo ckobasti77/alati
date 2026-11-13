@@ -299,15 +299,19 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
     });
   };
 
-  const handlePovratToggle = async (order: Order, nextValue: boolean) => {
-    await runGuarded(`povrat:${order._id}`, async () => {
+  /** Vraća `true` kad je oznaka „Povrat urađen“ sačuvana (prikaz može optimistično da je pokaže odmah). */
+  const handlePovratToggle = async (order: Order, nextValue: boolean): Promise<boolean> => {
+    const saved = await runGuarded(`povrat:${order._id}`, async () => {
       try {
         mergeIntoList(order._id, await updateFromFresh(order._id, { povratVracen: nextValue }));
+        return true;
       } catch (error) {
         console.error(error);
-        toast.error("Nije moguće sačuvati povrat.");
+        toast.error("Nije moguće sačuvati oznaku povrata.");
+        return false;
       }
     });
+    return saved === true;
   };
 
   const handleKasniToggle = async (order: Order, nextValue: boolean) => {

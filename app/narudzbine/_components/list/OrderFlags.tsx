@@ -6,7 +6,8 @@ import type { OrderEntry } from "../../_hooks/useOrderEntries";
 
 type Flag = { key: string; icon: LucideIcon; label: string; short: string; text: string; bg: string };
 
-export function getOrderFlags(entry: OrderEntry): Flag[] {
+/** `hidePovrat`: prikaz već ima prekidač „Povrat urađen“, pa oznaka ne treba dvaput. */
+export function getOrderFlags(entry: OrderEntry, hidePovrat = false): Flag[] {
   const { order, isFullRefund100, isManualRefund100, isExcludedBecauseReturned } = entry;
   const flags: Flag[] = [];
   if (order.stage === "poslato" && order.kasni) {
@@ -27,12 +28,12 @@ export function getOrderFlags(entry: OrderEntry): Flag[] {
       text: "text-success", bg: "bg-success-soft",
     });
   }
-  if (order.povratVracen) {
+  if (order.povratVracen && !hidePovrat) {
     flags.push({
-      key: "vracen",
+      key: "povrat-uradjen",
       icon: CheckCheck,
-      label: isFullRefund100 ? "Povrat je vraćen (ne računa se)" : "Povrat je vraćen",
-      short: "Vraćen",
+      label: isFullRefund100 ? "Povrat urađen (ne računa se u povrat)" : "Povrat urađen",
+      short: "Povrat urađen",
       text: "text-text-muted", bg: "bg-surface-2",
     });
   }
@@ -43,8 +44,18 @@ export function getOrderFlags(entry: OrderEntry): Flag[] {
 }
 
 /** Oznake narudžbine: `icons` = sitne ikonice (red tabele, kompaktna kartica), `pills` = ikonica + reč (kartice). */
-export function OrderFlags({ entry, variant = "icons", className }: { entry: OrderEntry; variant?: "icons" | "pills"; className?: string }) {
-  const flags = getOrderFlags(entry);
+export function OrderFlags({
+  entry,
+  variant = "icons",
+  hidePovrat = false,
+  className,
+}: {
+  entry: OrderEntry;
+  variant?: "icons" | "pills";
+  hidePovrat?: boolean;
+  className?: string;
+}) {
+  const flags = getOrderFlags(entry, hidePovrat);
   if (flags.length === 0) return null;
   return (
     <span className={cn("inline-flex items-center", variant === "icons" ? "gap-1" : "flex-wrap gap-1.5", className)}>

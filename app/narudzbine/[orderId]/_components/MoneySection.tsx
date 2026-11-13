@@ -21,13 +21,13 @@ type MoneySectionProps = {
   className?: string;
 };
 
-/** Novac: prodajno, nabavno, transport, profit, povrat (tabular, desno). Povrat vraćen i ručni 100% su prekidači. */
+/** Novac: prodajno, nabavno, transport, profit, povrat (tabular, desno). „Povrat urađen“ i ručni 100% su prekidači. */
 export function MoneySection({ order, derived, refundPeriodOverview, isManualRefundSaving, onPovratToggle, onManualRefund100Toggle, onEdit, aside, className }: MoneySectionProps) {
   const { totals, prodajnoUkupno, nabavnoUkupno, transport, prof, myProfitPercent, myProfit, profitShare, calculatedProfitShare, profitSharePercent, povrat, calculatedPovrat, isInRefundPeriod, isManualRefund100, isFullRefund100, isExcludedBecauseReturned } = derived;
   const quantity = totals?.totalQty ?? order.kolicina;
   const refundHint = isFullRefund100
     ? isExcludedBecauseReturned
-      ? `obračunato ${formatPercent(100)} profita, već vraćeno`
+      ? `obračunato ${formatPercent(100)} profita, povrat urađen`
       : `ceo profit ${isManualRefund100 ? "(ručno 100%)" : "(period 100%)"}`
     : `profit ${formatPercent(profitSharePercent)}`;
 
@@ -71,7 +71,7 @@ export function MoneySection({ order, derived, refundPeriodOverview, isManualRef
         <div className={cn("mt-2 rounded-xl px-3 py-2.5 text-[13px] leading-5", isExcludedBecauseReturned ? "bg-surface-2 text-text-muted" : "bg-success-soft text-text")}>
           <p className="font-medium">
             {isExcludedBecauseReturned
-              ? "Povrat je već vraćen i ne ulazi u zbir"
+              ? "Povrat je urađen i ne ulazi u zbir"
               : isManualRefund100
                 ? "Ručno uključena u 100% povrat"
                 : "U periodu 100% povrata"}
@@ -81,7 +81,7 @@ export function MoneySection({ order, derived, refundPeriodOverview, isManualRef
               Period {formatRefundPeriodDate(refundPeriodOverview.period.startDate)} – {formatRefundPeriodDate(refundPeriodOverview.period.endDate)}
             </p>
           ) : null}
-          <p>Povrat = nabavna + ceo profit − transport.</p>
+          <p>Povrat = nabavna + transport + ceo profit.</p>
           {isExcludedBecauseReturned ? (
             <p>
               Obračunato <Money value={calculatedPovrat} />, preostalo 0.
@@ -91,12 +91,20 @@ export function MoneySection({ order, derived, refundPeriodOverview, isManualRef
       ) : null}
 
       <div className="mt-2 divide-y divide-border border-t border-border">
-        <Switch
-          label="Povrat vraćen"
-          description={order.povratVracen ? (order.povratVracenAt ? `Vraćen ${formatDate(order.povratVracenAt)}` : "Datum nije zabeležen") : undefined}
-          checked={Boolean(order.povratVracen)}
-          onCheckedChange={(value) => onPovratToggle(value)}
-        />
+        {order.stage === "legle_pare" || order.povratVracen ? (
+          <Switch
+            label="Povrat urađen"
+            description={
+              order.povratVracen
+                ? order.povratVracenAt
+                  ? `Urađen ${formatDate(order.povratVracenAt)}`
+                  : "Datum nije zabeležen"
+                : "Leglo, a povrat još nije urađen"
+            }
+            checked={Boolean(order.povratVracen)}
+            onCheckedChange={(value) => onPovratToggle(value)}
+          />
+        ) : null}
         {!isInRefundPeriod || isManualRefund100 ? (
           <Switch
             label="Ručno u 100% povrat"

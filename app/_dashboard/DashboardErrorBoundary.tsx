@@ -1,48 +1,35 @@
 "use client";
 
-import { Component, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 type Props = { children: ReactNode; title?: string; compact?: boolean };
-type State = { error: Error | null; attempt: number };
 
-/** Convex `useQuery` baca gresku (npr. query jos nije deployovan); tabla tada nudi ponovni pokusaj. */
-export class DashboardErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, attempt: 0 };
-
-  static getDerivedStateFromError(error: Error): Partial<State> {
-    return { error };
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
+/** Convex `useQuery` baca grešku (npr. query još nije deployovan); tabla tada nudi ponovni pokušaj. */
+export function DashboardErrorBoundary({ children, title, compact }: Props) {
+  return (
+    <ErrorBoundary
+      fallback={({ reset }) => (
         <div className="rounded-2xl bg-surface ring-1 ring-border">
           <EmptyState
             tone="danger"
             icon={TriangleAlert}
-            compact={this.props.compact}
-            title={this.props.title ?? "Kontrolna tabla nije mogla da se učita"}
+            compact={compact}
+            title={title ?? "Kontrolna tabla nije mogla da se učita"}
             description="Podaci trenutno nisu dostupni. Narudžbine i ostale stranice rade normalno."
             action={
-              <Button
-                size="sm"
-                onClick={() => this.setState((state) => ({ error: null, attempt: state.attempt + 1 }))}
-              >
+              <Button size="sm" onClick={reset}>
                 Pokušaj ponovo
               </Button>
             }
           />
         </div>
-      );
-    }
-    // `contents`: omotac postoji samo zbog key-a (ponovni pokusaj remount-uje decu), ne utice na layout.
-    return (
-      <div key={this.state.attempt} className="contents">
-        {this.props.children}
-      </div>
-    );
-  }
+      )}
+    >
+      {children}
+    </ErrorBoundary>
+  );
 }

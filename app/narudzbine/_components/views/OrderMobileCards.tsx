@@ -5,7 +5,6 @@ import Link from "next/link";
 import { IconButton } from "@/components/ui/icon-button";
 import { Money } from "@/components/ui/money";
 import { StageBadge } from "@/components/ui/stage-badge";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { resolveShipmentNumber } from "../../_lib/helpers";
 import { formatRelativeDay, formatShortDate, getAddressPlace, getOrderTitle, phoneHref } from "../../_lib/orderView";
@@ -15,6 +14,7 @@ import { OrderActionsMenu, useOpenShipment } from "../list/OrderActionsMenu";
 import { OrderFlags } from "../list/OrderFlags";
 import { OrderThumb } from "../list/OrderThumb";
 import { useOrdersList } from "../list/OrdersListContext";
+import { PovratToggle, showsPovratToggle } from "../list/PovratToggle";
 
 type LongPress = ReturnType<typeof useLongPress>;
 
@@ -84,7 +84,7 @@ function SelectMark({ selected }: { selected: boolean }) {
   );
 }
 
-/** Kompaktna kartica (~110px): naslov + status, kupac · mesto, profit · prodajno · datum, oznake. */
+/** Kompaktna kartica (~120px): naslov + status, kupac · mesto + poziv, profit · prodajno · datum, oznake, povrat. */
 export function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; longPress: LongPress }) {
   const ctx = useOrdersList();
   const { order, prodajnoUkupno, profitShare } = entry;
@@ -112,7 +112,24 @@ export function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; long
             </div>
           )}
         </div>
-        <p className="mt-1 truncate text-[13px] leading-[18px] text-text-muted">{who || "—"}</p>
+        <div className="flex min-h-11 items-center gap-2 text-[13px] leading-[18px]">
+          <p className="min-w-0 flex-1 truncate text-text-muted">{who || "—"}</p>
+          {order.phone ? (
+            <a
+              href={phoneHref(order.phone)}
+              tabIndex={ctx.selectionMode ? -1 : undefined}
+              aria-label={`Pozovi ${order.phone}`}
+              // Iznad rastegnutog linka: tap zove, ne otvara detalj i ne pokreće izbor (long-press je na linku).
+              className={cn(
+                "-mr-2 inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl px-2 text-[15px] text-accent-text active:bg-surface-2",
+                !ctx.selectionMode && "relative z-10",
+              )}
+            >
+              <Phone className="size-4" aria-hidden />
+              <span className="num">{order.phone}</span>
+            </a>
+          ) : null}
+        </div>
         <div className="mt-1 flex items-center gap-1.5 text-[13px] leading-5">
           <span className="sr-only">Profit za povrat</span>
           <Money value={profitShare} tone="profit" trimZeroCents className="text-[15px] font-semibold" />
@@ -123,7 +140,10 @@ export function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; long
           <span className="truncate text-text-muted" title={formatShortDate(order.kreiranoAt, ctx.now)}>
             {formatRelativeDay(order.kreiranoAt, ctx.now)}
           </span>
-          <OrderFlags entry={entry} className="ml-auto shrink-0 pl-1" />
+          <OrderFlags entry={entry} hidePovrat={showsPovratToggle(order)} className="ml-auto shrink-0 pl-1" />
+          {showsPovratToggle(order) ? (
+            <PovratToggle order={order} title={title.primary} variant="pill" disabled={ctx.selectionMode} className={cn(!ctx.selectionMode && "z-10")} />
+          ) : null}
         </div>
       </div>
     </div>
@@ -213,24 +233,18 @@ export function OrderDetailCard({ entry, longPress }: { entry: OrderEntry; longP
               />
             </dd>
           </div>
-          <div className={cn("-my-2 flex items-center justify-end", interactive && "relative z-10")}>
-            <dt className="sr-only">Povrat vraćen</dt>
-            <dd>
-              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-text-muted">
-                Vraćen
-                <Switch
-                  checked={Boolean(order.povratVracen)}
-                  disabled={!interactive}
-                  onCheckedChange={(checked) => void ctx.rowActions.handlePovratToggle(order, checked)}
-                  aria-label={`Povrat vraćen: ${title.primary}`}
-                />
-              </label>
-            </dd>
-          </div>
+          {showsPovratToggle(order) ? (
+            <div className={cn("-my-2 flex items-center justify-end", interactive && "relative z-10")}>
+              <dt className="sr-only">Povrat urađen</dt>
+              <dd>
+                <PovratToggle order={order} title={title.primary} variant="switch" disabled={!interactive} />
+              </dd>
+            </div>
+          ) : null}
         </dl>
 
         <div className={cn("flex items-center gap-2", interactive && "relative z-10")}>
-          <OrderFlags entry={entry} variant="pills" className="min-w-0" />
+          <OrderFlags entry={entry} variant="pills" hidePovrat={showsPovratToggle(order)} className="min-w-0" />
           {shipmentNumber ? (
             <button
               type="button"

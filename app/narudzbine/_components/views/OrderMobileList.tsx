@@ -10,6 +10,7 @@ export function OrderMobileList({
   entries,
   detailed,
   longPress,
+  listRef,
   loading,
   loadingMore,
   empty,
@@ -17,13 +18,14 @@ export function OrderMobileList({
   entries: OrderEntry[];
   detailed: boolean;
   longPress: ReturnType<typeof useLongPress>;
+  listRef: React.RefObject<HTMLElement | null>;
   loading: boolean;
   loadingMore: boolean;
   empty: React.ReactNode;
 }) {
   const Card = detailed ? OrderDetailCard : OrderCompactCard;
   return (
-    <div className="-mx-4 divide-y divide-border border-y border-border bg-surface">
+    <div ref={listRef as React.RefObject<HTMLDivElement | null>} className="-mx-4 divide-y divide-border border-y border-border bg-surface">
       {loading ? (
         <MobileSkeletons count={6} detailed={detailed} />
       ) : entries.length === 0 ? (

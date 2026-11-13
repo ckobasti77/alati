@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, ExternalLink } from "lucide-react";
+import { Copy, ExternalLink, Phone } from "lucide-react";
 import Link from "next/link";
 import { Money } from "@/components/ui/money";
 import { StageBadge } from "@/components/ui/stage-badge";
@@ -12,6 +12,7 @@ import { OrderActionsMenu, useOpenShipment } from "../list/OrderActionsMenu";
 import { OrderFlags } from "../list/OrderFlags";
 import { OrderThumb } from "../list/OrderThumb";
 import { useOrdersList } from "../list/OrdersListContext";
+import { PovratToggle, showsPovratToggle } from "../list/PovratToggle";
 
 const stop = (event: React.SyntheticEvent) => event.stopPropagation();
 
@@ -76,8 +77,14 @@ export function OrderCard({ entry }: { entry: OrderEntry }) {
         {order.phone ? (
           <>
             <span aria-hidden className="text-text-muted">·</span>
-            <a href={phoneHref(order.phone)} onClick={stop} className="num shrink-0 text-text-muted hover:text-text hover:underline">
-              {order.phone}
+            <a
+              href={phoneHref(order.phone)}
+              onClick={stop}
+              aria-label={`Pozovi ${order.phone}`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <Phone className="size-3.5" aria-hidden />
+              <span className="num">{order.phone}</span>
             </a>
             <button
               type="button"
@@ -114,7 +121,8 @@ export function OrderCard({ entry }: { entry: OrderEntry }) {
       </dl>
 
       <div className="mt-auto flex min-h-12 items-center gap-2 px-4 pt-2 pb-2">
-        <OrderFlags entry={entry} variant="pills" className="min-w-0" />
+        <OrderFlags entry={entry} variant="pills" hidePovrat={showsPovratToggle(order)} className="min-w-0" />
+        {showsPovratToggle(order) ? <PovratToggle order={order} title={title.primary} variant="pill" /> : null}
         {shipmentNumber ? (
           <button
             type="button"

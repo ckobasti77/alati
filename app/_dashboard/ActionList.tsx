@@ -1,9 +1,12 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { AlarmClock, BellRing, CheckCircle2, ChevronRight, PackageOpen, RotateCcw } from "lucide-react";
+import { AlarmClock, CheckCircle2, ChevronRight, PackageOpen, RotateCcw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useConvexQueryState } from "@/lib/convex";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ZA_POVRAT_HREF, ZA_POVRAT_STAGE } from "@/lib/zaPovrat";
+import type { OrderListResponse } from "@/types/order";
 import { formatKeyRange, pluralNarudzbina } from "./format";
 import type { DashboardOverview } from "./types";
 
@@ -17,7 +20,9 @@ type ActionItem = {
   tone: "warning" | "accent";
 };
 
-function buildItems(actions: DashboardOverview["actions"]): ActionItem[] {
+type ZaPovrat = { count: number; amount: number } | null;
+
+function buildItems(actions: DashboardOverview["actions"], zaPovrat: ZaPovrat): ActionItem[] {
   const { refund } = actions;
   const items: ActionItem[] = [
     {
@@ -38,32 +43,41 @@ function buildItems(actions: DashboardOverview["actions"]): ActionItem[] {
       href: "/narudzbine?stage=aks&stage=na_stanju&shipping=1",
       tone: "accent",
     },
-    {
-      key: "refund",
+  ];
+  if (zaPovrat) {
+    items.push({
+      key: "za-povrat",
       icon: RotateCcw,
-      label: "100% povrat",
+      label: "Za povrat",
+      // Leglo + povrat nije urađen; iznos je postojeći proračun povrata (ulog + transport + 50% profita).
       detail: [
-        formatCurrency(refund.pendingAmount, "EUR"),
-        refund.period ? formatKeyRange(refund.period.startDate, refund.period.endDate) : null,
+        formatCurrency(zaPovrat.amount, "EUR"),
+        refund.period ? `100%: ${formatKeyRange(refund.period.startDate, refund.period.endDate)}` : null,
       ]
         .filter(Boolean)
         .join(" · "),
-      count: refund.pendingCount,
-      // Isti skup kao pendingCount: period ILI ručno dodate, a povrat nije vraćen.
-      href: "/narudzbine?povrat100=1",
+      count: zaPovrat.count,
+      href: ZA_POVRAT_HREF,
       tone: "warning",
-    },
-    {
-      key: "restock",
-      icon: BellRing,
-      label: "Zahtevi za dopunu",
-      detail: "Kupci čekaju da se proizvod vrati",
-      count: actions.restock,
-      href: "/narudzbine?restock=1",
-      tone: "accent",
-    },
-  ];
+    });
+  }
   return items.filter((item) => item.count > 0);
+}
+
+/** Za povrat (Leglo + povrat nije urađen): broj i iznos iz postojećeg `orders:list` (samo zbirovi). */
+function useZaPovrat(token: string): { value: ZaPovrat; loading: boolean } {
+  const { data, error } = useConvexQueryState<OrderListResponse>("orders:list", {
+    token,
+    scope: "default",
+    stages: [ZA_POVRAT_STAGE],
+    unreturnedOnly: true,
+    page: 1,
+    pageSize: 1,
+  });
+  // Greška ovog query-ja samo sakriva stavku (ostatak table radi).
+  if (error) return { value: null, loading: false };
+  if (!data) return { value: null, loading: true };
+  return { value: { count: data.pagination.total, amount: data.totals.povrat }, loading: false };
 }
 
 const iconTone = {
@@ -71,8 +85,9 @@ const iconTone = {
   accent: "bg-accent-soft text-accent-text",
 } as const;
 
-export function ActionList({ actions }: { actions: DashboardOverview["actions"] | undefined }) {
-  const items = actions ? buildItems(actions) : null;
+export function ActionList({ actions, token }: { actions: DashboardOverview["actions"] | undefined; token: string }) {
+  const zaPovrat = useZaPovrat(token);
+  const items = actions && !zaPovrat.loading ? buildItems(actions, zaPovrat.value) : null;
 
   return (
     <section aria-labelledby="za-akciju" className="flex flex-col gap-2 md:gap-3">
@@ -81,7 +96,7 @@ export function ActionList({ actions }: { actions: DashboardOverview["actions"] 
       </h2>
 
       {items === null ? (
-        <div className="overflow-hidden rounded-2xl bg-surface ring-1 ring-border md:grid md:grid-cols-4 md:gap-3 md:bg-transparent md:ring-0">
+        <div className="overflow-hidden rounded-2xl bg-surface ring-1 ring-border md:grid md:grid-cols-3 md:gap-3 md:bg-transparent md:ring-0">
           {[0, 1, 2].map((index) => (
             <div key={index} className="flex h-14 items-center gap-3 px-4 md:h-[88px] md:rounded-2xl md:bg-surface md:ring-1 md:ring-border">
               <Skeleton className="size-9 rounded-full" />
@@ -95,7 +110,7 @@ export function ActionList({ actions }: { actions: DashboardOverview["actions"] 
           Ništa ne čeka: nema zakasnelih, neposlatih ni povrata.
         </p>
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-2xl bg-surface ring-1 ring-border md:grid md:grid-cols-4 md:gap-3 md:divide-y-0 md:overflow-visible md:bg-transparent md:ring-0">
+        <ul className="divide-y divide-border overflow-hidden rounded-2xl bg-surface ring-1 ring-border md:grid md:grid-cols-3 md:gap-3 md:divide-y-0 md:overflow-visible md:bg-transparent md:ring-0">
           {items.map((item) => {
             const Icon = item.icon;
             return (
