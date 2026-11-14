@@ -77,8 +77,7 @@ export function useProductAdminActions({ sessionToken, editingProduct, newSuppli
       toast.error("Dobavljac je vezan za proizvode ili narudzbine.");
       return;
     }
-    const confirmed = window.confirm("Da li sigurno zelis da obrises ovog dobavljaca?");
-    if (!confirmed) return;
+    // Potvrdu traži ConfirmDialog u panelu Dobavljači (pre poziva).
     try {
       await removeSupplier({ token: sessionToken, id });
       toast.success("Dobavljac je obrisan.");

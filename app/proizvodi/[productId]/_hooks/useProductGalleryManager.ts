@@ -81,8 +81,7 @@ export function useProductGalleryManager({ ensureMainImage, sessionToken, genera
 
   const handleRemoveAllImages = async () => {
     if (!product) return;
-    const shouldRemove = window.confirm("Obrisi sve slike ovog proizvoda (ukljucujuci slike tipova)?");
-    if (!shouldRemove) return;
+    // Potvrdu traži ConfirmDialog u „Uredi slike“ (GallerySection) pre poziva.
     await applyUpdate(
       (current) => ({
         ...current,
@@ -672,11 +671,9 @@ export function useProductGalleryManager({ ensureMainImage, sessionToken, genera
     draggingItem && dragOverId && targetIndex !== -1
       ? isSameGalleryGroup(draggingItem, filteredGallery[targetIndex])
       : false;
-  const baseNabavnaIsReal = product?.nabavnaCenaIsReal ?? true;
-  const hasVariants = (product?.variants ?? []).length > 0;
   const showGalleryDropOverlay = isGalleryDropActive && !isTouchDevice;
   const showAdDropOverlay = isAdDropActive && !isTouchDevice;
 
 
-  return { handleRemoveAllImages, handleAdImageChange, handleRemoveAdImage, handleRemoveSingleImage, handleSetAsMain, handleImagePublishToggle, touchDragActiveRef, handleGalleryDragStart, handleGalleryTouchStart, handleGalleryTouchMove, handleGalleryTouchEnd, handleGalleryDragOver, handleGalleryDrop, handleGalleryDragEnd, handleGalleryTouchCancel, handleGalleryDragLeave, getGalleryGroup, handleOpenReorderInput, handleCancelReorderInput, handleConfirmReorderInput, getShiftClass, handleGalleryDropZoneDragEnter, handleGalleryDropZoneDragOver, handleGalleryDropZoneDragLeave, handleGalleryDropZoneDrop, handleAdDropZoneDragEnter, handleAdDropZoneDragOver, handleAdDropZoneDragLeave, handleAdDropZoneDrop, handleFilesSelected, handleDownloadImage, gallery, filteredGallery, handleOpenPreview, handleCloseLightbox, handleStepLightbox, targetIndex, draggingSameGroup, baseNabavnaIsReal, hasVariants, showGalleryDropOverlay, showAdDropOverlay };
+  return { handleRemoveAllImages, handleAdImageChange, handleRemoveAdImage, handleRemoveSingleImage, handleSetAsMain, handleImagePublishToggle, touchDragActiveRef, handleGalleryDragStart, handleGalleryTouchStart, handleGalleryTouchMove, handleGalleryTouchEnd, handleGalleryDragOver, handleGalleryDrop, handleGalleryDragEnd, handleGalleryTouchCancel, handleGalleryDragLeave, getGalleryGroup, handleOpenReorderInput, handleCancelReorderInput, handleConfirmReorderInput, getShiftClass, handleGalleryDropZoneDragEnter, handleGalleryDropZoneDragOver, handleGalleryDropZoneDragLeave, handleGalleryDropZoneDrop, handleAdDropZoneDragEnter, handleAdDropZoneDragOver, handleAdDropZoneDragLeave, handleAdDropZoneDrop, handleFilesSelected, handleDownloadImage, filteredGallery, handleOpenPreview, handleCloseLightbox, handleStepLightbox, draggingSameGroup, showGalleryDropOverlay, showAdDropOverlay };
 }

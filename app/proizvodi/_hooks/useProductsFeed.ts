@@ -2,9 +2,8 @@
 
 // Doslovno izvuceno iz app/proizvodi/page.tsx (refaktor bez promene ponasanja).
 import { useCallback, useEffect } from "react";
-import { clearListState, readListState, writeListState } from "@/lib/listState";
+import { clearListState, writeListState } from "@/lib/listState";
 import type { Product, ProductListResponse } from "@/types/order";
-import { sortOptions, archiveViewOptions, type SortOption } from "../_lib/productHelpers";
 import type { useProductsState } from "./useProductsState";
 
 type UseProductsFeedParams = {
@@ -15,11 +14,8 @@ type UseProductsFeedParams = {
   searchQuery: ReturnType<typeof useProductsState>["searchQuery"];
   sessionToken: ReturnType<typeof useProductsState>["sessionToken"];
   viewMode: ReturnType<typeof useProductsState>["viewMode"];
-  setViewMode: ReturnType<typeof useProductsState>["setViewMode"];
   archiveView: ReturnType<typeof useProductsState>["archiveView"];
-  setArchiveView: ReturnType<typeof useProductsState>["setArchiveView"];
   sortBy: ReturnType<typeof useProductsState>["sortBy"];
-  setSortBy: ReturnType<typeof useProductsState>["setSortBy"];
   productSearch: ReturnType<typeof useProductsState>["productSearch"];
   setProductSearch: ReturnType<typeof useProductsState>["setProductSearch"];
   productPage: ReturnType<typeof useProductsState>["productPage"];
@@ -35,7 +31,6 @@ type UseProductsFeedParams = {
   scrollYRef: ReturnType<typeof useProductsState>["scrollYRef"];
   skipUrlSyncRef: ReturnType<typeof useProductsState>["skipUrlSyncRef"];
   skipInitialResetRef: ReturnType<typeof useProductsState>["skipInitialResetRef"];
-  didRestoreRef: ReturnType<typeof useProductsState>["didRestoreRef"];
   listStateRef: ReturnType<typeof useProductsState>["listStateRef"];
   pendingScrollY: ReturnType<typeof useProductsState>["pendingScrollY"];
   setPendingScrollY: ReturnType<typeof useProductsState>["setPendingScrollY"];
@@ -43,7 +38,7 @@ type UseProductsFeedParams = {
   productList: ReturnType<typeof useProductsState>["productList"];
 };
 
-export function useProductsFeed({ restore, router, pathname, searchParams, searchQuery, sessionToken, viewMode, setViewMode, archiveView, setArchiveView, sortBy, setSortBy, productSearch, setProductSearch, productPage, setProductPage, productFeed, setProductFeed, productPagination, setProductPagination, isLoadingMoreProducts, setIsLoadingMoreProducts, productsLoaderRef, loadMoreProductsTimerRef, scrollYRef, skipUrlSyncRef, skipInitialResetRef, didRestoreRef, listStateRef, pendingScrollY, setPendingScrollY, listStateKey, productList }: UseProductsFeedParams) {
+export function useProductsFeed({ restore, router, pathname, searchParams, searchQuery, sessionToken, viewMode, archiveView, sortBy, productSearch, setProductSearch, productPage, setProductPage, productFeed, setProductFeed, productPagination, setProductPagination, isLoadingMoreProducts, setIsLoadingMoreProducts, productsLoaderRef, loadMoreProductsTimerRef, scrollYRef, skipUrlSyncRef, skipInitialResetRef, listStateRef, pendingScrollY, setPendingScrollY, listStateKey, productList }: UseProductsFeedParams) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleScroll = () => {
@@ -70,34 +65,6 @@ export function useProductsFeed({ restore, router, pathname, searchParams, searc
   useEffect(() => {
     if (restore.restored) clearListState(restore.key);
   }, [restore]);
-
-  useEffect(() => {
-    if (didRestoreRef.current) return;
-    didRestoreRef.current = true;
-    const stored = readListState<Product, ProductListResponse["pagination"]>(listStateKey);
-    if (!stored) return;
-    const storedSearch = typeof stored.extra?.search === "string" ? stored.extra.search : "";
-    if (storedSearch !== searchQuery) return;
-    const storedSort = stored.extra?.sortBy;
-    const storedArchive = stored.extra?.archiveView;
-    skipInitialResetRef.current = true;
-    skipUrlSyncRef.current = true;
-    if (typeof storedSort === "string" && sortOptions.includes(storedSort as SortOption)) {
-      setSortBy(storedSort as SortOption);
-    }
-    if (typeof storedArchive === "string" && archiveViewOptions.includes(storedArchive as (typeof archiveViewOptions)[number])) {
-      setArchiveView(storedArchive as (typeof archiveViewOptions)[number]);
-    }
-    // Prikaz (mreža/lista) je zapamćen izbor (localStorage), ne deo snimka liste.
-    setProductFeed(stored.items ?? []);
-    setProductPage(stored.page ?? 1);
-    if (stored.pagination) {
-      setProductPagination(stored.pagination);
-    }
-    setProductSearch(searchQuery);
-    setPendingScrollY(typeof stored.scrollY === "number" ? stored.scrollY : null);
-    clearListState(listStateKey);
-  }, [listStateKey, searchQuery, didRestoreRef, setArchiveView, setPendingScrollY, setProductFeed, setProductPage, setProductPagination, setProductSearch, setSortBy, setViewMode, skipInitialResetRef, skipUrlSyncRef]);
 
   useEffect(() => {
     if (pendingScrollY === null) return;

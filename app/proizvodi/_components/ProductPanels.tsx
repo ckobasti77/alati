@@ -1,7 +1,9 @@
 "use client";
 
 // Doslovno izvuceno iz app/proizvodi/page.tsx (refaktor bez promene ponasanja).
+import { useState } from "react";
 import { CloudUpload, Download, Images, Loader2, Plus, Trash2, MoreVertical } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Sheet } from "@/components/ui/sheet";
@@ -41,6 +43,8 @@ type ProductPanelsProps = {
 };
 
 export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingSupplier, isUploadingInboxImages, inboxView, setInboxView, openPanel, setOpenPanel, inboxUploadInputRef, suppliers, inboxImages, handleCreateSupplierEntry, handleRemoveSupplierEntry, inboxWithPriceCount, inboxWithoutPriceCount, inboxSkipCount, inboxList, supplierCount, inboxTotalCount, inboxEmptyMessage, handleInboxFilesSelected, handleDeleteInboxImage, handleOpenInboxPreview, handleInboxContextMenu, handleDownloadInboxImage }: ProductPanelsProps) {
+  // Brisanje dobavljača traži potvrdu (umesto window.confirm).
+  const [supplierToDelete, setSupplierToDelete] = useState<{ id: string; name: string; usage?: { products?: number; orders?: number } } | null>(null);
   const inboxFilters = [
     { value: "withPurchasePrice" as const, label: `Sa nabavnom${inboxWithPriceCount ? ` (${inboxWithPriceCount})` : ""}` },
     { value: "withoutPurchasePrice" as const, label: `Bez nabavne${inboxWithoutPriceCount ? ` (${inboxWithoutPriceCount})` : ""}` },
@@ -100,9 +104,9 @@ export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingS
                                   size="sm"
                                   variant="ghost"
                                   disabled={isLocked}
-                                  onClick={() => handleRemoveSupplierEntry(supplier._id, supplier.usage)}
+                                  onClick={() => setSupplierToDelete({ id: supplier._id, name: supplier.name, usage: supplier.usage })}
                                 >
-                                  Obrisi
+                                  Obriši
                                 </Button>
                               </div>
                             </div>
@@ -237,6 +241,19 @@ export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingS
                     )}
         </div>
       </Sheet>
+      <ConfirmDialog
+        open={supplierToDelete !== null}
+        onOpenChange={(open) => !open && setSupplierToDelete(null)}
+        tone="danger"
+        title="Obrisati dobavljača?"
+        description={supplierToDelete ? `${supplierToDelete.name} će biti trajno obrisan.` : undefined}
+        confirmLabel="Obriši"
+        onConfirm={async () => {
+          if (!supplierToDelete) return;
+          await handleRemoveSupplierEntry(supplierToDelete.id, supplierToDelete.usage);
+          setSupplierToDelete(null);
+        }}
+      />
     </>
   );
 }

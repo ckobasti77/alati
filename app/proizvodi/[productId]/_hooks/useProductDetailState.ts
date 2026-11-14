@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
 import type { Category, Order, ProductImage, Supplier } from "@/types/order";
 import { type ProductWithUrls, type GalleryItem, type LightboxItem } from "../_lib/detailTypes";
-import { type DraftCategoryIcon, type SocialPlatform } from "../../_lib/productHelpers";
+import { type SocialPlatform } from "../../_lib/productHelpers";
 
 export function useProductDetailState() {
   function ensureMainImage(
@@ -62,17 +62,6 @@ export function useProductDetailState() {
     scope: "default",
   });
   const updateProduct = useConvexMutation("products:update");
-  const createCategory = useConvexMutation<
-    {
-      token: string;
-      name: string;
-      icon?: { storageId: string; fileName?: string; contentType?: string };
-    },
-    string
-  >("categories:create");
-  const removeCategory = useConvexMutation<{ token: string; id: string; force?: boolean }, { removed: boolean; productCount: number }>(
-    "categories:remove",
-  );
   const generateUploadUrl = useConvexMutation<{ token: string }, string>("images:generateUploadUrl");
   const [product, setProduct] = useState<ProductWithUrls | null>(null);
   const productRef = useRef<ProductWithUrls | null>(null);
@@ -90,38 +79,13 @@ export function useProductDetailState() {
   const [imageLightbox, setImageLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   const [draggingItem, setDraggingItem] = useState<GalleryItem | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const [categorySearch, setCategorySearch] = useState("");
-  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [isAddingCategory, setIsAddingCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryIcon, setNewCategoryIcon] = useState<DraftCategoryIcon | null>(null);
-  const [isUploadingCategoryIcon, setIsUploadingCategoryIcon] = useState(false);
-  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
-  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
-  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
   const [reorderEditingId, setReorderEditingId] = useState<string | null>(null);
   const [reorderInputValue, setReorderInputValue] = useState("");
-  const [isAddingVariant, setIsAddingVariant] = useState(false);
-  const [isSavingVariant, setIsSavingVariant] = useState(false);
-  const [newVariantLabel, setNewVariantLabel] = useState("");
-  const [newVariantOpis, setNewVariantOpis] = useState("");
-  const [newVariantNabavna, setNewVariantNabavna] = useState("");
-  const [newVariantProdajna, setNewVariantProdajna] = useState("");
-  const [newVariantIsDefault, setNewVariantIsDefault] = useState(false);
-  const [newVariantNabavnaIsReal, setNewVariantNabavnaIsReal] = useState(true);
   const supplierMap = useMemo(
     () => new Map((suppliers ?? []).map((supplier) => [supplier._id, supplier])),
     [suppliers],
   );
-  const [supplierEdits, setSupplierEdits] = useState<Record<string, string>>({});
-  const [showAddSupplierForm, setShowAddSupplierForm] = useState(false);
-  const [newSupplierId, setNewSupplierId] = useState("");
-  const [newSupplierVariantId, setNewSupplierVariantId] = useState("base");
-  const [newSupplierPrice, setNewSupplierPrice] = useState("");
-  const [isSavingSupplierOffer, setIsSavingSupplierOffer] = useState(false);
-  const categoryIconInputRef = useRef<HTMLInputElement | null>(null);
-  const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const isLoading = queryResult === undefined;
 
@@ -133,5 +97,5 @@ export function useProductDetailState() {
   }, [queryResult]);
 
 
-  return { ensureMainImage, normalizeProductImages, sessionToken, isKodMajstor, router, productId, handleBack, uploadInputId, adUploadInputId, categories, suppliers, productOrders, updateProduct, createCategory, removeCategory, generateUploadUrl, product, setProduct, productRef, isUploadingImages, setIsUploadingImages, isUploadingAdImage, setIsUploadingAdImage, isGalleryDropActive, setIsGalleryDropActive, imageUploadTarget, setImageUploadTarget, isAdDropActive, setIsAdDropActive, publishing, setPublishing, isTouchDevice, setIsTouchDevice, adImageInputRef, imageLightbox, setImageLightbox, draggingItem, setDraggingItem, dragOverId, setDragOverId, categorySearch, setCategorySearch, categoryMenuOpen, setCategoryMenuOpen, shareOpen, setShareOpen, isAddingCategory, setIsAddingCategory, newCategoryName, setNewCategoryName, newCategoryIcon, setNewCategoryIcon, isUploadingCategoryIcon, setIsUploadingCategoryIcon, isCreatingCategory, setIsCreatingCategory, categoryToDelete, setCategoryToDelete, isDeletingCategory, setIsDeletingCategory, reorderEditingId, setReorderEditingId, reorderInputValue, setReorderInputValue, isAddingVariant, setIsAddingVariant, isSavingVariant, setIsSavingVariant, newVariantLabel, setNewVariantLabel, newVariantOpis, setNewVariantOpis, newVariantNabavna, setNewVariantNabavna, newVariantProdajna, setNewVariantProdajna, newVariantIsDefault, setNewVariantIsDefault, newVariantNabavnaIsReal, setNewVariantNabavnaIsReal, supplierMap, supplierEdits, setSupplierEdits, showAddSupplierForm, setShowAddSupplierForm, newSupplierId, setNewSupplierId, newSupplierVariantId, setNewSupplierVariantId, newSupplierPrice, setNewSupplierPrice, isSavingSupplierOffer, setIsSavingSupplierOffer, categoryIconInputRef, categoryDropdownRef, isLoading };
+  return { ensureMainImage, normalizeProductImages, sessionToken, isKodMajstor, router, productId, handleBack, uploadInputId, adUploadInputId, categories, productOrders, updateProduct, generateUploadUrl, product, setProduct, productRef, isUploadingImages, setIsUploadingImages, isUploadingAdImage, setIsUploadingAdImage, isGalleryDropActive, setIsGalleryDropActive, imageUploadTarget, setImageUploadTarget, isAdDropActive, setIsAdDropActive, publishing, setPublishing, isTouchDevice, setIsTouchDevice, adImageInputRef, imageLightbox, setImageLightbox, draggingItem, setDraggingItem, dragOverId, setDragOverId, shareOpen, setShareOpen, reorderEditingId, setReorderEditingId, reorderInputValue, setReorderInputValue, supplierMap, isLoading };
 }

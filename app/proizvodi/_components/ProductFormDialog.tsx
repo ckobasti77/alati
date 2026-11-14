@@ -7,6 +7,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Form, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/format";
 import type { useProductCategories } from "../_hooks/useProductCategories";
@@ -139,6 +140,473 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
     >
       <div ref={dialogScrollRef} className="space-y-4">
 
+
+        <Form id="product-form" form={form} onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-3">
+            <div>
+              <FormLabel>Slike</FormLabel>
+              <p className="text-sm text-slate-500">Dodaj vise slika i oznaci jednu kao glavnu.</p>
+            </div>
+            <div
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDropFiles}
+              className={`relative overflow-hidden rounded-2xl border-2 border-dashed transition duration-200 ${
+                isDraggingFiles
+                  ? "border-blue-500/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50 shadow-[0_22px_60px_-34px_rgba(37,99,235,0.55)]"
+                  : "border-slate-200/80 bg-slate-50/60 hover:border-slate-300 hover:shadow-[0_16px_50px_-40px_rgba(15,23,42,0.35)]"
+              }`}
+            >
+              <input
+                id={fileInputId}
+                type="file"
+                aria-label="Dodaj slike proizvoda"
+                accept="image/*"
+                multiple
+                disabled={isUploadingImages}
+                onChange={handleFilesSelected}
+                tabIndex={-1}
+                style={hiddenFileInputStyle}
+                ref={productUploadInputRef}
+              />
+              <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3 text-slate-700">
+                  <div className="rounded-full bg-blue-100 p-3 text-blue-600 shadow-inner shadow-blue-200">
+                    <CloudUpload className="h-6 w-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">Prevuci ili izaberi slike</p>
+                    <p className="text-xs text-slate-500">Podrzani su PNG, JPG, WebP i ostali standardni formati.</p>
+                    {isUploadingImages && <p className="text-xs font-semibold text-blue-600">Otpremanje...</p>}
+                  </div>
+                </div>
+                <div className="flex flex-col items-center gap-2 sm:items-end">
+                  <Button
+                    type="button"
+                    onClick={handleOpenProductPicker}
+                    className={`rounded-full px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+                      isUploadingImages
+                        ? "bg-slate-400 opacity-70"
+                        : "bg-blue-600 hover:-translate-y-[1px] hover:bg-blue-700"
+                    }`}
+                    disabled={isUploadingImages}
+                  >
+                    Izaberi fajlove
+                  </Button>
+                  <div className="flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 ring-1 ring-slate-200">
+                    <Images className="h-4 w-4 text-slate-400" />
+                    Drag & Drop
+                  </div>
+                </div>
+              </div>
+              {isDraggingFiles && (
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-500/10 via-indigo-500/12 to-purple-500/20">
+                  <div className="absolute inset-4 rounded-xl border border-blue-500/40 shadow-[0_0_0_1px_rgba(37,99,235,0.25)] blur-[0.5px]" />
+                </div>
+              )}
+            </div>
+            {!isUploadingImages && (
+              <p className="text-xs text-slate-500">Prevuci slike iz Windows foldera ili klikni na dugme.</p>
+            )}
+            {images.length === 0 ? (
+              <p className="text-sm italic text-slate-500">Jos nema dodatih slika.</p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {images.map((image) => {
+                  const resolvedUrl = image.url ?? image.previewUrl;
+                  const fbActive = image.publishFb ?? true;
+                  const igActive = image.publishIg ?? true;
+                  return (
+                    <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
+                      <div
+                        className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
+                          resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
+                        }`}
+                        onClick={() => handleOpenImageGroup(images, image.storageId)}
+                      >
+                        {resolvedUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={resolvedUrl} alt={image.fileName ?? "Product image"} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
+                            Bez pregleda
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="-mx-1 flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-1 font-medium text-text-muted md:min-h-8">
+                            <input
+                              type="radio"
+                              name="main-image"
+                              checked={image.isMain}
+                              onChange={() => handleSetMainImage(image.storageId)}
+                            />
+                            Glavna
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                                fbActive
+                                  ? "bg-blue-600 text-white hover:bg-blue-700"
+                                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                              }`}
+                              onClick={() => handleToggleImagePublish(image.storageId, "publishFb", !fbActive)}
+                            >
+                              <Facebook className="h-3.5 w-3.5" />
+                              FB
+                            </button>
+                            <button
+                              type="button"
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                                igActive
+                                  ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
+                                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                              }`}
+                              onClick={() => handleToggleImagePublish(image.storageId, "publishIg", !igActive)}
+                            >
+                              <Instagram className="h-3.5 w-3.5" />
+                              IG
+                            </button>
+                          </div>
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveImage(image.storageId)}>
+                          Ukloni
+                        </Button>
+                      </div>
+                      {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <FormLabel>Glavna slika za drustvene mreze</FormLabel>
+                <p className="text-sm text-slate-500">Prva fotka koja ide uz FB / Instagram objave.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  id={adUploadInputId}
+                  ref={adImageInputRef}
+                  type="file"
+                  aria-label="Slika za društvene mreže"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handleAdImageChange}
+                  disabled={isUploadingAdImage}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-2"
+                  disabled={isUploadingAdImage}
+                  onClick={() => adImageInputRef.current?.click()}
+                >
+                  <CloudUpload className="h-4 w-4" />
+                  {adImage ? "Zameni sliku" : "Dodaj glavnu sliku"}
+                </Button>
+                {adImage ? (
+                  <Button type="button" size="sm" variant="ghost" className="gap-1 text-red-600" onClick={handleRemoveAdImage}>
+                    <X className="h-4 w-4" />
+                    Ukloni
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <div
+              className={`relative overflow-hidden rounded-xl border border-dashed transition ${
+                isAdDragActive ? "border-blue-400 bg-blue-50/60" : "border-slate-200 bg-slate-50"
+              }`}
+              onDragEnter={handleAdDragOver}
+              onDragOver={handleAdDragOver}
+              onDragLeave={handleAdDragLeave}
+              onDrop={handleAdDrop}
+            >
+              {(() => {
+                const previewUrl = adImage?.previewUrl ?? adImage?.url;
+                if (previewUrl) {
+                  return (
+                    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white/60">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={previewUrl}
+                        alt="Glavna slika za drustvene mreze"
+                        className="h-[200px] w-full object-cover sm:h-[260px]"
+                      />
+                      <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow">
+                        <Tag className="h-3 w-3 text-slate-500" />
+                        Glavna za drustvene mreze
+                      </div>
+                      <div className="absolute right-3 top-3 hidden gap-2 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow sm:inline-flex">
+                        <CloudUpload className="h-3.5 w-3.5 text-blue-600" />
+                        Prevuci novu fotku da zamenis
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="flex min-h-[160px] items-center justify-between gap-3 p-4 sm:p-6">
+                    <div className="flex items-center gap-3 text-slate-700">
+                      <div className="rounded-full bg-blue-100 p-3 text-blue-600 shadow-inner shadow-blue-200">
+                        <Images className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-semibold">Dodaj glavnu sliku</p>
+                        <p className="text-xs text-slate-500">Prevuci je ovde ili klikni na dugme.</p>
+                      </div>
+                    </div>
+                    <div className="hidden text-xs text-slate-500 sm:block">Koristi se kao prva na FB/IG.</div>
+                  </div>
+                );
+              })()}
+              {isAdDragActive ? (
+                <div className="pointer-events-none absolute inset-0 rounded-xl border-2 border-blue-400/60 bg-blue-100/50" />
+              ) : null}
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField
+              name="kpName"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel htmlFor="pf-kpName">KP naziv (glavni na sajtu)</FormLabel>
+                  <Input id="pf-kpName" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-kpName-greska" : undefined} placeholder="npr. Samohodni trimer" {...field} />
+                  <FormMessage id="pf-kpName-greska">{fieldState.error?.message}</FormMessage>
+                </FormItem>
+              )}
+            />
+            <FormField
+              name="name"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel htmlFor="pf-name">FB / Insta naziv</FormLabel>
+                  <Input id="pf-name" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-name-greska" : undefined} placeholder="npr. Trimer za FB/IG objavu" {...field} />
+                  <FormMessage id="pf-name-greska">{fieldState.error?.message}</FormMessage>
+                </FormItem>
+              )}
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField
+              name="nabavnaCena"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel htmlFor="pf-nabavnaCena">Nabavna cena (EUR)</FormLabel>
+                  <div className="space-y-2">
+                    <Input id="pf-nabavnaCena" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-nabavnaCena-greska" : undefined}
+                      ref={field.ref}
+                      name={field.name}
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="npr. 11.90"
+                      value={hasSupplierOffers ? bestFormOffer?.price ?? field.value : field.value}
+                      disabled={hasSupplierOffers}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                    />
+                    {hasSupplierOffers ? (
+                      <div className="flex flex-wrap gap-2">
+                        {normalizedSupplierOffers.map((offer) => {
+                          const supplierName = supplierMap.get(offer.supplierId)?.name ?? "Dobavljac";
+                          const isBest = bestFormOffer && offer.price === bestFormOffer.price;
+                          return (
+                            <span
+                              key={`${offer.supplierId}-${offer.variantId ?? "base"}`}
+                              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[12px] font-semibold shadow ${
+                                isBest
+                                  ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200"
+                                  : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
+                              }`}
+                            >
+                              {supplierName}
+                              <span className="text-xs font-bold">{formatCurrency(offer.price, "EUR")}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    <FormMessage id="pf-nabavnaCena-greska">{fieldState.error?.message}</FormMessage>
+                  </div>
+                </FormItem>
+              )}
+            />
+          <FormField
+            name="prodajnaCena"
+            render={({ field, fieldState }) => (
+              <FormItem>
+                <FormLabel htmlFor="pf-prodajnaCena">Prodajna cena (EUR)</FormLabel>
+                  <Input id="pf-prodajnaCena" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-prodajnaCena-greska" : undefined}
+                    ref={field.ref}
+                    name={field.name}
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="npr. 15.50"
+                    value={field.value}
+                    onChange={(event) => field.onChange(event.target.value)}
+                    onBlur={field.onBlur}
+                  />
+                  <FormMessage id="pf-prodajnaCena-greska">{fieldState.error?.message}</FormMessage>
+                </FormItem>
+              )}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            <FormField
+              name="pickupAvailable"
+              render={({ field }) => (
+                <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
+                  <Switch
+                    id="pickup-available"
+                    checked={!!field.value}
+                    onCheckedChange={(checked) => field.onChange(checked)}
+                  />
+                  <FormLabel htmlFor="pickup-available" className="m-0 flex min-h-11 flex-1 cursor-pointer items-center">
+                    Licno preuzimanje
+                  </FormLabel>
+                </FormItem>
+              )}
+            />
+          </div>
+          <div className="space-y-3 rounded-lg border border-blue-100 bg-slate-50/60 px-3 py-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <FormLabel>Dobavljaci i nabavne ponude</FormLabel>
+                <p className="text-xs text-slate-600">Najniza ponuda postaje prava nabavna cena proizvoda.</p>
+              </div>
+              {!showSupplierForm && supplierOffersField.length === 0 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowSupplierForm(true)}
+                  disabled={suppliers === undefined}
+                >
+                  <Plus className="h-4 w-4" />
+                  Dodaj dobavljaca
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleAddSupplierOffer(defaultVariantEntry?.id)}
+                  disabled={suppliers === undefined}
+                >
+                  <Plus className="h-4 w-4" />
+                  Dodaj dobavljaca
+                </Button>
+              )}
+            </div>
+            {suppliers === undefined ? (
+              <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
+            ) : suppliers.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Dodaj dobavljace u kartici ispod, pa ih povezi sa proizvodima.
+              </p>
+            ) : showSupplierForm || supplierOffersField.length > 0 ? (
+              <div className="space-y-2">
+                {supplierOffersField.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-blue-200 bg-white px-3 py-2 text-sm text-slate-600">
+                    Nema vezanih dobavljaca. Najnizu cenu iz ponude dobavljaca cuvamo kao nabavnu cenu.
+                  </div>
+                ) : (
+                  supplierOffersField.map((offer, index) => {
+                    const pathBase = `supplierOffers.${index}`;
+                    const rowId = offer.id ?? `${offer.supplierId}-${offer.variantId ?? "base"}`;
+                    return (
+                      <div
+                        key={rowId}
+                        className="rounded-md border border-blue-200 bg-white px-3 py-3 shadow-sm ring-1 ring-blue-50"
+                      >
+                        <div className="grid gap-3 md:grid-cols-12 md:items-end">
+                          <div className="md:col-span-4 space-y-1">
+                            <FormLabel className="text-xs text-slate-500">Dobavljac</FormLabel>
+                            <Select
+                              value={offer.supplierId}
+                              onValueChange={(value) => handleUpdateSupplierOffer(rowId, "supplierId", value)}
+                            >
+                              <SelectTrigger
+                                name={`${pathBase}.supplierId`}
+                                data-focus-target={`${pathBase}.supplierId`}
+                              >
+                                <SelectValue placeholder="Izaberi dobavljaca" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {suppliers.map((supplier) => (
+                                  <SelectItem key={supplier._id} value={supplier._id}>
+                                    {supplier.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {resolvedProductType === "variant" ? (
+                            <div className="md:col-span-4 space-y-1">
+                              <FormLabel className="text-xs text-slate-500">Vazi za</FormLabel>
+                              <Select
+                                value={offer.variantId ?? "base"}
+                                onValueChange={(value) =>
+                                  handleUpdateSupplierOffer(rowId, "variantId", value === "base" ? undefined : value)
+                                }
+                              >
+                                <SelectTrigger
+                                  name={`${pathBase}.variantId`}
+                                  data-focus-target={`${pathBase}.variantId`}
+                                >
+                                  <SelectValue placeholder="Svi tipovi" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="base">Svi tipovi</SelectItem>
+                                  {normalizedVariants.map((variant) => (
+                                    <SelectItem key={variant.id} value={variant.id}>
+                                      {variant.label || "Tip"}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : null}
+                          <div
+                            className={`space-y-1 ${resolvedProductType === "variant" ? "md:col-span-3" : "md:col-span-6"}`}
+                          >
+                            <FormLabel className="text-xs text-slate-500">Cena (EUR)</FormLabel>
+                            <Input
+                              name={`${pathBase}.price`}
+                              value={offer.price}
+                              inputMode="decimal"
+                              placeholder="npr. 10.50"
+                              onChange={(event) => handleUpdateSupplierOffer(rowId, "price", event.target.value)}
+                            />
+                          </div>
+                          <div className="md:col-span-1 flex justify-end">
+                            <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveSupplierOffer(rowId)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : null}
+            {bestFormOffer ? (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                Najniza nabavna: {formatCurrency(bestFormOffer.price, "EUR")}{" "}
+                {bestFormSupplierName ? `(${bestFormSupplierName})` : ""}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Kada dodelis dobavljaca, ova cena ce biti oznacena kao prava nabavna cena.
+              </p>
+            )}
+          </div>
           <div className="space-y-2">
             <div className="grid gap-3 sm:grid-cols-2">
               <Button
@@ -162,30 +630,260 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               Obican ima jednu cenu i KP / FB opis, tipski moze da ima vise tipova sa sopstvenim cenama i opisima.
             </p>
           </div>
-
-        <Form id="product-form" form={form} onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField
-              name="kpName"
-              render={({ field, fieldState }) => (
-                <FormItem>
-                  <FormLabel htmlFor="pf-kpName">KP naziv (glavni na sajtu)</FormLabel>
-                  <Input id="pf-kpName" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-kpName-greska" : undefined} placeholder="npr. Samohodni trimer" {...field} />
-                  <FormMessage id="pf-kpName-greska">{fieldState.error?.message}</FormMessage>
-                </FormItem>
+          {resolvedProductType === "variant" ? (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <FormLabel>Tipovi proizvoda</FormLabel>
+                  <p className="text-sm text-slate-500">
+                    Svaki tip ima svoje cene i opis. Glavni tip se koristi kao podrazumevani za liste i kalkulacije.
+                  </p>
+                </div>
+                {normalizedVariants.length === 0 ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddVariant}
+                    data-focus-target="variants"
+                    aria-describedby={variantsError ? "pf-variants-error" : undefined}
+                  >
+                    Dodaj tip
+                  </Button>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={handleAddVariant}>
+                      Dodaj jos tip
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClearVariants}>
+                      Vrati na jednostavni
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {normalizedVariants.length === 0 ? (
+                <p className="text-sm text-slate-500">Dodaj bar jedan tip da bi sacuvao tipski proizvod.</p>
+              ) : (
+                <div className="space-y-4">
+                  {normalizedVariants.map((variant, index) => (
+                    <div key={variant.id} className="space-y-3 rounded-lg border border-slate-200 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-slate-600">Tip #{index + 1}</span>
+                        <div className="flex items-center gap-3 text-xs">
+                          <label className="-mx-1 flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-1 font-medium text-text-muted md:min-h-8">
+                            <input
+                              type="radio"
+                              name="default-variant"
+                              checked={variant.isDefault}
+                              onChange={() => handleSetDefaultVariant(variant.id)}
+                            />
+                            Glavni
+                          </label>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveVariant(variant.id)}>
+                            Ukloni
+                          </Button>
+                        </div>
+                      </div>
+                      <FormField
+                        name={`variants.${index}.label` as const}
+                        render={({ field, fieldState }) => (
+                          <FormItem>
+                            <FormLabel>Naziv tipa</FormLabel>
+                            <Input placeholder="npr. 2 brzine" {...field} />
+                            <FormMessage>{fieldState.error?.message}</FormMessage>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        name={`variants.${index}.opis` as const}
+                        render={({ field, fieldState }) => (
+                          <FormItem>
+                            <FormLabel>Opis tipa (opciono)</FormLabel>
+                            <Textarea rows={2} placeholder="npr. Bela boja, velicina M" autoResize {...field} />
+                            <FormMessage>{fieldState.error?.message}</FormMessage>
+                          </FormItem>
+                        )}
+                      />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField
+                        name={`variants.${index}.nabavnaCena` as const}
+                        render={({ field, fieldState }) => (
+                          <FormItem>
+                            <FormLabel>Nabavna cena (EUR)</FormLabel>
+                            <Input
+                              ref={field.ref}
+                              name={field.name}
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="npr. 120.00"
+                              value={field.value}
+                              onChange={(event) => field.onChange(event.target.value)}
+                              onBlur={field.onBlur}
+                            />
+                            <FormMessage>{fieldState.error?.message}</FormMessage>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        name={`variants.${index}.prodajnaCena` as const}
+                        render={({ field, fieldState }) => (
+                          <FormItem>
+                            <FormLabel>Prodajna cena (EUR)</FormLabel>
+                            <Input
+                              ref={field.ref}
+                              name={field.name}
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="npr. 150.00"
+                              value={field.value}
+                              onChange={(event) => field.onChange(event.target.value)}
+                              onBlur={field.onBlur}
+                            />
+                            <FormMessage>{fieldState.error?.message}</FormMessage>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <FormLabel>Slike tipa</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-slate-900/20 transition hover:bg-slate-800"
+                            disabled={isUploadingImages}
+                            onClick={() => handleOpenVariantPicker(variant.id)}
+                            aria-controls={`variant-upload-${variant.id}`}
+                          >
+                            Dodaj slike
+                          </Button>
+                          <input
+                            id={`variant-upload-${variant.id}`}
+                            type="file"
+                            aria-label="Dodaj slike tipa"
+                            accept="image/*"
+                            multiple
+                            disabled={isUploadingImages}
+                            onChange={(event) => handleVariantFilesSelected(variant.id, event)}
+                            tabIndex={-1}
+                            style={hiddenFileInputStyle}
+                            ref={(node) => {
+                              if (!node) {
+                                delete variantUploadInputsRef.current[variant.id];
+                                return;
+                              }
+                              variantUploadInputsRef.current[variant.id] = node;
+                            }}
+                          />
+                        </div>
+                      </div>
+                      {variantImages[variant.id]?.length ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {variantImages[variant.id]?.map((image) => {
+                            const resolvedUrl = image.url ?? image.previewUrl;
+                            const fbActive = image.publishFb ?? true;
+                            const igActive = image.publishIg ?? true;
+                            return (
+                              <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
+                                <div
+                                  className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
+                                    resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
+                                  }`}
+                                  onClick={() => handleOpenImageGroup(variantImages[variant.id] ?? [], image.storageId)}
+                                >
+                                  {resolvedUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={resolvedUrl} alt={image.fileName ?? "Variant image"} className="h-full w-full object-cover" />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
+                                      Bez pregleda
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <label className="-mx-1 flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-1 font-medium text-text-muted md:min-h-8">
+                                      <input
+                                        type="radio"
+                                        name={`variant-main-${variant.id}`}
+                                        checked={image.isMain}
+                                        onChange={() => handleSetVariantMainImage(variant.id, image.storageId)}
+                                      />
+                                      Glavna
+                                    </label>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                                          fbActive
+                                            ? "bg-blue-600 text-white hover:bg-blue-700"
+                                            : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                        }`}
+                                        onClick={() =>
+                                          handleToggleVariantImagePublish(variant.id, image.storageId, "publishFb", !fbActive)
+                                        }
+                                      >
+                                        <Facebook className="h-3.5 w-3.5" />
+                                        FB
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
+                                          igActive
+                                            ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
+                                            : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                        }`}
+                                        onClick={() =>
+                                          handleToggleVariantImagePublish(variant.id, image.storageId, "publishIg", !igActive)
+                                        }
+                                      >
+                                        <Instagram className="h-3.5 w-3.5" />
+                                        IG
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRemoveVariantImage(variant.id, image.storageId)}
+                                  >
+                                    Ukloni
+                                  </Button>
+                                </div>
+                                {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500">Jos nema slika za ovaj tip.</p>
+                      )}
+                    </div>
+                  </div>
+                  ))}
+                </div>
               )}
-            />
-            <FormField
-              name="name"
-              render={({ field, fieldState }) => (
-                <FormItem>
-                  <FormLabel htmlFor="pf-name">FB / Insta naziv</FormLabel>
-                  <Input id="pf-name" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-name-greska" : undefined} placeholder="npr. Trimer za FB/IG objavu" {...field} />
-                  <FormMessage id="pf-name-greska">{fieldState.error?.message}</FormMessage>
-                </FormItem>
-              )}
-            />
-          </div>
+              {variantsError ? (
+                <p id="pf-variants-error" role="alert" className="text-[13px] text-danger">
+                  {variantsError}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="space-y-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <FormLabel>Tipovi proizvoda</FormLabel>
+                  <p className="text-sm text-slate-500">Dodaj tip i proizvod se automatski prebacuje na tipski.</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={handleAddVariantFromSingle}>
+                  Dodaj tip
+                </Button>
+              </div>
+            </div>
+          )}
             <div className="space-y-2" ref={categoryDropdownRef}>
               <FormLabel>Kategorije</FormLabel>
               <p className="text-sm text-slate-500">Biraj postojecu ili napravi novu na licu mesta.</p>
@@ -408,12 +1106,10 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 name="publishKp"
                 render={({ field }) => (
                   <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
-                    <input
+                    <Switch
                       id="publish-kp"
-                      type="checkbox"
                       checked={!!field.value}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      className="size-5 shrink-0 cursor-pointer accent-accent"
+                      onCheckedChange={(checked) => field.onChange(checked)}
                     />
                     <FormLabel htmlFor="publish-kp" className="m-0 flex min-h-11 flex-1 items-center gap-2 cursor-pointer">
                       <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white shadow-sm ring-1 ring-slate-200">
@@ -429,12 +1125,10 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 name="publishFbProfile"
                 render={({ field }) => (
                   <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
-                    <input
+                    <Switch
                       id="publish-fb-profile"
-                      type="checkbox"
                       checked={!!field.value}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      className="size-5 shrink-0 cursor-pointer accent-accent"
+                      onCheckedChange={(checked) => field.onChange(checked)}
                     />
                     <FormLabel
                       htmlFor="publish-fb-profile"
@@ -450,12 +1144,10 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 name="publishIg"
                 render={({ field }) => (
                   <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
-                    <input
+                    <Switch
                       id="publish-ig"
-                      type="checkbox"
                       checked={!!field.value}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      className="size-5 shrink-0 cursor-pointer accent-accent"
+                      onCheckedChange={(checked) => field.onChange(checked)}
                     />
                     <FormLabel
                       htmlFor="publish-ig"
@@ -473,12 +1165,10 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 name="publishMarketplace"
                 render={({ field }) => (
                   <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
-                    <input
+                    <Switch
                       id="publish-marketplace"
-                      type="checkbox"
                       checked={!!field.value}
-                      onChange={(event) => field.onChange(event.target.checked)}
-                      className="size-5 shrink-0 cursor-pointer accent-accent"
+                      onCheckedChange={(checked) => field.onChange(checked)}
                     />
                     <FormLabel
                       htmlFor="publish-marketplace"
@@ -499,702 +1189,6 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
             ) : null}
             </div>
           ) : null}
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            <FormField
-              name="pickupAvailable"
-              render={({ field }) => (
-                <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
-                  <input
-                    id="pickup-available"
-                    type="checkbox"
-                    checked={!!field.value}
-                    onChange={(event) => field.onChange(event.target.checked)}
-                    className="size-5 shrink-0 cursor-pointer accent-accent"
-                  />
-                  <FormLabel htmlFor="pickup-available" className="m-0 flex min-h-11 flex-1 cursor-pointer items-center">
-                    Licno preuzimanje
-                  </FormLabel>
-                </FormItem>
-              )}
-            />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField
-              name="nabavnaCena"
-              render={({ field, fieldState }) => (
-                <FormItem>
-                  <FormLabel htmlFor="pf-nabavnaCena">Nabavna cena (EUR)</FormLabel>
-                  <div className="space-y-2">
-                    <Input id="pf-nabavnaCena" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-nabavnaCena-greska" : undefined}
-                      ref={field.ref}
-                      name={field.name}
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="npr. 11.90"
-                      value={hasSupplierOffers ? bestFormOffer?.price ?? field.value : field.value}
-                      disabled={hasSupplierOffers}
-                      onChange={(event) => field.onChange(event.target.value)}
-                      onBlur={field.onBlur}
-                    />
-                    {hasSupplierOffers ? (
-                      <div className="flex flex-wrap gap-2">
-                        {normalizedSupplierOffers.map((offer) => {
-                          const supplierName = supplierMap.get(offer.supplierId)?.name ?? "Dobavljac";
-                          const isBest = bestFormOffer && offer.price === bestFormOffer.price;
-                          return (
-                            <span
-                              key={`${offer.supplierId}-${offer.variantId ?? "base"}`}
-                              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[12px] font-semibold shadow ${
-                                isBest
-                                  ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200"
-                                  : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
-                              }`}
-                            >
-                              {supplierName}
-                              <span className="text-xs font-bold">{formatCurrency(offer.price, "EUR")}</span>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                    <FormMessage id="pf-nabavnaCena-greska">{fieldState.error?.message}</FormMessage>
-                  </div>
-                </FormItem>
-              )}
-            />
-          <FormField
-            name="prodajnaCena"
-            render={({ field, fieldState }) => (
-              <FormItem>
-                <FormLabel htmlFor="pf-prodajnaCena">Prodajna cena (EUR)</FormLabel>
-                  <Input id="pf-prodajnaCena" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-prodajnaCena-greska" : undefined}
-                    ref={field.ref}
-                    name={field.name}
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="npr. 15.50"
-                    value={field.value}
-                    onChange={(event) => field.onChange(event.target.value)}
-                    onBlur={field.onBlur}
-                  />
-                  <FormMessage id="pf-prodajnaCena-greska">{fieldState.error?.message}</FormMessage>
-                </FormItem>
-              )}
-            />
-          </div>
-          <div className="space-y-3 rounded-lg border border-blue-100 bg-slate-50/60 px-3 py-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <FormLabel>Dobavljaci i nabavne ponude</FormLabel>
-                <p className="text-xs text-slate-600">Najniza ponuda postaje prava nabavna cena proizvoda.</p>
-              </div>
-              {!showSupplierForm && supplierOffersField.length === 0 ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowSupplierForm(true)}
-                  disabled={suppliers === undefined}
-                >
-                  <Plus className="h-4 w-4" />
-                  Dodaj dobavljaca
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleAddSupplierOffer(defaultVariantEntry?.id)}
-                  disabled={suppliers === undefined}
-                >
-                  <Plus className="h-4 w-4" />
-                  Dodaj dobavljaca
-                </Button>
-              )}
-            </div>
-            {suppliers === undefined ? (
-              <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
-            ) : suppliers.length === 0 ? (
-              <p className="text-sm text-slate-500">
-                Dodaj dobavljace u kartici ispod, pa ih povezi sa proizvodima.
-              </p>
-            ) : showSupplierForm || supplierOffersField.length > 0 ? (
-              <div className="space-y-2">
-                {supplierOffersField.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-blue-200 bg-white px-3 py-2 text-sm text-slate-600">
-                    Nema vezanih dobavljaca. Najnizu cenu iz ponude dobavljaca cuvamo kao nabavnu cenu.
-                  </div>
-                ) : (
-                  supplierOffersField.map((offer, index) => {
-                    const pathBase = `supplierOffers.${index}`;
-                    const rowId = offer.id ?? `${offer.supplierId}-${offer.variantId ?? "base"}`;
-                    return (
-                      <div
-                        key={rowId}
-                        className="rounded-md border border-blue-200 bg-white px-3 py-3 shadow-sm ring-1 ring-blue-50"
-                      >
-                        <div className="grid gap-3 md:grid-cols-12 md:items-end">
-                          <div className="md:col-span-4 space-y-1">
-                            <FormLabel className="text-xs text-slate-500">Dobavljac</FormLabel>
-                            <Select
-                              value={offer.supplierId}
-                              onValueChange={(value) => handleUpdateSupplierOffer(rowId, "supplierId", value)}
-                            >
-                              <SelectTrigger
-                                name={`${pathBase}.supplierId`}
-                                data-focus-target={`${pathBase}.supplierId`}
-                              >
-                                <SelectValue placeholder="Izaberi dobavljaca" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {suppliers.map((supplier) => (
-                                  <SelectItem key={supplier._id} value={supplier._id}>
-                                    {supplier.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {resolvedProductType === "variant" ? (
-                            <div className="md:col-span-4 space-y-1">
-                              <FormLabel className="text-xs text-slate-500">Vazi za</FormLabel>
-                              <Select
-                                value={offer.variantId ?? "base"}
-                                onValueChange={(value) =>
-                                  handleUpdateSupplierOffer(rowId, "variantId", value === "base" ? undefined : value)
-                                }
-                              >
-                                <SelectTrigger
-                                  name={`${pathBase}.variantId`}
-                                  data-focus-target={`${pathBase}.variantId`}
-                                >
-                                  <SelectValue placeholder="Svi tipovi" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="base">Svi tipovi</SelectItem>
-                                  {normalizedVariants.map((variant) => (
-                                    <SelectItem key={variant.id} value={variant.id}>
-                                      {variant.label || "Tip"}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          ) : null}
-                          <div
-                            className={`space-y-1 ${resolvedProductType === "variant" ? "md:col-span-3" : "md:col-span-6"}`}
-                          >
-                            <FormLabel className="text-xs text-slate-500">Cena (EUR)</FormLabel>
-                            <Input
-                              name={`${pathBase}.price`}
-                              value={offer.price}
-                              inputMode="decimal"
-                              placeholder="npr. 10.50"
-                              onChange={(event) => handleUpdateSupplierOffer(rowId, "price", event.target.value)}
-                            />
-                          </div>
-                          <div className="md:col-span-1 flex justify-end">
-                            <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveSupplierOffer(rowId)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            ) : null}
-            {bestFormOffer ? (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                Najniza nabavna: {formatCurrency(bestFormOffer.price, "EUR")}{" "}
-                {bestFormSupplierName ? `(${bestFormSupplierName})` : ""}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500">
-                Kada dodelis dobavljaca, ova cena ce biti oznacena kao prava nabavna cena.
-              </p>
-            )}
-          </div>
-          {resolvedProductType === "variant" ? (
-            <div className="space-y-4">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <FormLabel>Tipovi proizvoda</FormLabel>
-                  <p className="text-sm text-slate-500">
-                    Svaki tip ima svoje cene i opis. Glavni tip se koristi kao podrazumevani za liste i kalkulacije.
-                  </p>
-                </div>
-                {normalizedVariants.length === 0 ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddVariant}
-                    data-focus-target="variants"
-                  >
-                    Dodaj tip
-                  </Button>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={handleAddVariant}>
-                      Dodaj jos tip
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={handleClearVariants}>
-                      Vrati na jednostavni
-                    </Button>
-                  </div>
-                )}
-              </div>
-              {normalizedVariants.length === 0 ? (
-                <p className="text-sm text-slate-500">Dodaj bar jedan tip da bi sacuvao tipski proizvod.</p>
-              ) : (
-                <div className="space-y-4">
-                  {normalizedVariants.map((variant, index) => (
-                    <div key={variant.id} className="space-y-3 rounded-lg border border-slate-200 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-slate-600">Tip #{index + 1}</span>
-                        <div className="flex items-center gap-3 text-xs">
-                          <label className="flex items-center gap-2 font-medium text-slate-600">
-                            <input
-                              type="radio"
-                              name="default-variant"
-                              checked={variant.isDefault}
-                              onChange={() => handleSetDefaultVariant(variant.id)}
-                            />
-                            Glavni
-                          </label>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveVariant(variant.id)}>
-                            Ukloni
-                          </Button>
-                        </div>
-                      </div>
-                      <FormField
-                        name={`variants.${index}.label` as const}
-                        render={({ field, fieldState }) => (
-                          <FormItem>
-                            <FormLabel>Naziv tipa</FormLabel>
-                            <Input placeholder="npr. 2 brzine" {...field} />
-                            <FormMessage>{fieldState.error?.message}</FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        name={`variants.${index}.opis` as const}
-                        render={({ field, fieldState }) => (
-                          <FormItem>
-                            <FormLabel>Opis tipa (opciono)</FormLabel>
-                            <Textarea rows={2} placeholder="npr. Bela boja, velicina M" autoResize {...field} />
-                            <FormMessage>{fieldState.error?.message}</FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <FormField
-                        name={`variants.${index}.nabavnaCena` as const}
-                        render={({ field, fieldState }) => (
-                          <FormItem>
-                            <FormLabel>Nabavna cena (EUR)</FormLabel>
-                            <Input
-                              ref={field.ref}
-                              name={field.name}
-                              type="text"
-                              inputMode="decimal"
-                              placeholder="npr. 120.00"
-                              value={field.value}
-                              onChange={(event) => field.onChange(event.target.value)}
-                              onBlur={field.onBlur}
-                            />
-                            <FormMessage>{fieldState.error?.message}</FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        name={`variants.${index}.prodajnaCena` as const}
-                        render={({ field, fieldState }) => (
-                          <FormItem>
-                            <FormLabel>Prodajna cena (EUR)</FormLabel>
-                            <Input
-                              ref={field.ref}
-                              name={field.name}
-                              type="text"
-                              inputMode="decimal"
-                              placeholder="npr. 150.00"
-                              value={field.value}
-                              onChange={(event) => field.onChange(event.target.value)}
-                              onBlur={field.onBlur}
-                            />
-                            <FormMessage>{fieldState.error?.message}</FormMessage>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <FormLabel>Slike tipa</FormLabel>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-slate-900/20 transition hover:bg-slate-800"
-                            disabled={isUploadingImages}
-                            onClick={() => handleOpenVariantPicker(variant.id)}
-                            aria-controls={`variant-upload-${variant.id}`}
-                          >
-                            Dodaj slike
-                          </Button>
-                          <input
-                            id={`variant-upload-${variant.id}`}
-                            type="file"
-                            aria-label="Dodaj slike tipa"
-                            accept="image/*"
-                            multiple
-                            disabled={isUploadingImages}
-                            onChange={(event) => handleVariantFilesSelected(variant.id, event)}
-                            tabIndex={-1}
-                            style={hiddenFileInputStyle}
-                            ref={(node) => {
-                              if (!node) {
-                                delete variantUploadInputsRef.current[variant.id];
-                                return;
-                              }
-                              variantUploadInputsRef.current[variant.id] = node;
-                            }}
-                          />
-                        </div>
-                      </div>
-                      {variantImages[variant.id]?.length ? (
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {variantImages[variant.id]?.map((image) => {
-                            const resolvedUrl = image.url ?? image.previewUrl;
-                            const fbActive = image.publishFb ?? true;
-                            const igActive = image.publishIg ?? true;
-                            return (
-                              <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
-                                <div
-                                  className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
-                                    resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
-                                  }`}
-                                  onClick={() => handleOpenImageGroup(variantImages[variant.id] ?? [], image.storageId)}
-                                >
-                                  {resolvedUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={resolvedUrl} alt={image.fileName ?? "Variant image"} className="h-full w-full object-cover" />
-                                  ) : (
-                                    <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
-                                      Bez pregleda
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <label className="flex items-center gap-2 font-medium text-slate-600">
-                                      <input
-                                        type="radio"
-                                        name={`variant-main-${variant.id}`}
-                                        checked={image.isMain}
-                                        onChange={() => handleSetVariantMainImage(variant.id, image.storageId)}
-                                      />
-                                      Glavna
-                                    </label>
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        type="button"
-                                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
-                                          fbActive
-                                            ? "bg-blue-600 text-white hover:bg-blue-700"
-                                            : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
-                                        }`}
-                                        onClick={() =>
-                                          handleToggleVariantImagePublish(variant.id, image.storageId, "publishFb", !fbActive)
-                                        }
-                                      >
-                                        <Facebook className="h-3.5 w-3.5" />
-                                        FB
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
-                                          igActive
-                                            ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
-                                            : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
-                                        }`}
-                                        onClick={() =>
-                                          handleToggleVariantImagePublish(variant.id, image.storageId, "publishIg", !igActive)
-                                        }
-                                      >
-                                        <Instagram className="h-3.5 w-3.5" />
-                                        IG
-                                      </button>
-                                    </div>
-                                  </div>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRemoveVariantImage(variant.id, image.storageId)}
-                                  >
-                                    Ukloni
-                                  </Button>
-                                </div>
-                                {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-slate-500">Jos nema slika za ovaj tip.</p>
-                      )}
-                    </div>
-                  </div>
-                  ))}
-                </div>
-              )}
-              {variantsError && normalizedVariants.length > 0 && (
-                <p className="text-sm text-red-600">{variantsError}</p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <FormLabel>Tipovi proizvoda</FormLabel>
-                  <p className="text-sm text-slate-500">Dodaj tip i proizvod se automatski prebacuje na tipski.</p>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={handleAddVariantFromSingle}>
-                  Dodaj tip
-                </Button>
-              </div>
-            </div>
-          )}
-          <div className="space-y-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <FormLabel>Glavna slika za drustvene mreze</FormLabel>
-                <p className="text-sm text-slate-500">Prva fotka koja ide uz FB / Instagram objave.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  id={adUploadInputId}
-                  ref={adImageInputRef}
-                  type="file"
-                  aria-label="Slika za društvene mreže"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={handleAdImageChange}
-                  disabled={isUploadingAdImage}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="gap-2"
-                  disabled={isUploadingAdImage}
-                  onClick={() => adImageInputRef.current?.click()}
-                >
-                  <CloudUpload className="h-4 w-4" />
-                  {adImage ? "Zameni sliku" : "Dodaj glavnu sliku"}
-                </Button>
-                {adImage ? (
-                  <Button type="button" size="sm" variant="ghost" className="gap-1 text-red-600" onClick={handleRemoveAdImage}>
-                    <X className="h-4 w-4" />
-                    Ukloni
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-            <div
-              className={`relative overflow-hidden rounded-xl border border-dashed transition ${
-                isAdDragActive ? "border-blue-400 bg-blue-50/60" : "border-slate-200 bg-slate-50"
-              }`}
-              onDragEnter={handleAdDragOver}
-              onDragOver={handleAdDragOver}
-              onDragLeave={handleAdDragLeave}
-              onDrop={handleAdDrop}
-            >
-              {(() => {
-                const previewUrl = adImage?.previewUrl ?? adImage?.url;
-                if (previewUrl) {
-                  return (
-                    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white/60">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={previewUrl}
-                        alt="Glavna slika za drustvene mreze"
-                        className="h-[200px] w-full object-cover sm:h-[260px]"
-                      />
-                      <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow">
-                        <Tag className="h-3 w-3 text-slate-500" />
-                        Glavna za drustvene mreze
-                      </div>
-                      <div className="absolute right-3 top-3 hidden gap-2 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow sm:inline-flex">
-                        <CloudUpload className="h-3.5 w-3.5 text-blue-600" />
-                        Prevuci novu fotku da zamenis
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <div className="flex min-h-[160px] items-center justify-between gap-3 p-4 sm:p-6">
-                    <div className="flex items-center gap-3 text-slate-700">
-                      <div className="rounded-full bg-blue-100 p-3 text-blue-600 shadow-inner shadow-blue-200">
-                        <Images className="h-5 w-5" />
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className="text-sm font-semibold">Dodaj glavnu sliku</p>
-                        <p className="text-xs text-slate-500">Prevuci je ovde ili klikni na dugme.</p>
-                      </div>
-                    </div>
-                    <div className="hidden text-xs text-slate-500 sm:block">Koristi se kao prva na FB/IG.</div>
-                  </div>
-                );
-              })()}
-              {isAdDragActive ? (
-                <div className="pointer-events-none absolute inset-0 rounded-xl border-2 border-blue-400/60 bg-blue-100/50" />
-              ) : null}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <FormLabel>Slike</FormLabel>
-              <p className="text-sm text-slate-500">Dodaj vise slika i oznaci jednu kao glavnu.</p>
-            </div>
-            <div
-              onDragEnter={handleDragEnter}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDropFiles}
-              className={`relative overflow-hidden rounded-2xl border-2 border-dashed transition duration-200 ${
-                isDraggingFiles
-                  ? "border-blue-500/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50 shadow-[0_22px_60px_-34px_rgba(37,99,235,0.55)]"
-                  : "border-slate-200/80 bg-slate-50/60 hover:border-slate-300 hover:shadow-[0_16px_50px_-40px_rgba(15,23,42,0.35)]"
-              }`}
-            >
-              <input
-                id={fileInputId}
-                type="file"
-                aria-label="Dodaj slike proizvoda"
-                accept="image/*"
-                multiple
-                disabled={isUploadingImages}
-                onChange={handleFilesSelected}
-                tabIndex={-1}
-                style={hiddenFileInputStyle}
-                ref={productUploadInputRef}
-              />
-              <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3 text-slate-700">
-                  <div className="rounded-full bg-blue-100 p-3 text-blue-600 shadow-inner shadow-blue-200">
-                    <CloudUpload className="h-6 w-6" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold">Prevuci ili izaberi slike</p>
-                    <p className="text-xs text-slate-500">Podrzani su PNG, JPG, WebP i ostali standardni formati.</p>
-                    {isUploadingImages && <p className="text-xs font-semibold text-blue-600">Otpremanje...</p>}
-                  </div>
-                </div>
-                <div className="flex flex-col items-center gap-2 sm:items-end">
-                  <Button
-                    type="button"
-                    onClick={handleOpenProductPicker}
-                    className={`rounded-full px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
-                      isUploadingImages
-                        ? "bg-slate-400 opacity-70"
-                        : "bg-blue-600 hover:-translate-y-[1px] hover:bg-blue-700"
-                    }`}
-                    disabled={isUploadingImages}
-                  >
-                    Izaberi fajlove
-                  </Button>
-                  <div className="flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 ring-1 ring-slate-200">
-                    <Images className="h-4 w-4 text-slate-400" />
-                    Drag & Drop
-                  </div>
-                </div>
-              </div>
-              {isDraggingFiles && (
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-500/10 via-indigo-500/12 to-purple-500/20">
-                  <div className="absolute inset-4 rounded-xl border border-blue-500/40 shadow-[0_0_0_1px_rgba(37,99,235,0.25)] blur-[0.5px]" />
-                </div>
-              )}
-            </div>
-            {!isUploadingImages && (
-              <p className="text-xs text-slate-500">Prevuci slike iz Windows foldera ili klikni na dugme.</p>
-            )}
-            {images.length === 0 ? (
-              <p className="text-sm italic text-slate-500">Jos nema dodatih slika.</p>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {images.map((image) => {
-                  const resolvedUrl = image.url ?? image.previewUrl;
-                  const fbActive = image.publishFb ?? true;
-                  const igActive = image.publishIg ?? true;
-                  return (
-                    <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
-                      <div
-                        className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
-                          resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
-                        }`}
-                        onClick={() => handleOpenImageGroup(images, image.storageId)}
-                      >
-                        {resolvedUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={resolvedUrl} alt={image.fileName ?? "Product image"} className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
-                            Bez pregleda
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <label className="flex items-center gap-2 font-medium text-slate-600">
-                            <input
-                              type="radio"
-                              name="main-image"
-                              checked={image.isMain}
-                              onChange={() => handleSetMainImage(image.storageId)}
-                            />
-                            Glavna
-                          </label>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
-                                fbActive
-                                  ? "bg-blue-600 text-white hover:bg-blue-700"
-                                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
-                              }`}
-                              onClick={() => handleToggleImagePublish(image.storageId, "publishFb", !fbActive)}
-                            >
-                              <Facebook className="h-3.5 w-3.5" />
-                              FB
-                            </button>
-                            <button
-                              type="button"
-                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
-                                igActive
-                                  ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
-                                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
-                              }`}
-                              onClick={() => handleToggleImagePublish(image.storageId, "publishIg", !igActive)}
-                            >
-                              <Instagram className="h-3.5 w-3.5" />
-                              IG
-                            </button>
-                          </div>
-                        </div>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveImage(image.storageId)}>
-                          Ukloni
-                        </Button>
-                      </div>
-                      {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </Form>
       </div>
     </Sheet>

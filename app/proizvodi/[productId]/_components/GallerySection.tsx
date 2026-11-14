@@ -1,11 +1,12 @@
 "use client";
 
-// Doslovno izvuceno iz app/proizvodi/[productId]/page.tsx (refaktor bez promene ponasanja).
-import { Download, Facebook, GripVertical, ImageOff, Instagram, Maximize2, Plus, Tag, Trash2, UploadCloud, X } from "lucide-react";
+import { useState } from "react";
+import { Check, Download, Facebook, GripVertical, ImageOff, Instagram, Loader2, Plus, Star, Trash2, UploadCloud, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { IconButton } from "@/components/ui/icon-button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type { ProductWithUrls } from "../_lib/detailTypes";
 import type { useProductDetailMeta } from "../_hooks/useProductDetailMeta";
 import type { useProductDetailState } from "../_hooks/useProductDetailState";
@@ -63,87 +64,95 @@ type GallerySectionProps = {
   showAdDropOverlay: ReturnType<typeof useProductGalleryManager>["showAdDropOverlay"];
 };
 
+type GalleryItem = ReturnType<typeof useProductGalleryManager>["filteredGallery"][number];
+type ConfirmTarget = { kind: "one"; item: GalleryItem } | { kind: "all" } | { kind: "ad" } | null;
+
+/** FB/IG uključivanje slike u objavu: uključeno = akcenat, isključeno = prigušeno (uz aria-pressed). */
+const toggleClass = (active: boolean) =>
+  cn(
+    "inline-flex h-11 cursor-pointer items-center gap-1 rounded-xl px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring md:h-9",
+    active ? "bg-accent-soft text-accent-text" : "text-text-muted ring-1 ring-inset ring-border-strong hover:bg-surface-2",
+  );
+
+/** „Uredi slike“: pločice sa kontrolama ispod slike (mete 44px na telefonu), potvrda pre svakog brisanja. */
 export function GallerySection({ uploadInputId, adUploadInputId, product, isUploadingImages, isUploadingAdImage, imageUploadTarget, setImageUploadTarget, adImageInputRef, dragOverId, reorderEditingId, reorderInputValue, setReorderInputValue, uploadTargetLabel, handleRemoveAllImages, handleAdImageChange, handleRemoveAdImage, handleRemoveSingleImage, handleSetAsMain, handleImagePublishToggle, touchDragActiveRef, handleGalleryDragStart, handleGalleryTouchStart, handleGalleryTouchMove, handleGalleryTouchEnd, handleGalleryDragOver, handleGalleryDrop, handleGalleryDragEnd, handleGalleryTouchCancel, handleGalleryDragLeave, getGalleryGroup, handleOpenReorderInput, handleCancelReorderInput, handleConfirmReorderInput, getShiftClass, handleGalleryDropZoneDragEnter, handleGalleryDropZoneDragOver, handleGalleryDropZoneDragLeave, handleGalleryDropZoneDrop, handleAdDropZoneDragEnter, handleAdDropZoneDragOver, handleAdDropZoneDragLeave, handleAdDropZoneDrop, handleFilesSelected, handleDownloadImage, filteredGallery, handleOpenPreview, draggingSameGroup, showGalleryDropOverlay, showAdDropOverlay }: GallerySectionProps) {
+  const [confirm, setConfirm] = useState<ConfirmTarget>(null);
+  const variantCount = product.variants?.length ?? 0;
+
   return (
-    <div className="@container grid gap-6">
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              Galerija slika
-              <Badge variant="default">{filteredGallery.length}</Badge>
-            </CardTitle>
-            <p className="text-sm text-slate-500">Kreativan grid sa slikama proizvoda i tipova.</p>
+    <div className="@container flex flex-col gap-4 md:gap-6">
+      <section aria-labelledby="galerija-naslov" className="rounded-2xl bg-surface ring-1 ring-border">
+        <div className="flex flex-col gap-3 px-4 pt-4 md:px-5">
+          <div className="flex items-center gap-2">
+            <h2 id="galerija-naslov" className="text-base font-semibold text-text">
+              Slike
+            </h2>
+            <span className="num rounded-full bg-surface-2 px-2 text-xs font-medium text-text-muted">{filteredGallery.length}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={imageUploadTarget} onValueChange={setImageUploadTarget}>
-              <SelectTrigger className="w-[190px]">
-                <SelectValue placeholder="Gde dodati slike" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="product">Slike proizvoda</SelectItem>
-                {(product.variants ?? []).map((variant) => (
-                  <SelectItem key={variant.id} value={variant.id}>
-                    {variant.label || "Tip"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {variantCount > 0 ? (
+              <Select value={imageUploadTarget} onValueChange={setImageUploadTarget}>
+                <SelectTrigger className="w-full @md:w-[200px]" aria-label="Gde se dodaju nove slike">
+                  <SelectValue placeholder="Gde dodati slike" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="product">Slike proizvoda</SelectItem>
+                  {(product.variants ?? []).map((variant) => (
+                    <SelectItem key={variant.id} value={variant.id}>
+                      {variant.label || "Tip"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
             <input
               id={uploadInputId}
               type="file"
               accept="image/*"
               multiple
               className="sr-only"
+              aria-label="Izaberi slike za dodavanje"
               onChange={handleFilesSelected}
               disabled={isUploadingImages}
             />
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              disabled={isUploadingImages}
-              onClick={() => document.getElementById(uploadInputId)?.click()}
-            >
-              <Plus className="h-4 w-4" />
-              {isUploadingImages ? "Dodavanje..." : "Dodaj slike"}
+            <Button type="button" variant="outline" className="gap-2" disabled={isUploadingImages} onClick={() => document.getElementById(uploadInputId)?.click()}>
+              {isUploadingImages ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Plus className="size-4" aria-hidden />}
+              {isUploadingImages ? "Dodavanje…" : "Dodaj slike"}
             </Button>
-            <Button variant="destructive" size="sm" className="gap-2" onClick={handleRemoveAllImages}>
-              <Trash2 className="h-4 w-4" />
-              Obrisi sve slike
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-3 text-xs text-slate-500">
-            Dodavanje novih fajlova ide na {uploadTargetLabel}.
-          </p>
-          <div
-            className={`relative rounded-xl border border-transparent transition ${
-              showGalleryDropOverlay ? "border-2 border-dashed border-blue-300 bg-blue-50/60" : ""
-            }`}
-            onDragEnter={handleGalleryDropZoneDragEnter}
-            onDragOver={handleGalleryDropZoneDragOver}
-            onDragLeave={handleGalleryDropZoneDragLeave}
-            onDrop={handleGalleryDropZoneDrop}
-          >
-            {showGalleryDropOverlay ? (
-              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-blue-100/80 backdrop-blur-sm">
-                <div className="flex items-center gap-3 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-blue-700 shadow">
-                  <UploadCloud className="h-4 w-4" />
-                  <span>Otpusti da dodas slike za {uploadTargetLabel}</span>
-                </div>
-              </div>
+            {filteredGallery.length > 0 ? (
+              <Button type="button" variant="ghost" className="ml-auto gap-2 text-danger" onClick={() => setConfirm({ kind: "all" })}>
+                <Trash2 className="size-4" aria-hidden />
+                Obriši sve
+              </Button>
             ) : null}
-            {filteredGallery.length === 0 ? (
-              <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-slate-500">
-                <ImageOff className="h-8 w-8" />
-                <p className="text-sm">Trenutno nema slika za ovaj izbor.</p>
-                <p className="text-xs text-slate-500">Prevuci fotografije ovde ili klikni na dugme iznad.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 @md:grid-cols-2 @2xl:grid-cols-3">
-                {filteredGallery.map((item, index) => {
+          </div>
+          <p className="text-[13px] text-text-muted">Nove slike idu u: {uploadTargetLabel}. Prevuci sliku za novi redosled ili upiši poziciju (#).</p>
+        </div>
+
+        <div
+          className={cn("relative m-4 mt-3 rounded-xl md:m-5 md:mt-3", showGalleryDropOverlay && "ring-2 ring-inset ring-accent")}
+          onDragEnter={handleGalleryDropZoneDragEnter}
+          onDragOver={handleGalleryDropZoneDragOver}
+          onDragLeave={handleGalleryDropZoneDragLeave}
+          onDrop={handleGalleryDropZoneDrop}
+        >
+          {showGalleryDropOverlay ? (
+            <div className="pointer-events-none absolute inset-0 z-(--z-raised) flex items-center justify-center rounded-xl bg-accent-soft/90">
+              <span className="flex items-center gap-2 text-sm font-semibold text-accent-text">
+                <UploadCloud className="size-4" aria-hidden />
+                Otpusti da dodaš slike u: {uploadTargetLabel}
+              </span>
+            </div>
+          ) : null}
+          {filteredGallery.length === 0 ? (
+            <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-xl bg-surface-2 px-4 py-8 text-center text-text-muted">
+              <ImageOff className="size-7" aria-hidden />
+              <p className="text-sm font-medium text-text">Nema slika za ovaj izbor</p>
+              <p className="text-[13px]">Prevuci fotografije ovde ili „Dodaj slike“.</p>
+            </div>
+          ) : (
+            <ul className="grid grid-cols-1 gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
+              {filteredGallery.map((item, index) => {
                 const shiftClass = getShiftClass(item, index);
                 const isDragOver = dragOverId === item.id && draggingSameGroup;
                 const fbActive = item.publishFb ?? true;
@@ -154,214 +163,145 @@ export function GallerySection({ uploadInputId, adUploadInputId, product, isUplo
                 const totalInGroup = groupItems.length || 1;
                 const isReorderEditing = reorderEditingId === item.id;
                 return (
-                  <div
+                  <li
                     key={item.id}
                     data-gallery-id={item.id}
-                    className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm transition-all duration-200 hover:shadow-md ${shiftClass} ${
-                      isDragOver ? "ring-1 ring-blue-200" : ""
-                    }`}
-                    draggable
-                    onDragStart={(event) => handleGalleryDragStart(event, item)}
-                    onDragOver={(event) => handleGalleryDragOver(event, item)}
-                    onDrop={(event) => handleGalleryDrop(event, item)}
-                    onDragEnd={handleGalleryDragEnd}
-                    onDragLeave={() => handleGalleryDragLeave(item)}
-                    onTouchStart={(event) => handleGalleryTouchStart(event, item)}
-                    onTouchMove={handleGalleryTouchMove}
-                    onTouchEnd={handleGalleryTouchEnd}
-                    onTouchCancel={handleGalleryTouchCancel}
-                    onClick={() => {
-                      if (touchDragActiveRef.current) return;
-                      handleOpenPreview(item);
-                    }}
+                    className={cn("flex flex-col overflow-hidden rounded-xl bg-surface ring-1 ring-border transition-all duration-200", shiftClass, isDragOver && "ring-2 ring-accent")}
                   >
-                    <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-white/90 p-1 text-slate-600 shadow-sm opacity-100 transition ">
+                    <div
+                      className="group relative aspect-[4/3] cursor-grab bg-surface-2"
+                      draggable
+                      onDragStart={(event) => handleGalleryDragStart(event, item)}
+                      onDragOver={(event) => handleGalleryDragOver(event, item)}
+                      onDrop={(event) => handleGalleryDrop(event, item)}
+                      onDragEnd={handleGalleryDragEnd}
+                      onDragLeave={() => handleGalleryDragLeave(item)}
+                      onTouchStart={(event) => handleGalleryTouchStart(event, item)}
+                      onTouchMove={handleGalleryTouchMove}
+                      onTouchEnd={handleGalleryTouchEnd}
+                      onTouchCancel={handleGalleryTouchCancel}
+                    >
                       <button
                         type="button"
-                        className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
-                        title="Otvori pregled"
-                        onClick={(event) => {
-                          event.stopPropagation();
+                        aria-label={`Otvori pregled: ${item.label}`}
+                        className="absolute inset-0 cursor-zoom-in focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                        onClick={() => {
+                          if (touchDragActiveRef.current) return;
                           handleOpenPreview(item);
                         }}
                       >
-                        <Maximize2 className="h-4 w-4" />
+                        {/* eslint-disable-next-line @next/next/no-img-element -- Convex storage URL */}
+                        <img src={item.url} alt={item.alt} className="size-full object-contain" />
                       </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 border-t border-border px-2 pt-1">
+                      <GripVertical className="size-4 shrink-0 text-text-muted" aria-hidden />
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-text">{item.label}</span>
+                      {isReorderEditing ? (
+                        <span className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={totalInGroup}
+                            value={reorderInputValue}
+                            aria-label={`Nova pozicija (1–${totalInGroup})`}
+                            onChange={(event) => setReorderInputValue(event.target.value)}
+                            className="h-11 w-16 rounded-xl bg-surface px-2 text-base text-text ring-1 ring-inset ring-border-strong focus-visible:outline-2 focus-visible:outline-ring md:h-9 md:text-sm"
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void handleConfirmReorderInput(item);
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleCancelReorderInput();
+                              }
+                            }}
+                          />
+                          <IconButton aria-label="Potvrdi poziciju" variant="solid" onClick={() => void handleConfirmReorderInput(item)}>
+                            <Check />
+                          </IconButton>
+                          <IconButton aria-label="Odustani od promene pozicije" onClick={handleCancelReorderInput}>
+                            <X />
+                          </IconButton>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenReorderInput(item)}
+                          aria-label={`Pozicija ${currentPosition} od ${totalInGroup}, promeni`}
+                          className="num inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl px-2 text-[13px] font-medium text-text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-ring md:h-9 md:min-w-9"
+                        >
+                          #{currentPosition}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 px-2 pb-1">
                       <button
                         type="button"
-                        className="rounded-full p-1 hover:bg-slate-100 hover:text-slate-900"
-                        title="Preuzmi sliku"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleDownloadImage(item.url, item.fileName ?? `${item.id}.jpg`);
-                        }}
-                      >
-                        <Download className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        className={`rounded-full px-2 py-1 text-xs font-semibold transition ${
-                          item.isMain
-                            ? "bg-emerald-50 text-emerald-700 shadow-[0_1px_0_rgba(16,185,129,0.25)]"
-                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                        }`}
+                        aria-pressed={Boolean(item.isMain)}
                         disabled={item.isMain}
-                        title={item.isMain ? "Vec je glavna" : "Postavi kao glavnu"}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleSetAsMain(item);
-                        }}
+                        onClick={() => handleSetAsMain(item)}
+                        className={cn(
+                          "inline-flex h-11 items-center gap-1 rounded-xl px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring md:h-9",
+                          item.isMain ? "bg-success-soft text-success" : "cursor-pointer text-text hover:bg-surface-2",
+                        )}
                       >
+                        {item.isMain ? <Check className="size-4" aria-hidden /> : <Star className="size-4" aria-hidden />}
                         Glavna
                       </button>
                       <button
                         type="button"
-                        className="rounded-full p-1 hover:bg-slate-100 hover:text-red-600"
-                        title="Obrisi sliku"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleRemoveSingleImage(item);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={item.url}
-                      alt={item.alt}
-                      className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.02] group-hover:brightness-95"
-                    />
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                      <div className="flex items-center gap-2 rounded-full bg-slate-900/60 px-3 py-2 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">
-                        <Maximize2 className="h-4 w-4" />
-                        <span>Povecaj</span>
-                      </div>
-                    </div>
-                    <div className="absolute left-2 top-2 inline-flex items-center gap-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                      <GripVertical className="h-3 w-3 text-slate-500" />
-                      {item.label}
-                    </div>
-                    <div className="absolute left-2 bottom-2 z-10 flex gap-1">
-                      <button
-                        type="button"
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
-                          fbActive
-                            ? "bg-blue-600 text-white hover:bg-blue-700"
-                            : "bg-white/90 text-slate-700 ring-1 ring-slate-200 hover:bg-white"
-                        }`}
+                        aria-pressed={fbActive}
+                        aria-label="Facebook objava"
                         title={fbActive ? "Ukloni iz FB objave" : "Uključi u FB objavu"}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleImagePublishToggle(item, "publishFb", !fbActive);
-                        }}
+                        onClick={() => handleImagePublishToggle(item, "publishFb", !fbActive)}
+                        className={toggleClass(fbActive)}
                       >
-                        <Facebook className="h-3.5 w-3.5" />
+                        <Facebook className="size-4" aria-hidden />
                         FB
                       </button>
                       <button
                         type="button"
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
-                          igActive
-                            ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
-                            : "bg-white/90 text-slate-700 ring-1 ring-slate-200 hover:bg-white"
-                        }`}
+                        aria-pressed={igActive}
+                        aria-label="Instagram objava"
                         title={igActive ? "Ukloni iz IG objave" : "Uključi u IG objavu"}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleImagePublishToggle(item, "publishIg", !igActive);
-                        }}
+                        onClick={() => handleImagePublishToggle(item, "publishIg", !igActive)}
+                        className={toggleClass(igActive)}
                       >
-                        <Instagram className="h-3.5 w-3.5" />
+                        <Instagram className="size-4" aria-hidden />
                         IG
                       </button>
+                      <IconButton aria-label={`Preuzmi sliku: ${item.label}`} className="ml-auto" onClick={() => void handleDownloadImage(item.url, item.fileName ?? `${item.id}.jpg`)}>
+                        <Download />
+                      </IconButton>
+                      <IconButton aria-label={`Obriši sliku: ${item.label}`} className="hover:text-danger" onClick={() => setConfirm({ kind: "one", item })}>
+                        <Trash2 />
+                      </IconButton>
                     </div>
-                    <div className="absolute bottom-2 right-2 z-10">
-                      <div
-                        className={`flex items-center gap-1 overflow-hidden rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-300 ${
-                          isReorderEditing ? "w-36" : "w-auto"
-                        }`}
-                      >
-                        {isReorderEditing ? (
-                          <>
-                            <input
-                              type="number"
-                              min={1}
-                              max={totalInGroup}
-                              value={reorderInputValue}
-                              onChange={(event) => setReorderInputValue(event.target.value)}
-                              className="h-8 w-14 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300"
-                              onClick={(event) => event.stopPropagation()}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  void handleConfirmReorderInput(item);
-                                }
-                                if (event.key === "Escape") {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  handleCancelReorderInput();
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className="inline-flex h-8 items-center justify-center rounded-md bg-blue-600 px-2 text-white transition hover:bg-blue-700"
-                              title="Promeni redosled"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void handleConfirmReorderInput(item);
-                              }}
-                            >
-                              OK
-                            </button>
-                            <button
-                              type="button"
-                              className="inline-flex h-8 items-center justify-center rounded-md px-2 text-slate-500 transition hover:text-slate-800"
-                              title="Zatvori"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleCancelReorderInput();
-                              }}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 rounded-full bg-slate-900/80 px-3 py-1 text-white transition hover:bg-slate-900"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleOpenReorderInput(item);
-                            }}
-                            title="Promeni poziciju slike"
-                          >
-                            <GripVertical className="h-3 w-3 text-white/80" />
-                            #{currentPosition}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              Glavna slika za drustvene mreze
-              {product.adImage ? <Badge variant="green">Postavljena</Badge> : <Badge variant="default">Nije dodata</Badge>}
-            </CardTitle>
-            <p className="text-sm text-slate-500">Fotografija koja ide kao prva na FB / Instagram oglasima.</p>
+      <section aria-labelledby="glavna-mreze" className="rounded-2xl bg-surface ring-1 ring-border">
+        <div className="flex flex-col gap-3 px-4 pt-4 md:px-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 id="glavna-mreze" className="text-base font-semibold text-text">
+              Glavna slika za društvene mreže
+            </h2>
+            <span className={cn("rounded-full px-2 py-px text-xs font-medium", product.adImage ? "bg-success-soft text-success" : "bg-surface-2 text-text-muted")}>
+              {product.adImage ? "Postavljena" : "Nije dodata"}
+            </span>
           </div>
+          <p className="text-[13px] text-text-muted">Ide kao prva fotografija u FB / Instagram objavi.</p>
           <div className="flex flex-wrap items-center gap-2">
             <input
               id={adUploadInputId}
@@ -369,83 +309,85 @@ export function GallerySection({ uploadInputId, adUploadInputId, product, isUplo
               type="file"
               accept="image/*"
               className="sr-only"
+              aria-label="Izaberi glavnu sliku za društvene mreže"
               onChange={handleAdImageChange}
               disabled={isUploadingAdImage}
             />
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              disabled={isUploadingAdImage}
-              onClick={() => document.getElementById(adUploadInputId)?.click()}
-            >
-              <UploadCloud className="h-4 w-4" />
-              {isUploadingAdImage ? "Dodavanje..." : "Dodaj glavnu sliku"}
+            <Button type="button" variant="outline" className="gap-2" disabled={isUploadingAdImage} onClick={() => document.getElementById(adUploadInputId)?.click()}>
+              {isUploadingAdImage ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <UploadCloud className="size-4" aria-hidden />}
+              {isUploadingAdImage ? "Dodavanje…" : product.adImage ? "Zameni" : "Dodaj glavnu sliku"}
             </Button>
+            {product.adImage?.url ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="gap-2"
+                onClick={() => void handleDownloadImage(product.adImage?.url ?? "", product.adImage?.fileName ?? `${product._id}-ad.jpg`)}
+              >
+                <Download className="size-4" aria-hidden />
+                Preuzmi
+              </Button>
+            ) : null}
             {product.adImage ? (
-              <Button variant="ghost" size="sm" className="gap-2 text-red-600" onClick={handleRemoveAdImage}>
-                <Trash2 className="h-4 w-4" />
-                Obrisi glavnu sliku
+              <Button type="button" variant="ghost" className="ml-auto gap-2 text-danger" onClick={() => setConfirm({ kind: "ad" })}>
+                <Trash2 className="size-4" aria-hidden />
+                Obriši
               </Button>
             ) : null}
           </div>
-        </CardHeader>
-        <CardContent>
-          <div
-            className={`relative rounded-xl border border-transparent transition ${
-              showAdDropOverlay ? "border-2 border-dashed border-blue-300 bg-blue-50/60" : ""
-            }`}
-            onDragEnter={handleAdDropZoneDragEnter}
-            onDragOver={handleAdDropZoneDragOver}
-            onDragLeave={handleAdDropZoneDragLeave}
-            onDrop={handleAdDropZoneDrop}
-          >
-            {showAdDropOverlay ? (
-              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-blue-100/80 backdrop-blur-sm">
-                <div className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-blue-700 shadow">
-                  <UploadCloud className="h-4 w-4" />
-                  <span>Otpusti da postavis glavnu</span>
-                </div>
-              </div>
-            ) : null}
-            {product.adImage ? (
-              <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={product.adImage.url ?? ""}
-                  alt="Glavna slika za drustvene mreze"
-                  className="h-[260px] w-full object-cover sm:h-[320px]"
-                />
-                <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 shadow">
-                  <Tag className="h-3 w-3 text-slate-500" />
-                  Glavna za drustvene mreze
-                </div>
-                {product.adImage.url ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void handleDownloadImage(
-                        product.adImage?.url ?? "",
-                        product.adImage?.fileName ?? `${product._id}-ad.jpg`,
-                      )
-                    }
-                    className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 shadow hover:bg-slate-100"
-                  >
-                    <Download className="h-4 w-4" />
-                    Preuzmi
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-slate-500">
-                <UploadCloud className="h-8 w-8" />
-                <p className="text-sm font-semibold text-slate-700">Nema glavne slike za drustvene mreze</p>
-                <p className="text-xs text-slate-500">Prevuci je ovde ili iskoristi dugme iznad.</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+        <div
+          className={cn("relative m-4 mt-3 rounded-xl md:m-5 md:mt-3", showAdDropOverlay && "ring-2 ring-inset ring-accent")}
+          onDragEnter={handleAdDropZoneDragEnter}
+          onDragOver={handleAdDropZoneDragOver}
+          onDragLeave={handleAdDropZoneDragLeave}
+          onDrop={handleAdDropZoneDrop}
+        >
+          {showAdDropOverlay ? (
+            <div className="pointer-events-none absolute inset-0 z-(--z-raised) flex items-center justify-center rounded-xl bg-accent-soft/90">
+              <span className="flex items-center gap-2 text-sm font-semibold text-accent-text">
+                <UploadCloud className="size-4" aria-hidden />
+                Otpusti da postaviš glavnu sliku
+              </span>
+            </div>
+          ) : null}
+          {product.adImage ? (
+            <div className="overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Convex storage URL */}
+              <img src={product.adImage.url ?? ""} alt="Glavna slika za društvene mreže" className="h-64 w-full object-contain md:h-80" />
+            </div>
+          ) : (
+            <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-xl bg-surface-2 px-4 py-8 text-center text-text-muted">
+              <UploadCloud className="size-7" aria-hidden />
+              <p className="text-sm font-medium text-text">Nema glavne slike za društvene mreže</p>
+              <p className="text-[13px]">Prevuci je ovde ili „Dodaj glavnu sliku“.</p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        tone="danger"
+        title={confirm?.kind === "all" ? "Obrisati sve slike?" : confirm?.kind === "ad" ? "Obrisati glavnu sliku za mreže?" : "Obrisati sliku?"}
+        description={
+          confirm?.kind === "all"
+            ? "Brišu se sve slike proizvoda, uključujući slike svih tipova. Ovo ne može da se vrati."
+            : confirm?.kind === "one"
+              ? "Slika se uklanja iz proizvoda. Ovo ne može da se vrati."
+              : "Ovo ne može da se vrati."
+        }
+        confirmLabel="Obriši"
+        onConfirm={async () => {
+          const target = confirm;
+          if (!target) return;
+          if (target.kind === "one") await handleRemoveSingleImage(target.item);
+          else if (target.kind === "ad") await handleRemoveAdImage();
+          else await handleRemoveAllImages();
+          setConfirm(null);
+        }}
+      />
     </div>
   );
 }

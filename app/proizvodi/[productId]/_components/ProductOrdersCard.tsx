@@ -1,12 +1,12 @@
 "use client";
 
-// Doslovno izvuceno iz app/proizvodi/[productId]/page.tsx (refaktor bez promene ponasanja).
 import Link from "next/link";
-import { ChevronRight, Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { ChevronRight, ShoppingCart } from "lucide-react";
+import { Money } from "@/components/ui/money";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StageBadge } from "@/components/ui/stage-badge";
+import { orderTotals } from "@/lib/calc";
 import { formatDate } from "@/lib/format";
-import { OrderStageBadge } from "./LegacyFields";
 import type { ProductWithUrls } from "../_lib/detailTypes";
 import type { useProductDetailState } from "../_hooks/useProductDetailState";
 
@@ -15,81 +15,70 @@ type ProductOrdersCardProps = {
   product: ProductWithUrls;
 };
 
-export function ProductOrdersCard({ productOrders, product }: ProductOrdersCardProps) {
-  return (
-    <Card className="border-slate-200 shadow-sm">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Porudzbine sa ovim proizvodom
-          <Badge variant="default">{productOrders?.length ?? 0}</Badge>
-        </CardTitle>
-        <p className="text-sm text-slate-500">Klikom otvaras pojedinacnu narudzbinu.</p>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {productOrders === undefined ? (
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Ucitavanje porudzbina...
-          </div>
-        ) : productOrders.length === 0 ? (
-          <p className="text-sm text-slate-500">Jos nema porudzbina za ovaj proizvod.</p>
-        ) : (
-          <div className="space-y-2">
-            {productOrders.map((order) => {
-              const matchedItems = (order.items ?? []).filter(
-                (item) => String(item.productId) === String(product._id),
-              );
-              const matchedQty = matchedItems.reduce((sum, item) => sum + item.kolicina, 0);
-              const displayQty = matchedQty > 0 ? matchedQty : order.kolicina;
-              const matchedLabels = matchedItems
-                .map((item) => item.variantLabel || item.title)
-                .filter((label) => Boolean(label && label.trim().length > 0));
-              const primaryLabel = matchedLabels[0] ?? "";
-              const secondaryLabels = matchedLabels.slice(1, 3);
-              const remainingCount = matchedLabels.length > 3 ? matchedLabels.length - 3 : 0;
-              const orderHref = `/narudzbine/${order._id}`;
+const pluralStavki = (count: number) => (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? "stavke" : "stavki");
 
-              return (
+/** Narudžbine u kojima je ovaj proizvod: status, kupac, datum, količina i prodajno; ceo red vodi na narudžbinu. */
+export function ProductOrdersCard({ productOrders, product }: ProductOrdersCardProps) {
+  const count = productOrders?.length ?? 0;
+  return (
+    <section aria-labelledby="proizvod-narudzbine" className="rounded-2xl bg-surface ring-1 ring-border">
+      <h2 id="proizvod-narudzbine" className="flex min-h-14 items-center gap-2 px-4 pt-3 pb-2 text-base font-semibold text-text md:px-5">
+        Narudžbine sa ovim proizvodom
+        {productOrders ? <span className="num rounded-full bg-surface-2 px-2 text-xs font-medium text-text-muted">{count}</span> : null}
+      </h2>
+
+      {productOrders === undefined ? (
+        <div className="flex flex-col gap-2 px-4 pb-4 md:px-5" aria-busy="true" aria-label="Učitavanje narudžbina">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : count === 0 ? (
+        <p className="flex items-center gap-2 px-4 pb-4 text-sm text-text-muted md:px-5">
+          <ShoppingCart className="size-4 shrink-0" aria-hidden />
+          Još nema narudžbina sa ovim proizvodom.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border border-t border-border">
+          {productOrders.map((order) => {
+            const matchedItems = (order.items ?? []).filter((item) => String(item.productId) === String(product._id));
+            const matchedQty = matchedItems.reduce((sum, item) => sum + item.kolicina, 0);
+            const displayQty = matchedQty > 0 ? matchedQty : order.kolicina;
+            const labels = matchedItems.map((item) => item.variantLabel || item.title).filter((label): label is string => Boolean(label && label.trim()));
+            const variantText = labels.length > 0 ? `${labels.slice(0, 3).join(" / ")}${labels.length > 3 ? ` +${labels.length - 3}` : ""}` : null;
+            const itemCount = order.items?.length ?? 0;
+            const prodajno = orderTotals(order).totalProdajno;
+            return (
+              <li key={order._id}>
                 <Link
-                  key={order._id}
-                  href={orderHref}
-                  className="group block space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm transition hover:border-blue-200 hover:shadow-md"
+                  href={`/narudzbine/${order._id}`}
+                  className="group flex min-h-16 items-center gap-3 px-4 py-3 transition-colors duration-(--duration-fast) hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:px-5"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-1">
-                      <p className="text-sm font-semibold text-slate-900">{order.title}</p>
-                      <p className="text-xs text-slate-500">
-                        Kupac: {order.customerName} - Kreirano {formatDate(order.kreiranoAt)}
-                      </p>
-                      {primaryLabel ? (
-                        <p className="text-xs text-slate-500">
-                          {primaryLabel}
-                          {secondaryLabels.length > 0 ? ` / ${secondaryLabels.join(" / ")}` : ""}
-                          {remainingCount > 0 ? ` +${remainingCount}` : ""}
-                        </p>
-                      ) : null}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="line-clamp-2 text-[15px] leading-5 font-medium text-text md:text-sm">{order.title}</span>
+                      <StageBadge stage={order.stage} className="shrink-0" />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <OrderStageBadge stage={order.stage} />
-                      <ChevronRight className="h-4 w-4 text-slate-400 transition group-hover:text-slate-600" />
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                      Kolicina: {displayQty}
+                    <span className="truncate text-[13px] text-text-muted">
+                      {order.customerName || "—"} · <span className="num">{formatDate(order.kreiranoAt)}</span>
                     </span>
-                    {order.items && order.items.length > 1 ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                        {order.items.length} stavki
-                      </span>
-                    ) : null}
+                    <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] text-text-muted">
+                      <span className="num">Količina {displayQty}</span>
+                      {itemCount > 1 ? (
+                        <span className="num">
+                          {itemCount} {pluralStavki(itemCount)}
+                        </span>
+                      ) : null}
+                      {variantText ? <span className="min-w-0 truncate">{variantText}</span> : null}
+                      <Money value={prodajno} trimZeroCents className="ml-auto font-medium text-text" />
+                    </span>
                   </div>
+                  <ChevronRight className="size-4 shrink-0 text-text-muted transition-transform duration-(--duration-fast) group-hover:translate-x-0.5" aria-hidden />
                 </Link>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
