@@ -4,7 +4,18 @@ export const slanjeModes = ["Posta", "Aks", "Bex"] as const;
 export const slanjeSwitchModes = ["Aks", "Posta"] as const;
 export const shippingModes = ["Posta", "Aks", "Bex"] as const;
 export type ShippingMode = (typeof shippingModes)[number];
-export const deleteConfirmPhrase = "potvrdjujem da brisem";
+export const deleteConfirmPhrase = "potvrđujem da brišem";
+
+const foldSerbian = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/đ/g, "dj")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+
+/** Fraza za brisanje važi i bez dijakritike („potvrdjujem da brisem“), kao i ranije. */
+export const matchesDeleteConfirmPhrase = (value: string) => foldSerbian(value) === foldSerbian(deleteConfirmPhrase);
 
 export const emptyOrderListTotals: OrderListResponse["totals"] = {
   nabavno: 0,

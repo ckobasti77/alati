@@ -23,6 +23,7 @@ import {
 } from "../uvoz/_components/ImportKit";
 import type { DraftRow, ProductOption, WaChat } from "./_components/types";
 import { WaRows } from "./_components/WaRows";
+import { pluralOrders } from "../_lib/orderView";
 
 type BatchItem = {
   waMessageId: string;
@@ -255,9 +256,7 @@ function WaUvozContent() {
           if (!open && !isSaving) setIsConfirmOpen(false);
         }}
         title="Potvrdi upis"
-        description={`Upisaće se ${validAcceptedRows.length} ${
-          validAcceptedRows.length === 1 ? "narudžbina" : "narudžbine"
-        } (stage: poručeno). Duplikati po WhatsApp poruci se automatski preskaču.`}
+        description={`Upisaće se ${validAcceptedRows.length} ${pluralOrders(validAcceptedRows.length)} sa statusom Poručeno. Duplikati po WhatsApp poruci se automatski preskaču.`}
         confirmLabel={`Upiši (${validAcceptedRows.length})`}
         onConfirm={async () => {
           if (!(await handleConfirmSubmit())) throw new Error("Upis nije uspeo.");

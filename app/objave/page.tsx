@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PackageSearch } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -66,6 +66,14 @@ function SocialContent() {
         caption: selectedProduct.opisFbInsta || selectedProduct.opis || selectedProduct.opisKp || selectedProduct.name,
       }
     : null;
+
+  // Dok je vreme izabrano, „sada“ se osvežava (dugmad se gase kad zakazano vreme prođe i bez dodira).
+  const hasSchedule = Boolean(schedule.date && schedule.hour && schedule.minute);
+  useEffect(() => {
+    if (!hasSchedule) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [hasSchedule]);
 
   const changeSchedule = (value: ScheduleValue) => {
     setNow(Date.now());

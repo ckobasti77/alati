@@ -28,6 +28,7 @@ import {
   ProgressNote,
   Spinner,
 } from "./_components/ImportKit";
+import { pluralOrders } from "../_lib/orderView";
 import type { ReceiptRow } from "./_components/types";
 import { UvozRows } from "./_components/UvozRows";
 
@@ -343,9 +344,7 @@ function UvozContent() {
           if (!open && !isSaving) setIsConfirmOpen(false);
         }}
         title="Potvrdi upis"
-        description={`Označićeš ${validAcceptedRows.length} ${
-          validAcceptedRows.length === 1 ? "narudžbinu" : "narudžbine"
-        } kao poslato i upisati broj pošiljke. Upis ide u produkcijsku bazu.`}
+        description={`Označićeš ${validAcceptedRows.length} ${pluralOrders(validAcceptedRows.length, "akuzativ")} kao poslato i upisati broj pošiljke. Upis ide u produkcijsku bazu.`}
         confirmLabel={`Potvrdi i pošalji (${validAcceptedRows.length})`}
         onConfirm={async () => {
           if (!(await handleConfirmSubmit())) throw new Error("Upis nije uspeo.");

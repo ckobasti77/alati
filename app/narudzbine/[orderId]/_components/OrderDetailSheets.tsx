@@ -9,7 +9,7 @@ import { StageList } from "@/components/ui/stage-badge";
 import { STAGES, getStage } from "@/lib/stages";
 import type { OrderStage, OrderWithProduct } from "@/types/order";
 import { resolveOrderShippingMode } from "../_lib/detailHelpers";
-import { deleteConfirmPhrase } from "../../_lib/types";
+import { deleteConfirmPhrase, matchesDeleteConfirmPhrase } from "../../_lib/types";
 import { requiresDeleteConfirmation } from "../../_lib/helpers";
 import type { useOrderDetailDelete } from "../_hooks/useOrderDetailDelete";
 import type { useOrderDetailUpdates } from "../_hooks/useOrderDetailUpdates";
@@ -82,7 +82,7 @@ export function ShipmentNumberSheet({ order, updates }: { order: OrderWithProduc
 export function DeleteOrderConfirm({ order, orderDelete }: { order: OrderWithProduct; orderDelete: ReturnType<typeof useOrderDetailDelete> }) {
   const { deleteModalOpen, deleteConfirmText, setDeleteConfirmText, isDeletingOrder, handleDeleteModalOpenChange, handleDeleteOrder } = orderDelete;
   const needsPhrase = requiresDeleteConfirmation(order.stage);
-  const phraseOk = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
+  const phraseOk = matchesDeleteConfirmPhrase(deleteConfirmText);
   const stageLabel = STAGES[order.stage]?.label ?? order.stage;
   return (
     <ConfirmDialog

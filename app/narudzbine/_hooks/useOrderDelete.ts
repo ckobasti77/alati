@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useConvexMutation } from "@/lib/convex";
 import type { Order } from "@/types/order";
-import { deleteConfirmPhrase } from "../_lib/types";
+import { matchesDeleteConfirmPhrase } from "../_lib/types";
 import { requiresDeleteConfirmation } from "../_lib/helpers";
 
 type UseOrderDeleteParams = {
@@ -24,7 +24,7 @@ export function useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, edit
   const deletingRef = useRef(false);
   const deleteOrder = useConvexMutation<{ id: string; token: string; scope: "default" | "kalaba" }>("orders:remove");
   const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
-  const isDeletePhraseValid = deleteConfirmText.trim().toLowerCase() === deleteConfirmPhrase;
+  const isDeletePhraseValid = matchesDeleteConfirmPhrase(deleteConfirmText);
   const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
   const openDeleteModal = (order: Order) => {
     setDeleteCandidate(order);

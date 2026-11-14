@@ -135,3 +135,14 @@ describe("pluralOrders", () => {
     expect(pluralOrders(21, "akuzativ")).toBe("narudžbinu");
   });
 });
+
+describe("fraza za brisanje", () => {
+  it("prihvata frazu sa i bez dijakritike", async () => {
+    const { matchesDeleteConfirmPhrase, deleteConfirmPhrase } = await import("./types");
+    expect(deleteConfirmPhrase).toBe("potvrđujem da brišem");
+    expect(matchesDeleteConfirmPhrase("potvrđujem da brišem")).toBe(true);
+    expect(matchesDeleteConfirmPhrase("  Potvrdjujem da brisem ")).toBe(true);
+    expect(matchesDeleteConfirmPhrase("potvrdujem da brisem")).toBe(false);
+    expect(matchesDeleteConfirmPhrase("obriši")).toBe(false);
+  });
+});

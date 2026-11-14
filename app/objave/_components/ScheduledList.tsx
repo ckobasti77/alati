@@ -88,8 +88,10 @@ export function ScheduledList({
     <>
       <div className="flex flex-col">
         {Array.from(groups.entries()).map(([key, items]) => (
-          <section key={key} aria-label={dayLabel(key, items[0].scheduledAt)}>
-            <h3 className="px-4 pt-2 pb-1 text-xs font-medium text-text-muted md:px-5">{dayLabel(key, items[0].scheduledAt)}</h3>
+          <section key={key} aria-labelledby={`zakazane-${key}`}>
+            <h3 id={`zakazane-${key}`} className="px-4 pt-2 pb-1 text-xs font-medium text-text-muted md:px-5">
+              {dayLabel(key, items[0].scheduledAt)}
+            </h3>
             <ul className="divide-y divide-border">
               {items.map((post) => {
                 const status = STATUS[post.status];

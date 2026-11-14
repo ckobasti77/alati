@@ -40,9 +40,10 @@ export function defaultSchedule(): ScheduleValue {
 
 const gridButton = (selected: boolean) =>
   cn(
-    "num inline-flex h-11 cursor-pointer items-center justify-center rounded-xl text-[15px] font-medium transition-colors duration-(--duration-fast) md:h-9 md:text-sm",
+    "num inline-flex h-11 cursor-pointer items-center justify-center rounded-xl text-[15px] transition-colors duration-(--duration-fast) md:h-9 md:text-sm",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-    selected ? "bg-accent text-accent-fg" : "bg-surface-2 text-text hover:bg-surface-3",
+    // Izbor nije samo boja: deblji font i prsten oko izabranog.
+    selected ? "bg-accent font-semibold text-accent-fg ring-2 ring-ring ring-offset-2 ring-offset-surface" : "bg-surface-2 font-medium text-text hover:bg-surface-3",
   );
 
 /**
@@ -95,7 +96,7 @@ export function WhenPicker({ value, onChange, idPrefix = "kada" }: { value: Sche
                 min={today}
                 value={value.date}
                 onChange={(event) => event.target.value && onChange({ ...value, date: event.target.value })}
-                aria-label="Izaberi datum"
+                aria-hidden
                 tabIndex={-1}
                 className="pointer-events-none absolute size-px opacity-0"
               />
@@ -104,13 +105,12 @@ export function WhenPicker({ value, onChange, idPrefix = "kada" }: { value: Sche
 
           <fieldset>
             <legend className="mb-2 text-[13px] font-medium text-text-muted">Sat</legend>
-            <div className="grid grid-cols-6 gap-1.5" role="radiogroup" aria-label="Sat">
+            <div className="grid grid-cols-6 gap-1.5">
               {HOURS.map((hour) => (
                 <button
                   key={hour}
                   type="button"
-                  role="radio"
-                  aria-checked={value.hour === hour}
+                  aria-pressed={value.hour === hour}
                   onClick={() => onChange({ ...value, hour, minute: value.minute || "00" })}
                   className={gridButton(value.hour === hour)}
                 >
@@ -122,13 +122,12 @@ export function WhenPicker({ value, onChange, idPrefix = "kada" }: { value: Sche
 
           <fieldset>
             <legend className="mb-2 text-[13px] font-medium text-text-muted">Minut</legend>
-            <div className="grid grid-cols-6 gap-1.5" role="radiogroup" aria-label="Minut">
+            <div className="grid grid-cols-6 gap-1.5">
               {MINUTES.map((minute) => (
                 <button
                   key={minute}
                   type="button"
-                  role="radio"
-                  aria-checked={value.minute === minute}
+                  aria-pressed={value.minute === minute}
                   onClick={() => onChange({ ...value, minute, hour: value.hour || "00" })}
                   className={gridButton(value.minute === minute)}
                 >

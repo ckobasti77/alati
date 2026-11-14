@@ -6,16 +6,18 @@ import { useIsDesktop } from "@/lib/useMediaQuery";
 
 /**
  * Obaveštenja (sonner) u tokenima obe teme. Telefon: gore na sredini, ispod safe-area (nikad preko donje
- * navigacije ni preko dugmadi na dnu). Desktop: dole desno.
+ * navigacije ni preko dugmadi na dnu). Desktop: gore desno, ispod headera.
  */
 export function Toaster({ theme }: { theme: "light" | "dark" }) {
   const isDesktop = useIsDesktop();
   return (
     <Sonner
       theme={theme}
-      position={isDesktop ? "bottom-right" : "top-center"}
+      position={isDesktop ? "top-right" : "top-center"}
+      containerAriaLabel="Obaveštenja"
       mobileOffset={{ top: "calc(env(safe-area-inset-top) + 8px)", left: 12, right: 12 }}
-      offset={24}
+      // Desktop: ispod sticky headera (dugmad za potvrdu su dole i ne smeju biti pokrivena).
+      offset={{ top: "calc(var(--header-h) + 12px)", right: 24 }}
       gap={8}
       visibleToasts={3}
       style={{ zIndex: "var(--z-toast)" } as React.CSSProperties}

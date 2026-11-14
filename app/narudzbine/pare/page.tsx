@@ -18,6 +18,7 @@ import type { LegleExtraction, LegleRow } from "@/lib/legleExtract";
 import { Dropzone, ImportActionBar, ImportHeader, outlineButtonClass, ProgressNote } from "../uvoz/_components/ImportKit";
 import type { LegleItem, UploadState } from "./_components/types";
 import { PareRows, UploadList } from "./_components/PareRows";
+import { pluralOrders } from "../_lib/orderView";
 
 type MarkLegloResult = { orderId: string; status: "updated" | "skipped"; reason?: string };
 
@@ -274,9 +275,7 @@ function LegleContent() {
           if (!open && !isSaving) setIsConfirmOpen(false);
         }}
         title="Potvrdi upis"
-        description={`Označićeš ${validAcceptedItems.length} ${
-          validAcceptedItems.length === 1 ? "narudžbinu" : "narudžbine"
-        } kao „Legle pare“. Upis ide u produkcijsku bazu.`}
+        description={`Označićeš ${validAcceptedItems.length} ${pluralOrders(validAcceptedItems.length, "akuzativ")} kao „Legle pare“. Upis ide u produkcijsku bazu.`}
         confirmLabel={`Upiši (${validAcceptedItems.length})`}
         onConfirm={async () => {
           if (!(await handleConfirmSubmit())) throw new Error("Upis nije uspeo.");

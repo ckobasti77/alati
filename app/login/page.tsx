@@ -28,18 +28,27 @@ function LoginSkeleton() {
   );
 }
 
-/** Posle prijave samo putanje unutar aplikacije (ne spoljni linkovi iz `?next=`). */
+/** Posle prijave samo putanje unutar aplikacije: `?next=` se parsira kao URL i mora ostati na istom originu. */
 function safeNext(value: string | null | undefined) {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/";
-  return value;
+  if (!value || typeof window === "undefined") return "/";
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return "/";
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/";
+  }
 }
 
-/** Sirova poruka sa servera → jasna rečenica za korisnika. */
+/**
+ * Greška prijave → jasna rečenica. Produkcioni Convex skriva tekst greške („Server Error“), pa se svaka
+ * greška koja nije mrežna tumači kao pogrešni podaci (jedini razlog koji server vraća za prijavu).
+ */
 function loginErrorMessage(error: unknown) {
   const raw = error instanceof Error ? error.message : "";
-  if (/pogresno|pogrešno|korisnicko|korisničko|sifra|šifra/i.test(raw)) return "Pogrešno korisničko ime ili šifra.";
-  if (/network|fetch|failed to|connection/i.test(raw)) return "Nema veze sa serverom. Proveri internet i pokušaj ponovo.";
-  return "Prijava trenutno nije uspela. Pokušaj ponovo.";
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  if (offline || /network|fetch|failed to|connection|websocket/i.test(raw)) return "Nema veze sa serverom. Proveri internet i pokušaj ponovo.";
+  return "Pogrešno korisničko ime ili šifra.";
 }
 
 function LoginContent() {
@@ -144,7 +153,7 @@ function LoginContent() {
               aria-describedby={error ? errorId : undefined}
             />
             <IconButton
-              aria-label={showPassword ? "Sakrij šifru" : "Prikaži šifru"}
+              aria-label="Prikaži šifru"
               aria-pressed={showPassword}
               aria-controls="password"
               onClick={() => setShowPassword((value) => !value)}
