@@ -84,6 +84,7 @@ function OrdersContent() {
     listTotals: feed.ordersTotals,
     listTotal: feed.ordersPagination.total,
     listLoading: feed.isOrdersLoading,
+    listError: Boolean(feed.listError),
   });
   const selection = useOrderSelection({ orderScope, sessionToken, matchesFilters, setOrders, visibleOrderIds });
 

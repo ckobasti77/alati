@@ -33,8 +33,10 @@ export function PovratToggle({
 }) {
   const ctx = useOrdersList();
   const actual = Boolean(order.povratVracen);
-  // Optimistična vrednost važi dok red ne stigne sa servera (tada `actual` već pokazuje istu vrednost).
+  // Optimistična vrednost važi samo dok server ne potvrdi (`actual` dobije istu vrednost); posle toga se briše,
+  // pa kasnija spoljna izmena (drugi uređaj, grupna akcija) uvek pobeđuje.
   const [pending, setPending] = useState<{ value: boolean; from: boolean } | null>(null);
+  if (pending && actual === pending.value) setPending(null);
   const checked = pending && pending.from === actual ? pending.value : actual;
   const label = `Povrat urađen: ${title}`;
 

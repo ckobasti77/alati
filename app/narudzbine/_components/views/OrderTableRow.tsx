@@ -127,13 +127,13 @@ export function OrderTableRow({
             {order.customerName || "—"}
           </p>
           {order.phone ? (
-            <div className="-ml-1 flex min-w-0 items-center gap-0.5">
+            <div className="-ml-1 flex min-w-0 items-center gap-1">
               <a
                 href={phoneHref(order.phone)}
                 onClick={stop}
                 title={`Pozovi ${order.phone}`}
                 aria-label={`Pozovi ${order.phone}`}
-                className="inline-flex min-w-0 items-center gap-1 rounded-md px-1 text-xs leading-5 text-accent-text transition-colors hover:bg-surface-3 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                className="inline-flex min-h-6 min-w-0 items-center gap-1 rounded-md px-1 text-xs leading-5 text-accent-text transition-colors hover:bg-surface-3 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
               >
                 <Phone className="size-3 shrink-0" aria-hidden />
                 <span className="num truncate">{order.phone}</span>
@@ -146,7 +146,7 @@ export function OrderTableRow({
                 }}
                 title="Kopiraj broj telefona"
                 aria-label={`Kopiraj broj ${order.phone}`}
-                className="inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-muted opacity-0 transition hover:bg-surface-3 hover:text-text focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring group-hover:opacity-100"
+                className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-muted opacity-0 transition hover:bg-surface-3 hover:text-text focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring group-hover:opacity-100"
               >
                 <Copy className="size-3" aria-hidden />
               </button>

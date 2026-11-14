@@ -112,7 +112,7 @@ export function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; long
             </div>
           )}
         </div>
-        <div className="flex min-h-11 items-center gap-2 text-[13px] leading-[18px]">
+        <div className="mt-1 flex min-h-11 items-center gap-2 text-[13px] leading-[18px]">
           <p className="min-w-0 flex-1 truncate text-text-muted">{who || "—"}</p>
           {order.phone ? (
             <a

@@ -304,6 +304,7 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
     const saved = await runGuarded(`povrat:${order._id}`, async () => {
       try {
         mergeIntoList(order._id, await updateFromFresh(order._id, { povratVracen: nextValue }));
+        toast.success(nextValue ? "Povrat urađen." : "Poništeno: povrat urađen.");
         return true;
       } catch (error) {
         console.error(error);

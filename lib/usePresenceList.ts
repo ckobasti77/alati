@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { animateListExit, Flip, LIST_EXIT_MAX, LIST_REFLOW, prefersReducedMotion } from "@/lib/motion";
+import { animateListExit, Flip, gsap, LIST_EXIT_MAX, LIST_REFLOW, prefersReducedMotion } from "@/lib/motion";
 
 export type PresentItem<T> = { item: T; key: string; leaving: boolean };
 
@@ -74,6 +74,17 @@ export function usePresenceList<T>(items: T[], getKey: (item: T) => string) {
       Flip.from(flipState, { targets: container.querySelectorAll("[data-flip-id]"), duration: LIST_REFLOW.duration, ease: LIST_REFLOW.ease });
     }
     for (const entry of rendered) {
+      // Stavka se vratila dok je izlazila (npr. poništen povrat): prekini izlazak i vrati je u normalno stanje.
+      if (!entry.leaving && animatingRef.current.has(entry.key)) {
+        animatingRef.current.delete(entry.key);
+        const element = container?.querySelector<HTMLElement>(`[data-flip-id="${CSS.escape(entry.key)}"]`);
+        if (element) {
+          gsap.killTweensOf(element);
+          gsap.set(element, { clearProps: "opacity,transform,scale" });
+          element.removeAttribute("inert");
+        }
+        continue;
+      }
       if (!entry.leaving || animatingRef.current.has(entry.key)) continue;
       animatingRef.current.add(entry.key);
       const element = container?.querySelector(`[data-flip-id="${CSS.escape(entry.key)}"]`);
@@ -81,6 +92,12 @@ export function usePresenceList<T>(items: T[], getKey: (item: T) => string) {
         // Stavka nije u DOM-u (npr. promenjen prikaz): skloni je u sledećem frejmu, bez animacije.
         requestAnimationFrame(() => finish(entry.key));
         continue;
+      }
+      // Fokus unutar reda koji izlazi ide na susedni red (inert bi ga bacio na <body>).
+      if (element.contains(document.activeElement)) {
+        const rows = Array.from(container?.querySelectorAll<HTMLElement>("[data-flip-id]:not([inert])") ?? []).filter((row) => row !== element);
+        const index = rows.findIndex((row) => element.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING);
+        (rows[index >= 0 ? index : rows.length - 1] ?? container)?.focus({ preventScroll: true });
       }
       element.setAttribute("inert", "");
       animateListExit(element, () => finish(entry.key));

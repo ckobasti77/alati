@@ -23,16 +23,22 @@ export function useZaPovratTotals({
   listTotals,
   listTotal,
   listLoading,
+  listError,
 }: {
   filters: OrderFilters;
   listArgs: ReturnType<typeof useOrdersFeed>["orderListQueryArgs"];
   listTotals: OrderListResponse["totals"];
   listTotal: number;
   listLoading: boolean;
+  /** Lista nije učitana: iznos iz njenih zbirova nije poznat („—“, ne 0). */
+  listError: boolean;
 }): ZaPovratTotals {
   const scope = zaPovratScope(filters);
   const { data, error } = useConvexQueryState<OrderListResponse>("orders:list", scope === "subset" ? zaPovratListArgs(listArgs) : "skip");
-  if (scope === "same") return { amount: listLoading ? null : listTotals.povrat, count: listLoading ? null : listTotal, error: false };
+  if (scope === "same") {
+    if (listError) return { amount: null, count: null, error: true };
+    return { amount: listLoading ? null : listTotals.povrat, count: listLoading ? null : listTotal, error: false };
+  }
   if (scope === "empty") return { amount: 0, count: 0, error: false };
   if (error) return { amount: null, count: null, error: true };
   return { amount: data?.totals.povrat ?? null, count: data?.pagination.total ?? null, error: false };
