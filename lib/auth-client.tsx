@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 import { useConvexMutation, useConvexQuery } from "./convex";
 
 type AuthStatus = "checking" | "authenticated" | "unauthenticated";
@@ -73,21 +72,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logoutMutation = useConvexMutation<{ token: string }>("auth:logout");
 
   const login = useCallback(
+    // Greška ide pozivaocu: forma za prijavu je prikazuje ispod polja (bez dupliranog toast-a).
     async (username: string, password: string) => {
-      try {
-        const response = await loginMutation({ username, password });
-        if (response?.token) {
-          setToken(response.token);
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(STORAGE_KEY, response.token);
-          }
-          setStatus("authenticated");
-          setUser(response.user);
+      const response = await loginMutation({ username, password });
+      if (response?.token) {
+        setToken(response.token);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(STORAGE_KEY, response.token);
         }
-      } catch (error: any) {
-        const message = error?.message || "Prijavljivanje neuspesno.";
-        toast.error(message);
-        throw error;
+        setStatus("authenticated");
+        setUser(response.user);
       }
     },
     [loginMutation],

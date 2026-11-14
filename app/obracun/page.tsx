@@ -1,14 +1,13 @@
 ﻿"use client";
 
-import { useMemo } from "react";
+import { TriangleAlert } from "lucide-react";
 import { RequireAuth } from "@/components/RequireAuth";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useAuth } from "@/lib/auth-client";
-import { useConvexQuery } from "@/lib/convex";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LoadingDots } from "@/components/LoadingDots";
-import { formatCurrency } from "@/lib/format";
+import { useConvexQueryState } from "@/lib/convex";
 import type { ObracunSummary } from "@/types/order";
+import { AksBexAccounts, ObracunSkeleton, PostaAccounts, SummaryTiles } from "./_components/ObracunSections";
 
 export default function ObracunPage() {
   return (
@@ -20,144 +19,41 @@ export default function ObracunPage() {
 
 function ObracunContent() {
   const { token } = useAuth();
-  const sessionToken = token as string;
-  const data = useConvexQuery<ObracunSummary>("orders:obracun", { token: sessionToken, scope: "default" });
-
-  const aksBexRows = useMemo(() => data?.aksBex.byOwner ?? [], [data]);
-  const postaRows = useMemo(() => data?.posta.byOwner ?? [], [data]);
-  const totalAksBex = data?.aksBex.totalWithStarting ?? data?.aksBex.total ?? 0;
-  const totalStarting = data?.aksBex.totalStarting ?? 0;
-  const totalLegle = totalAksBex + (data?.posta.total ?? 0);
-
-  if (data === undefined) {
-    return (
-      <div className="space-y-6">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold text-slate-900">Obracun</h1>
-          <p className="text-sm text-slate-500">Pregled uplata koje su legle po racunima i posti.</p>
-        </header>
-        <Card>
-          <CardContent className="flex items-center justify-center py-10 text-slate-500">
-            <LoadingDots show label="Ucitavanje obracuna..." />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const { data, error } = useConvexQueryState<ObracunSummary>("orders:obracun", { token: token as string, scope: "default" });
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-slate-900">Obracun</h1>
-        <p className="text-sm text-slate-500">Pregled uplata koje su legle po racunima i posti.</p>
+    <div className="flex flex-col gap-4 md:gap-6">
+      {/* Na telefonu je naslov u headeru aplikacije. */}
+      <header className="sr-only md:not-sr-only md:flex md:flex-col md:gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-text">Obračun</h1>
+        <p className="text-sm text-text-muted">Novac iz narudžbina u Leglu, po računima i Pošti.</p>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Ukupno leglo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold text-slate-900">{formatCurrency(totalLegle, "EUR")}</p>
-            <p className="text-xs text-slate-500">{data.meta.ordersCount} narudzbina sa leglim parama</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Aks/Bex ukupno</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <p className="text-2xl font-semibold text-slate-900">{formatCurrency(totalAksBex, "EUR")}</p>
-            <p className="text-xs text-slate-500">
-              Aks: {formatCurrency(data.aksBex.totalAks, "EUR")} / Bex: {formatCurrency(data.aksBex.totalBex, "EUR")} / Pocetno:{" "}
-              {formatCurrency(totalStarting, "EUR")}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Posta ukupno</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold text-slate-900">{formatCurrency(data.posta.total, "EUR")}</p>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Aks + Bex po racunima</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {aksBexRows.length === 0 ? (
-              <p className="text-sm text-slate-500">Jos nema leglih uplata preko Aksa/Bexa.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Racun</TableHead>
-                      <TableHead className="text-right">Ukupno</TableHead>
-                      <TableHead className="text-right">Pocetno</TableHead>
-                      <TableHead className="text-right">Leglo</TableHead>
-                      <TableHead className="text-right">Aks</TableHead>
-                      <TableHead className="text-right">Bex</TableHead>
-                      <TableHead className="text-right">Br. narudzbina</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {aksBexRows.map((row) => (
-                      <TableRow key={row.owner}>
-                        <TableCell className="font-medium text-slate-700">{row.owner}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.total, "EUR")}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.startingAmount ?? 0, "EUR")}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.ordersTotal ?? 0, "EUR")}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.aks ?? 0, "EUR")}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.bex ?? 0, "EUR")}</TableCell>
-                        <TableCell className="text-right">{row.count}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Posta po brojevima</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {postaRows.length === 0 ? (
-              <p className="text-sm text-slate-500">Jos nema leglih uplata preko poste.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Broj</TableHead>
-                      <TableHead className="text-right">Ukupno</TableHead>
-                      <TableHead className="text-right">Br. narudzbina</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {postaRows.map((row) => (
-                      <TableRow key={row.owner}>
-                        <TableCell className="font-medium text-slate-700">{row.owner}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.total, "EUR")}</TableCell>
-                        <TableCell className="text-right">{row.count}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </section>
+      {error ? (
+        <div className="rounded-2xl bg-surface ring-1 ring-border">
+          <EmptyState
+            tone="danger"
+            icon={TriangleAlert}
+            title="Obračun trenutno ne može da se učita"
+            description="Podaci nisu dostupni. Narudžbine i ostale stranice rade normalno."
+            action={
+              <Button type="button" onClick={() => window.location.reload()}>
+                Pokušaj ponovo
+              </Button>
+            }
+          />
+        </div>
+      ) : !data ? (
+        <ObracunSkeleton />
+      ) : (
+        <>
+          <SummaryTiles data={data} />
+          <div className="grid grid-cols-1 items-start gap-4 md:gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <AksBexAccounts data={data} />
+            <PostaAccounts data={data} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
-

@@ -3,61 +3,39 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Download, ImagePlus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, ImagePlus, Inbox, TriangleAlert } from "lucide-react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
-import { useConvexMutation, useConvexQuery } from "@/lib/convex";
-import { LoadingDots } from "@/components/LoadingDots";
+import { useConvexMutation, useConvexQueryState } from "@/lib/convex";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Stepper } from "@/components/ui/stepper";
 import {
   matchBatch,
   type CandidateOrder,
   type MatchResult,
   type ReceiptData,
 } from "@/lib/receiptMatcher";
-import { decodeReceiptBarcode, downscaleForOcr, reconcileBroj, type BrojReconcile } from "@/lib/receiptBarcode";
+import { decodeReceiptBarcode, downscaleForOcr, reconcileBroj } from "@/lib/receiptBarcode";
 import type { ReceiptExtraction } from "@/lib/receiptExtract";
-import { isOrderStage, STAGES } from "@/lib/stages";
+import {
+  Dropzone,
+  ImportActionBar,
+  ImportHeader,
+  outlineButtonClass,
+  ProgressNote,
+  Spinner,
+} from "./_components/ImportKit";
+import type { ReceiptRow } from "./_components/types";
+import { UvozRows } from "./_components/UvozRows";
 
 const digitsOnly = (value?: string) => (value ?? "").replace(/\D/g, "");
 
 // Zavrsena stanja: i dalje se mogu izabrati u dropdownu, ali se ne racunaju u
 // badge "ceka slanje" (matcher ih salje na review sa upozorenjem).
 const COMPLETED_STAGES = new Set(["poslato", "stiglo", "legle_pare", "vraceno"]);
-
-const matchBadge: Record<MatchResult["status"], { label: string; tone: string }> = {
-  high: { label: "Pouzdano", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
-  review: { label: "Proveri", tone: "border-amber-200 bg-amber-50 text-amber-800" },
-  none: { label: "Nema predloga", tone: "border-rose-200 bg-rose-50 text-rose-800" },
-};
-
-type RowStatus = "queued" | "processing" | "ready" | "failed";
-
-type ReceiptRow = {
-  key: string;
-  file: File;
-  previewUrl: string;
-  status: RowStatus;
-  error?: string;
-  extracted?: ReceiptExtraction;
-  barcode?: string | null;
-  broj?: BrojReconcile;
-  matchInit?: boolean;
-  selectedOrderId?: string;
-  brojDraft?: string;
-  accepted: boolean;
-  writeResult?: { status: "updated" | "skipped"; reason?: string };
-};
 
 type MarkPoslatoResult = { orderId: string; status: "updated" | "skipped"; reason?: string };
 
@@ -103,10 +81,13 @@ function UvozContent() {
   const { token } = useAuth();
   const sessionToken = token as string;
 
-  const candidates = useConvexQuery<CandidateOrder[]>("orders:pendingForShipping", {
-    token: sessionToken,
-    scope: orderScope,
-  });
+  const { data: candidates, error: candidatesError } = useConvexQueryState<CandidateOrder[]>(
+    "orders:pendingForShipping",
+    {
+      token: sessionToken,
+      scope: orderScope,
+    },
+  );
   const markPoslatoBatch = useConvexMutation<
     { token: string; scope: "default" | "kalaba"; items: { orderId: string; brojPosiljke: string }[] },
     MarkPoslatoResult[]
@@ -148,8 +129,8 @@ function UvozContent() {
     ]);
   }, []);
 
-  // Sekvencijalna obrada: Ollama sluzi jedan zahtev, pa red po red
-  // (bar-kod za istu sliku ide paralelno sa Ollama pozivom).
+  // Sekvencijalna obrada: ekstrakcija sluzi jedan zahtev, pa red po red
+  // (bar-kod za istu sliku ide paralelno sa pozivom ekstrakcije).
   useEffect(() => {
     if (processingRef.current) return;
     const next = rows.find((row) => row.status === "queued");
@@ -256,8 +237,9 @@ function UvozContent() {
   const pendingCount = rows.filter((row) => row.status === "queued" || row.status === "processing").length;
   const canConfirm = acceptedRows.length > 0 && acceptedRows.length === validAcceptedRows.length && !isSaving;
 
-  const handleConfirmSubmit = async () => {
-    if (isSaving || validAcceptedRows.length === 0) return;
+  // Vraca true kad je upis prosao; ConfirmDialog ostaje otvoren ako se vrati false (greska).
+  const handleConfirmSubmit = async (): Promise<boolean> => {
+    if (isSaving || validAcceptedRows.length === 0) return false;
     setIsSaving(true);
     try {
       const submitted = validAcceptedRows;
@@ -277,17 +259,19 @@ function UvozContent() {
         ),
       );
       const updated = results.filter((result) => result.status === "updated").length;
-      toast.success(`Upisano ${updated}, preskoceno ${results.length - updated}.`);
+      toast.success(`Upisano ${updated}, preskočeno ${results.length - updated}.`);
       setIsConfirmOpen(false);
+      return true;
     } catch (error) {
       console.error(error);
       toast.error(error instanceof Error ? error.message : "Upis nije uspeo.");
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     setIsDragOver(false);
     addFiles(event.dataTransfer.files);
@@ -307,22 +291,22 @@ function UvozContent() {
         | { images?: WaPulledImage[]; scannedMessages?: number; error?: string }
         | null;
       if (!response.ok) {
-        throw new Error(data?.error || "Povlacenje iz WhatsApp-a nije uspelo.");
+        throw new Error(data?.error || "Povlačenje iz WhatsApp-a nije uspelo.");
       }
       const entries = data?.images ?? [];
       const fresh = entries.filter((entry) => !pulledWaKeysRef.current.has(waImageKey(entry)));
       if (fresh.length === 0) {
         toast.info(
-          entries.length === 0 ? "Nema slika u chatu u poslednjih 48h." : "Sve slike iz chata su vec u tabeli.",
+          entries.length === 0 ? "Nema slika u chatu u poslednjih 48 sati." : "Sve slike iz chata su već u tabeli.",
         );
         return;
       }
       for (const entry of fresh) pulledWaKeysRef.current.add(waImageKey(entry));
       addFiles(fresh.map((entry) => base64ToFile(entry.data, `wa-${entry.messageId}-${entry.imageIndex}.jpg`)));
-      toast.success(`Dodato ${fresh.length} slika iz WhatsApp-a — obrada krece.`);
+      toast.success(`Dodato slika iz WhatsApp-a: ${fresh.length}. Obrada kreće.`);
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Povlacenje iz WhatsApp-a nije uspelo.");
+      toast.error(error instanceof Error ? error.message : "Povlačenje iz WhatsApp-a nije uspelo.");
     } finally {
       setIsPullingWa(false);
     }
@@ -334,305 +318,187 @@ function UvozContent() {
     return candidate ? candidate.customerName : orderId;
   };
 
+  // Koraci: 0 Slike (nema redova), 1 Provera (redovi), 2 Upis (dijalog otvoren / snimanje),
+  // 3 = sve upisano (poslednji korak je završen).
+  const allWritten =
+    rows.length > 0 &&
+    rows.some((row) => row.writeResult) &&
+    rows.every((row) => row.writeResult || row.status === "failed");
+  const currentStep = allWritten ? 3 : isConfirmOpen || isSaving ? 2 : rows.length > 0 ? 1 : 0;
+
+  const acceptedCount = acceptedRows.length;
+  const openRows = rows.filter((row) => !row.writeResult).length;
+  const summary =
+    acceptedCount === 0
+      ? "Uključi „Prihvati“ kod bar jednog reda da bi mogao da upišeš."
+      : acceptedCount !== validAcceptedRows.length
+        ? `Prihvaćeno ${acceptedCount} od ${openRows}. Svaki prihvaćen red mora da ima izabranu narudžbinu i broj pošiljke.`
+        : `Prihvaćeno ${acceptedCount} od ${openRows}.`;
+
   return (
-    <div className="space-y-6">
-      <Dialog
+    <div className="space-y-5 md:space-y-6">
+      <ConfirmDialog
         open={isConfirmOpen}
         onOpenChange={(open) => {
           if (!open && !isSaving) setIsConfirmOpen(false);
         }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Potvrdi upis</DialogTitle>
-            <DialogDescription>
-              Oznacices {validAcceptedRows.length}{" "}
-              {validAcceptedRows.length === 1 ? "narudzbinu" : "narudzbina"} kao poslato i upisati broj posiljke.
-              Upis ide u produkcijsku bazu.
-            </DialogDescription>
-          </DialogHeader>
-          <ul className="max-h-48 space-y-1 overflow-y-auto text-sm text-slate-700">
-            {validAcceptedRows.map((row) => (
-              <li key={row.key} className="flex items-center justify-between gap-3">
-                <span className="truncate">{candidateName(row.selectedOrderId)}</span>
-                <span className="font-mono text-xs text-slate-500">{digitsOnly(row.brojDraft)}</span>
-              </li>
-            ))}
-          </ul>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setIsConfirmOpen(false)} disabled={isSaving}>
-              Otkazi
-            </Button>
-            <Button type="button" onClick={() => void handleConfirmSubmit()} disabled={isSaving}>
-              {isSaving ? "Upisivanje..." : "Potvrdi i posalji sve"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Uvoz AKS priznanica</h1>
-          <p className="text-sm text-slate-500">
-            Ubaci slike priznanica — ekstrakcija (Gemini) + bar-kod predlazu narudzbine. Nista se ne upisuje
-            bez tvoje potvrde.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="rounded-full bg-surface-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-text-muted ring-1 ring-border">
-            {candidates === undefined ? "..." : `${waitingCount} ceka slanje`}
-          </div>
-          <Button asChild variant="outline" className="gap-2">
-            <Link href="/narudzbine">
-              <ArrowLeft className="h-4 w-4" />
-              Narudzbine
-            </Link>
-          </Button>
-        </div>
-      </header>
-
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => fileInputRef.current?.click()}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") fileInputRef.current?.click();
+        title="Potvrdi upis"
+        description={`Označićeš ${validAcceptedRows.length} ${
+          validAcceptedRows.length === 1 ? "narudžbinu" : "narudžbine"
+        } kao poslato i upisati broj pošiljke. Upis ide u produkcijsku bazu.`}
+        confirmLabel={`Potvrdi i pošalji (${validAcceptedRows.length})`}
+        onConfirm={async () => {
+          if (!(await handleConfirmSubmit())) throw new Error("Upis nije uspeo.");
         }}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setIsDragOver(true);
-        }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={handleDrop}
-        className={`cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition ${
-          isDragOver ? "border-blue-400 bg-blue-50" : "border-slate-300 bg-slate-50 hover:bg-slate-100"
-        }`}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileInput}
+        <ul className="max-h-48 space-y-1 overflow-y-auto text-sm text-text">
+          {validAcceptedRows.map((row) => (
+            <li key={row.key} className="flex items-center justify-between gap-3">
+              <span className="truncate">{candidateName(row.selectedOrderId)}</span>
+              <span className="num font-mono text-xs text-text-muted">{digitsOnly(row.brojDraft)}</span>
+            </li>
+          ))}
+        </ul>
+      </ConfirmDialog>
+
+      <ImportHeader
+        title="Uvoz priznanica"
+        description="Ubaci slike AKS priznanica: slike se čitaju automatski, a bar-kod predlaže narudžbine. Ništa se ne upisuje bez tvoje potvrde."
+        aside={
+          <>
+            {candidates === undefined ? (
+              candidatesError ? null : <Skeleton className="h-7 w-28 rounded-full" />
+            ) : (
+              <span className="num inline-flex h-7 items-center rounded-full bg-surface-2 px-3 text-xs font-medium text-text-muted ring-1 ring-border">
+                {waitingCount} čeka slanje
+              </span>
+            )}
+            <Button asChild variant="outline" className={`gap-2 max-md:hidden ${outlineButtonClass}`}>
+              <Link href="/narudzbine">
+                <ArrowLeft className="size-4" aria-hidden />
+                Narudžbine
+              </Link>
+            </Button>
+          </>
+        }
+      />
+
+      <Stepper
+        label="Koraci uvoza priznanica"
+        steps={[
+          { key: "slike", label: "Slike" },
+          { key: "provera", label: "Provera" },
+          { key: "upis", label: "Upis" },
+        ]}
+        current={currentStep}
+      />
+
+      {candidatesError ? (
+        <EmptyState
+          tone="danger"
+          icon={TriangleAlert}
+          title="Narudžbine za uparivanje nisu učitane"
+          description="Bez njih priznanice ne mogu da se upare. Osveži stranicu ili pokušaj ponovo malo kasnije."
+          action={
+            <Button type="button" variant="outline" className={outlineButtonClass} onClick={() => window.location.reload()}>
+              Pokušaj ponovo
+            </Button>
+          }
         />
-        <ImagePlus className="mx-auto h-8 w-8 text-slate-400" />
-        <p className="mt-2 text-sm font-medium text-slate-700">Prevuci slike priznanica ovde ili klikni za izbor</p>
-        <p className="text-xs text-slate-500">Moze vise slika odjednom. Obrada ide redom, slika po slika.</p>
-      </div>
+      ) : (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileInput}
+          />
 
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <p className="text-xs text-slate-500">Ili povuci slike papirica direktno iz WhatsApp chata (poslednjih 48h).</p>
-        <Button
-          type="button"
-          variant="outline"
-          className="gap-2"
-          onClick={() => void handlePullFromWhatsApp()}
-          disabled={isPullingWa}
-        >
-          <Download className="h-4 w-4" />
-          {isPullingWa ? "Povlacenje..." : "Povuci papiriće iz WhatsApp-a"}
-        </Button>
-      </div>
+          {candidates === undefined ? (
+            <Skeleton className="h-44 w-full rounded-2xl" />
+          ) : (
+            <section aria-label="Dodavanje slika" className="space-y-3">
+              <Dropzone
+                isDragOver={isDragOver}
+                onPick={() => fileInputRef.current?.click()}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={handleDrop}
+                icon={ImagePlus}
+                titlePhone="Dodirni da izabereš slike priznanica"
+                titleDesktop="Prevuci slike priznanica ovde ili klikni za izbor"
+                hint="Slike (JPG, PNG), može više odjednom. Obrada ide redom, slika po slika."
+                compact={rows.length > 0}
+              />
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <p className="text-[13px] leading-5 text-text-muted">
+                  Ili povuci slike papirića direktno iz WhatsApp chata (poslednjih 48 sati).
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={`gap-2 ${outlineButtonClass}`}
+                  onClick={() => void handlePullFromWhatsApp()}
+                  disabled={isPullingWa}
+                >
+                  {isPullingWa ? <Spinner /> : <Download className="size-4" aria-hidden />}
+                  {isPullingWa ? "Povlačenje…" : "Povuci papiriće iz WhatsApp-a"}
+                </Button>
+              </div>
+            </section>
+          )}
 
-      {isPullingWa ? (
-        <LoadingDots show label="Povlacim slike iz WhatsApp-a (ako je prvi put, skeniraj QR u konzoli servera)..." />
-      ) : null}
+          {isPullingWa ? (
+            <ProgressNote>
+              Povlačim slike iz WhatsApp-a. Ako je prvi put, prijavi nalog preko{" "}
+              <a
+                href="/api/wa-intake/qr"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-accent-text underline underline-offset-2"
+              >
+                QR stranice
+              </a>{" "}
+              (otvara se u novom tabu).
+            </ProgressNote>
+          ) : null}
 
-      {pendingCount > 0 ? (
-        <LoadingDots show label={`Obrada priznanica (${pendingCount} preostalo)...`} />
-      ) : null}
+          {pendingCount > 0 ? <ProgressNote>Obrada priznanica: preostalo {pendingCount}…</ProgressNote> : null}
 
-      {rows.length > 0 ? (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Slika</TableHead>
-                <TableHead>Izvuceno</TableHead>
-                <TableHead>Narudzbina</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Upozorenja</TableHead>
-                <TableHead className="text-center">Prihvati</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => {
-                const match = matches.get(row.key);
-                const frozen = Boolean(row.writeResult);
-                const warnings: string[] = [];
-                if (row.extracted?.warning) warnings.push(row.extracted.warning);
-                if (row.broj?.mismatch) {
-                  warnings.push(`Bar-kod (${digitsOnly(row.barcode ?? "")}) se ne poklapa sa Gemini ciframa — proveri.`);
-                }
-                if (row.broj?.source === "barcode") {
-                  warnings.push("Broj procitan samo sa bar-koda — proveri.");
-                }
-                if (match) warnings.push(...match.warnings);
-                return (
-                  <TableRow key={row.key}>
-                    <TableCell>
-                      <a href={row.previewUrl} target="_blank" rel="noreferrer">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={row.previewUrl}
-                          alt="Priznanica"
-                          className="h-12 w-12 rounded-md border border-slate-200 object-cover"
-                        />
-                      </a>
-                    </TableCell>
-                    <TableCell>
-                      {row.status === "processing" || row.status === "queued" ? (
-                        <span className="text-sm text-slate-400">Obrada...</span>
-                      ) : row.status === "failed" ? (
-                        <span className="text-sm text-rose-600">{row.error}</span>
-                      ) : (
-                        <div className="space-y-1">
-                          <div className="text-sm font-medium text-slate-900">
-                            {row.extracted?.imePrimaoca || "(ime nije procitano)"}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            {row.extracted?.telefonPrimaoca || "(telefon nije procitan)"}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              value={row.brojDraft ?? ""}
-                              placeholder="Broj posiljke"
-                              className="h-8 w-40 font-mono text-xs"
-                              disabled={frozen}
-                              onChange={(event) => updateRow(row.key, { brojDraft: event.target.value })}
-                            />
-                            {row.broj?.barcodeConfirmed ? (
-                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
-                                Bar-kod ✓
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {frozen ? (
-                        <span className="text-sm text-slate-700">{candidateName(row.selectedOrderId)}</span>
-                      ) : row.status === "ready" ? (
-                        <select
-                          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
-                          value={row.selectedOrderId ?? ""}
-                          onChange={(event) =>
-                            updateRow(row.key, {
-                              selectedOrderId: event.target.value,
-                              ...(event.target.value === "" ? { accepted: false } : {}),
-                            })
-                          }
-                        >
-                          <option value="">— izaberi —</option>
-                          {dropdownCandidates.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {candidate.customerName} · {candidate.phone} ·{" "}
-                              {isOrderStage(candidate.stage) ? STAGES[candidate.stage].longLabel : candidate.stage}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-sm text-slate-400">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {frozen ? (
-                        row.writeResult?.status === "updated" ? (
-                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
-                            Upisano
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
-                            Preskoceno
-                          </span>
-                        )
-                      ) : row.status === "ready" && match ? (
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${matchBadge[match.status].tone}`}
-                          title={match.reason}
-                        >
-                          {matchBadge[match.status].label}
-                        </span>
-                      ) : row.status === "failed" ? (
-                        <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-800">
-                          Greska
-                        </span>
-                      ) : (
-                        <span className="text-sm text-slate-400">...</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {frozen && row.writeResult?.reason ? (
-                        <p className="text-xs text-amber-700">{row.writeResult.reason}</p>
-                      ) : warnings.length > 0 ? (
-                        <ul className="space-y-0.5 text-xs text-amber-700">
-                          {warnings.map((warning, index) => (
-                            <li key={index}>{warning}</li>
-                          ))}
-                        </ul>
-                      ) : match ? (
-                        <p className="text-xs text-slate-500">{match.reason}</p>
-                      ) : (
-                        <span className="text-xs text-slate-400">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {row.status === "failed" ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="gap-1"
-                          onClick={() => updateRow(row.key, { status: "queued", error: undefined })}
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Ponovi
-                        </Button>
-                      ) : (
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          checked={row.accepted}
-                          disabled={frozen || row.status !== "ready"}
-                          onChange={(event) => updateRow(row.key, { accepted: event.target.checked })}
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeRow(row.key)}
-                        aria-label="Ukloni sliku"
-                      >
-                        <Trash2 className="h-4 w-4 text-slate-400" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      ) : null}
+          {rows.length > 0 ? (
+            <UvozRows
+              rows={rows}
+              matches={matches}
+              candidates={candidates}
+              dropdownCandidates={dropdownCandidates}
+              candidateName={candidateName}
+              digitsOnly={digitsOnly}
+              updateRow={updateRow}
+              removeRow={removeRow}
+            />
+          ) : candidates !== undefined ? (
+            <EmptyState
+              icon={Inbox}
+              compact
+              title="Još nema priznanica"
+              description="Dodaj slike iznad. Svaka priznanica postaje jedan red koji proveravaš pre upisa."
+            />
+          ) : null}
 
-      {rows.length > 0 ? (
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm text-slate-500">
-            Prihvaceno {acceptedRows.length} od {rows.length}
-            {acceptedRows.length !== validAcceptedRows.length
-              ? " — svaki prihvacen red mora da ima izabranu narudzbinu i broj posiljke."
-              : "."}
-          </p>
-          <Button type="button" onClick={() => setIsConfirmOpen(true)} disabled={!canConfirm}>
-            Potvrdi i posalji sve ({validAcceptedRows.length})
-          </Button>
-        </div>
-      ) : null}
+          {rows.length > 0 ? (
+            <ImportActionBar summary={summary}>
+              <Button type="button" className="w-full md:w-auto" onClick={() => setIsConfirmOpen(true)} disabled={!canConfirm}>
+                Potvrdi i pošalji ({validAcceptedRows.length})
+              </Button>
+            </ImportActionBar>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Archive, Layers, MapPin, Package } from "lucide-react";
+import { Archive, Check, Layers, MapPin, Package } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Money } from "@/components/ui/money";
 import type { Product } from "@/types/order";
-import { productFlags, productHref, type ProductListApi } from "./productListApi";
+import { cn } from "@/lib/utils";
+import { productFlags, productHref, productPublishMarks, type ProductListApi } from "./productListApi";
 
 export function ProductImage({ url, className }: { url?: string; className?: string }) {
   return url ? (
@@ -79,6 +80,70 @@ export function ProductCard({ product, api }: { product: Product; api: ProductLi
           <ProductTags product={product} />
         </p>
       </div>
+    </li>
+  );
+}
+
+/**
+ * Ista kartica kao u mreži /proizvodi, ali za izbor (npr. /objave): dugme sa `aria-pressed`, bez menija.
+ * Ispod cene su oznake objave (KP, FB, IG), da se vidi gde je proizvod već objavljen.
+ */
+export function ProductPickCard({
+  product,
+  name,
+  price,
+  imageUrl,
+  selected,
+  onSelect,
+}: {
+  product: Product;
+  name: string;
+  price: number | undefined;
+  imageUrl?: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const marks = productPublishMarks(product).filter((mark) => mark.active);
+  return (
+    <li data-flip-id={product._id} className="flex">
+      <button
+        type="button"
+        aria-pressed={selected}
+        onClick={onSelect}
+        className={cn(
+          "flex w-full cursor-pointer flex-col rounded-2xl p-2 text-left transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+          selected ? "bg-accent-soft ring-2 ring-accent" : "bg-surface ring-1 ring-border hover:bg-surface-2",
+        )}
+      >
+        <span className="block aspect-square overflow-hidden rounded-xl ring-1 ring-border">
+          <ProductImage url={imageUrl} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col px-1 pt-2">
+          <span className="line-clamp-2 min-h-9 text-sm leading-[18px] font-medium text-text">{name}</span>
+          <span className="mt-1 flex items-center justify-between gap-1">
+            <Money value={price} className="text-base font-semibold text-text" />
+            {selected ? (
+              <span className="inline-flex size-6 items-center justify-center rounded-full bg-accent text-accent-fg">
+                <Check className="size-4" strokeWidth={3} aria-hidden />
+                <span className="sr-only">Izabrano</span>
+              </span>
+            ) : null}
+          </span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-text-muted">
+            {marks.length > 0 ? (
+              <span className="inline-flex items-center gap-1">
+                <span className="sr-only">Objavljeno:</span>
+                {marks.map((mark) => (
+                  <span key={mark.key} title={mark.label} className="rounded-md bg-surface-2 px-1.5 py-px text-[11px] font-medium text-text">
+                    {mark.key}
+                  </span>
+                ))}
+              </span>
+            ) : null}
+            <ProductTags product={product} />
+          </span>
+        </span>
+      </button>
     </li>
   );
 }

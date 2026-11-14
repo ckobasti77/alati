@@ -3,57 +3,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, ImagePlus, Trash2 } from "lucide-react";
+import { ArrowLeft, ImagePlus, Inbox, TriangleAlert } from "lucide-react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
-import { useConvexMutation, useConvexQuery } from "@/lib/convex";
-import { LoadingDots } from "@/components/LoadingDots";
+import { useConvexMutation, useConvexQueryState } from "@/lib/convex";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Stepper } from "@/components/ui/stepper";
 import { matchLegleBatch, type CandidateOrder, type LegleData, type MatchResult } from "@/lib/legleMatcher";
 import { downscaleForOcr } from "@/lib/receiptBarcode";
 import type { LegleExtraction, LegleRow } from "@/lib/legleExtract";
-import { isOrderStage, STAGES } from "@/lib/stages";
-
-const digitsOnly = (value?: string) => (value ?? "").replace(/\D/g, "");
-
-const matchBadge: Record<MatchResult["status"], { label: string; tone: string }> = {
-  high: { label: "Pouzdano", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
-  review: { label: "Proveri", tone: "border-amber-200 bg-amber-50 text-amber-800" },
-  none: { label: "Nema predloga", tone: "border-rose-200 bg-rose-50 text-rose-800" },
-};
-
-type UploadStatus = "processing" | "done" | "failed";
-
-type UploadState = {
-  key: string;
-  name: string;
-  previewUrl: string;
-  status: UploadStatus;
-  error?: string;
-  rowCount?: number;
-};
-
-// Jedan red tabele = jedna stavka (red) sa AKS specifikacije.
-type LegleItem = {
-  key: string;
-  uploadKey: string;
-  platilac: string;
-  nalogId: string;
-  extractWarning?: string;
-  matchInit?: boolean;
-  selectedOrderId?: string;
-  accepted: boolean;
-  writeResult?: { status: "updated" | "skipped"; reason?: string };
-};
+import { Dropzone, ImportActionBar, ImportHeader, outlineButtonClass, ProgressNote } from "../uvoz/_components/ImportKit";
+import type { LegleItem, UploadState } from "./_components/types";
+import { PareRows, UploadList } from "./_components/PareRows";
 
 type MarkLegloResult = { orderId: string; status: "updated" | "skipped"; reason?: string };
 
@@ -85,10 +49,13 @@ function LegleContent() {
   const { token } = useAuth();
   const sessionToken = token as string;
 
-  const candidates = useConvexQuery<CandidateOrder[]>("orders:pendingForShipping", {
-    token: sessionToken,
-    scope: orderScope,
-  });
+  const { data: candidates, error: candidatesError } = useConvexQueryState<CandidateOrder[]>(
+    "orders:pendingForShipping",
+    {
+      token: sessionToken,
+      scope: orderScope,
+    },
+  );
   const markLegloBatch = useConvexMutation<
     { token: string; scope: "default" | "kalaba"; items: { orderId: string }[] },
     MarkLegloResult[]
@@ -131,7 +98,7 @@ function LegleContent() {
     ]);
   }, []);
 
-  // Sekvencijalna obrada slika: jedna po jedna (Gemini sluzi jedan zahtev).
+  // Sekvencijalna obrada slika: jedna po jedna (ekstrakcija sluzi jedan zahtev).
   useEffect(() => {
     if (processingRef.current) return;
     const next = uploads.find((upload) => upload.status === "processing" && upload.rowCount === undefined && !upload.error);
@@ -244,8 +211,9 @@ function LegleContent() {
     return candidate ? candidate.customerName : orderId;
   };
 
-  const handleConfirmSubmit = async () => {
-    if (isSaving || validAcceptedItems.length === 0) return;
+  // Vraca true kad je upis prosao; ConfirmDialog ostaje otvoren ako se vrati false (greska).
+  const handleConfirmSubmit = async (): Promise<boolean> => {
+    if (isSaving || validAcceptedItems.length === 0) return false;
     setIsSaving(true);
     try {
       const submitted = validAcceptedItems;
@@ -262,17 +230,19 @@ function LegleContent() {
         ),
       );
       const updated = results.filter((result) => result.status === "updated").length;
-      toast.success(`Upisano ${updated}, preskoceno ${results.length - updated}.`);
+      toast.success(`Upisano ${updated}, preskočeno ${results.length - updated}.`);
       setIsConfirmOpen(false);
+      return true;
     } catch (error) {
       console.error(error);
       toast.error(error instanceof Error ? error.message : "Upis nije uspeo.");
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     setIsDragOver(false);
     addFiles(event.dataTransfer.files);
@@ -283,254 +253,135 @@ function LegleContent() {
     event.target.value = "";
   };
 
+  // Koraci: 0 Specifikacija (nema redova), 1 Uparivanje (redovi), 2 Upis (dijalog otvoren / snimanje),
+  // 3 = sve upisano (poslednji korak je završen).
+  const allWritten = items.length > 0 && items.every((item) => item.writeResult);
+  const currentStep = allWritten ? 3 : isConfirmOpen || isSaving ? 2 : items.length > 0 ? 1 : 0;
+
+  const openItems = items.filter((item) => !item.writeResult).length;
+  const summary =
+    acceptedItems.length === 0
+      ? "Uključi „Prihvati“ kod bar jednog reda da bi mogao da upišeš."
+      : acceptedItems.length !== validAcceptedItems.length
+        ? `Prihvaćeno ${acceptedItems.length} od ${openItems}. Svaki prihvaćen red mora da ima izabranu narudžbinu.`
+        : `Prihvaćeno ${acceptedItems.length} od ${openItems}.`;
+
   return (
-    <div className="space-y-6">
-      <Dialog
+    <div className="space-y-5 md:space-y-6">
+      <ConfirmDialog
         open={isConfirmOpen}
         onOpenChange={(open) => {
           if (!open && !isSaving) setIsConfirmOpen(false);
         }}
+        title="Potvrdi upis"
+        description={`Označićeš ${validAcceptedItems.length} ${
+          validAcceptedItems.length === 1 ? "narudžbinu" : "narudžbine"
+        } kao „Legle pare“. Upis ide u produkcijsku bazu.`}
+        confirmLabel={`Upiši (${validAcceptedItems.length})`}
+        onConfirm={async () => {
+          if (!(await handleConfirmSubmit())) throw new Error("Upis nije uspeo.");
+        }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Potvrdi upis</DialogTitle>
-            <DialogDescription>
-              Oznacices {validAcceptedItems.length}{" "}
-              {validAcceptedItems.length === 1 ? "narudzbinu" : "narudzbina"} kao „Legle pare". Upis ide u
-              produkcijsku bazu.
-            </DialogDescription>
-          </DialogHeader>
-          <ul className="max-h-48 space-y-1 overflow-y-auto text-sm text-slate-700">
-            {validAcceptedItems.map((item) => (
-              <li key={item.key} className="flex items-center justify-between gap-3">
-                <span className="truncate">{candidateName(item.selectedOrderId)}</span>
-                <span className="font-mono text-xs text-slate-500">{item.nalogId}</span>
-              </li>
-            ))}
-          </ul>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setIsConfirmOpen(false)} disabled={isSaving}>
-              Otkazi
-            </Button>
-            <Button type="button" onClick={() => void handleConfirmSubmit()} disabled={isSaving}>
-              {isSaving ? "Upisivanje..." : "Potvrdi i oznaci sve"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <ul className="max-h-48 space-y-1 overflow-y-auto text-sm text-text">
+          {validAcceptedItems.map((item) => (
+            <li key={item.key} className="flex items-center justify-between gap-3">
+              <span className="truncate">{candidateName(item.selectedOrderId)}</span>
+              <span className="num font-mono text-xs text-text-muted">{item.nalogId}</span>
+            </li>
+          ))}
+        </ul>
+      </ConfirmDialog>
 
-      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Uvoz specifikacije (legle pare)</h1>
-          <p className="text-sm text-slate-500">
-            Ubaci sliku AKS specifikacije leglih pouzeca — ekstrakcija (Gemini) poklapa narudzbine po broju
-            posiljke (NalogID). Nista se ne upisuje bez tvoje potvrde.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline" className="gap-2">
+      <ImportHeader
+        title="Legle pare"
+        description="Ubaci sliku AKS specifikacije leglih pouzeća. Slika se čita automatski, a narudžbine se upare po broju pošiljke (NalogID). Ništa se ne upisuje bez tvoje potvrde."
+        aside={
+          <Button asChild variant="outline" className={`gap-2 max-md:hidden ${outlineButtonClass}`}>
             <Link href="/narudzbine">
-              <ArrowLeft className="h-4 w-4" />
-              Narudzbine
+              <ArrowLeft className="size-4" aria-hidden />
+              Narudžbine
             </Link>
           </Button>
-        </div>
-      </header>
+        }
+      />
 
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => fileInputRef.current?.click()}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") fileInputRef.current?.click();
-        }}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setIsDragOver(true);
-        }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={handleDrop}
-        className={`cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition ${
-          isDragOver ? "border-blue-400 bg-blue-50" : "border-slate-300 bg-slate-50 hover:bg-slate-100"
-        }`}
-      >
-        <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden" onChange={handleFileInput} />
-        <ImagePlus className="mx-auto h-8 w-8 text-slate-400" />
-        <p className="mt-2 text-sm font-medium text-slate-700">Prevuci sliku specifikacije ovde ili klikni za izbor</p>
-        <p className="text-xs text-slate-500">Jedna slika moze imati vise redova — svaki red je jedno leglo pouzece.</p>
-      </div>
+      <Stepper
+        label="Koraci uvoza specifikacije"
+        steps={[
+          { key: "specifikacija", label: "Učitaj" },
+          { key: "uparivanje", label: "Upari" },
+          { key: "upis", label: "Upis" },
+        ]}
+        current={currentStep}
+      />
 
-      {processingCount > 0 ? (
-        <LoadingDots show label={`Obrada specifikacije (${processingCount} slika u obradi)...`} />
-      ) : null}
+      {candidatesError ? (
+        <EmptyState
+          tone="danger"
+          icon={TriangleAlert}
+          title="Narudžbine za uparivanje nisu učitane"
+          description="Bez njih redovi specifikacije ne mogu da se upare. Osveži stranicu ili pokušaj ponovo malo kasnije."
+          action={
+            <Button type="button" variant="outline" className={outlineButtonClass} onClick={() => window.location.reload()}>
+              Pokušaj ponovo
+            </Button>
+          }
+        />
+      ) : (
+        <>
+          <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden" onChange={handleFileInput} />
 
-      {uploads.length > 0 ? (
-        <div className="flex flex-wrap gap-3">
-          {uploads.map((upload) => (
-            <div
-              key={upload.key}
-              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
-            >
-              <a href={upload.previewUrl} target="_blank" rel="noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={upload.previewUrl}
-                  alt="Specifikacija"
-                  className="h-10 w-10 rounded-md border border-slate-200 object-cover"
-                />
-              </a>
-              <div className="text-xs">
-                <div className="max-w-[10rem] truncate font-medium text-slate-700">{upload.name}</div>
-                {upload.status === "processing" ? (
-                  <span className="text-slate-400">Obrada...</span>
-                ) : upload.status === "failed" ? (
-                  <span className="text-rose-600">{upload.error}</span>
-                ) : (
-                  <span className="text-slate-500">
-                    {upload.rowCount ?? 0} {upload.rowCount === 1 ? "red" : "redova"}
-                    {upload.error ? ` · ${upload.error}` : ""}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
+          {candidates === undefined ? (
+            <Skeleton className="h-44 w-full rounded-2xl" />
+          ) : (
+            <Dropzone
+              isDragOver={isDragOver}
+              onPick={() => fileInputRef.current?.click()}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setIsDragOver(true);
+              }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={handleDrop}
+              icon={ImagePlus}
+              titlePhone="Dodirni da izabereš sliku specifikacije"
+              titleDesktop="Prevuci sliku specifikacije ovde ili klikni za izbor"
+              hint="Slike (JPG, PNG). Jedna slika može imati više redova, svaki red je jedno leglo pouzeće."
+              compact={uploads.length > 0}
+            />
+          )}
 
-      {items.length > 0 ? (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Platilac</TableHead>
-                <TableHead>NalogID (broj posiljke)</TableHead>
-                <TableHead>Narudzbina</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Upozorenja</TableHead>
-                <TableHead className="text-center">Prihvati</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => {
-                const match = matches.get(item.key);
-                const frozen = Boolean(item.writeResult);
-                const warnings: string[] = [];
-                if (item.extractWarning) warnings.push(item.extractWarning);
-                if (match) warnings.push(...match.warnings);
-                return (
-                  <TableRow key={item.key}>
-                    <TableCell>
-                      <span className="text-sm font-medium text-slate-900">
-                        {item.platilac || "(ime nije procitano)"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-mono text-xs text-slate-600">{item.nalogId || "—"}</span>
-                    </TableCell>
-                    <TableCell>
-                      {frozen ? (
-                        <span className="text-sm text-slate-700">{candidateName(item.selectedOrderId)}</span>
-                      ) : (
-                        <select
-                          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
-                          value={item.selectedOrderId ?? ""}
-                          onChange={(event) =>
-                            updateItem(item.key, {
-                              selectedOrderId: event.target.value,
-                              ...(event.target.value === "" ? { accepted: false } : {}),
-                            })
-                          }
-                        >
-                          <option value="">— izaberi —</option>
-                          {dropdownCandidates.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {candidate.customerName}
-                              {candidate.brojPosiljke ? ` · ${candidate.brojPosiljke}` : ""} ·{" "}
-                              {isOrderStage(candidate.stage) ? STAGES[candidate.stage].longLabel : candidate.stage}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {frozen ? (
-                        item.writeResult?.status === "updated" ? (
-                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
-                            Upisano
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
-                            Preskoceno
-                          </span>
-                        )
-                      ) : match ? (
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${matchBadge[match.status].tone}`}
-                          title={match.reason}
-                        >
-                          {matchBadge[match.status].label}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-slate-400">...</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {frozen && item.writeResult?.reason ? (
-                        <p className="text-xs text-amber-700">{item.writeResult.reason}</p>
-                      ) : warnings.length > 0 ? (
-                        <ul className="space-y-0.5 text-xs text-amber-700">
-                          {warnings.map((warning, index) => (
-                            <li key={index}>{warning}</li>
-                          ))}
-                        </ul>
-                      ) : match ? (
-                        <p className="text-xs text-slate-500">{match.reason}</p>
-                      ) : (
-                        <span className="text-xs text-slate-400">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        checked={item.accepted}
-                        disabled={frozen}
-                        onChange={(event) => updateItem(item.key, { accepted: event.target.checked })}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeItem(item.key)}
-                        aria-label="Ukloni red"
-                      >
-                        <Trash2 className="h-4 w-4 text-slate-400" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      ) : null}
+          {processingCount > 0 ? <ProgressNote>Obrada specifikacije: slika u obradi {processingCount}…</ProgressNote> : null}
 
-      {items.length > 0 ? (
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm text-slate-500">
-            Prihvaceno {acceptedItems.length} od {items.length}
-            {acceptedItems.length !== validAcceptedItems.length
-              ? " — svaki prihvacen red mora da ima izabranu narudzbinu."
-              : "."}
-          </p>
-          <Button type="button" onClick={() => setIsConfirmOpen(true)} disabled={!canConfirm}>
-            Potvrdi i oznaci sve ({validAcceptedItems.length})
-          </Button>
-        </div>
-      ) : null}
+          {uploads.length > 0 ? <UploadList uploads={uploads} /> : null}
+
+          {items.length > 0 ? (
+            <PareRows
+              items={items}
+              matches={matches}
+              dropdownCandidates={dropdownCandidates}
+              candidateName={candidateName}
+              updateItem={updateItem}
+              removeItem={removeItem}
+            />
+          ) : candidates !== undefined && processingCount === 0 ? (
+            <EmptyState
+              icon={Inbox}
+              compact
+              title="Još nema redova specifikacije"
+              description="Dodaj sliku iznad. Svaki pročitan red postaje jedan predlog koji proveravaš pre upisa."
+            />
+          ) : null}
+
+          {items.length > 0 ? (
+            <ImportActionBar summary={summary}>
+              <Button type="button" className="w-full md:w-auto" onClick={() => setIsConfirmOpen(true)} disabled={!canConfirm}>
+                Upiši ({validAcceptedItems.length})
+              </Button>
+            </ImportActionBar>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

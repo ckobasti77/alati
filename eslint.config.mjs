@@ -19,6 +19,8 @@ const eslintConfig = defineConfig([
     "storefront/build/**",
     // Kopije repoa u Claude worktree-ovima (lazna upozorenja).
     ".claude/worktrees/**",
+    // Necommitovane pomoćne skripte UX sesija (.cjs ruši lint: react-hooks plugin nije za njih).
+    "tmp/**",
   ]),
   {
     // ESLint 10 je uklonio context.getFilename, a eslint-plugin-react (unutar

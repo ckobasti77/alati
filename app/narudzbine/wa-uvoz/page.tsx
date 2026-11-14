@@ -3,25 +3,26 @@
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Copy, Download, List, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Download, Inbox, List } from "lucide-react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth-client";
 import { useConvexMutation, useConvexQuery } from "@/lib/convex";
-import { LoadingDots } from "@/components/LoadingDots";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Stepper } from "@/components/ui/stepper";
+import type { DraftOrder } from "@/lib/waIntake/types";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { DraftOrder, PriceSource } from "@/lib/waIntake/types";
-
-type ProductOption = { _id: string; name: string; kpName?: string };
+  ImportActionBar,
+  ImportHeader,
+  outlineButtonClass,
+  ProgressNote,
+  RowCard,
+  Spinner,
+} from "../uvoz/_components/ImportKit";
+import type { DraftRow, ProductOption, WaChat } from "./_components/types";
+import { WaRows } from "./_components/WaRows";
 
 type BatchItem = {
   waMessageId: string;
@@ -39,37 +40,6 @@ type BatchItem = {
 
 type BatchResult = { waMessageId: string; status: "inserted" | "skipped"; reason?: string; orderId?: string };
 
-type WaChat = { id: string; name: string; isGroup: boolean; lastMessageAt?: number };
-
-type DraftRow = {
-  key: string;
-  draft: DraftOrder;
-  customerName: string;
-  phone: string;
-  address: string;
-  title: string;
-  productId: string; // "" = bez proizvoda iz kataloga
-  nabavnaDraft: string;
-  prodajnaDraft: string;
-  napomena: string;
-  pickup: boolean;
-  accepted: boolean;
-  writeResult?: { status: "inserted" | "skipped"; reason?: string };
-};
-
-const sourceLabels: Record<PriceSource, string> = {
-  poruka: "iz poruke",
-  "kp-link": "KP link",
-  "kp-pretraga": "KP pretraga",
-  katalog: "katalog",
-};
-
-const confidenceBadge = (confidence: number) => {
-  if (confidence >= 0.8) return { label: `Pouzdano ${Math.round(confidence * 100)}%`, tone: "border-emerald-200 bg-emerald-50 text-emerald-800" };
-  if (confidence >= 0.5) return { label: `Proveri ${Math.round(confidence * 100)}%`, tone: "border-amber-200 bg-amber-50 text-amber-800" };
-  return { label: `Nisko ${Math.round(confidence * 100)}%`, tone: "border-rose-200 bg-rose-50 text-rose-800" };
-};
-
 const parsePriceInput = (value: string): number | undefined => {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
@@ -78,6 +48,8 @@ const parsePriceInput = (value: string): number | undefined => {
 };
 
 const priceInputValid = (value: string) => value.trim() === "" || parsePriceInput(value) !== undefined;
+
+const qrLinkClass = "font-medium text-accent-text underline underline-offset-2";
 
 export default function WaUvozPage() {
   return (
@@ -147,12 +119,12 @@ function WaUvozContent() {
           accepted: false,
         })),
       );
-      setLastPullInfo(`Pregledano ${data?.scannedMessages ?? 0} poruka, predlozeno ${drafts.length} porudzbina.`);
+      setLastPullInfo(`Pregledano poruka: ${data?.scannedMessages ?? 0}, predloženo narudžbina: ${drafts.length}.`);
       for (const message of data?.errors ?? []) toast.error(message);
       if (drafts.length === 0) {
-        toast.info("Nema novih porudzbina u chatu.");
+        toast.info("Nema novih narudžbina u chatu.");
       } else {
-        toast.success(`Predlozeno ${drafts.length} porudzbina za pregled.`);
+        toast.success(`Predloženo za pregled: ${drafts.length}.`);
       }
     } catch (error) {
       console.error(error);
@@ -174,7 +146,7 @@ function WaUvozContent() {
       const list = data?.chats ?? [];
       setChats(list);
       if (list.length === 0) {
-        toast.info("Nema chatova (ili klijent jos nije spreman).");
+        toast.info("Nema chatova (ili klijent još nije spreman).");
       }
     } catch (error) {
       console.error(error);
@@ -217,8 +189,9 @@ function WaUvozContent() {
   const validAcceptedRows = useMemo(() => acceptedRows.filter(isRowValid), [acceptedRows, isRowValid]);
   const canConfirm = acceptedRows.length > 0 && acceptedRows.length === validAcceptedRows.length && !isSaving;
 
-  const handleConfirmSubmit = async () => {
-    if (isSaving || validAcceptedRows.length === 0) return;
+  // Vraca true kad je upis prosao; ConfirmDialog ostaje otvoren ako se vrati false (greska).
+  const handleConfirmSubmit = async (): Promise<boolean> => {
+    if (isSaving || validAcceptedRows.length === 0) return false;
     setIsSaving(true);
     try {
       const submitted = validAcceptedRows;
@@ -249,339 +222,209 @@ function WaUvozContent() {
         prev.map((row) => (byKey.has(row.key) ? { ...row, writeResult: byKey.get(row.key), accepted: false } : row)),
       );
       const inserted = results.filter((result) => result.status === "inserted").length;
-      toast.success(`Upisano ${inserted}, preskoceno ${results.length - inserted}.`);
+      toast.success(`Upisano ${inserted}, preskočeno ${results.length - inserted}.`);
       setIsConfirmOpen(false);
+      return true;
     } catch (error) {
       console.error(error);
       toast.error(error instanceof Error ? error.message : "Upis nije uspeo.");
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
+  // Koraci: 0 Povuci (nema redova), 1 Proveri (redovi), 2 Upis (dijalog otvoren / snimanje),
+  // 3 = sve upisano (poslednji korak je završen).
+  const allWritten = rows.length > 0 && rows.every((row) => row.writeResult);
+  const currentStep = allWritten ? 3 : isConfirmOpen || isSaving ? 2 : rows.length > 0 ? 1 : 0;
+
+  const openRows = rows.filter((row) => !row.writeResult).length;
+  const summary =
+    acceptedRows.length === 0
+      ? "Uključi „Prihvati“ kod bar jednog predloga da bi mogao da upišeš."
+      : acceptedRows.length !== validAcceptedRows.length
+        ? `Prihvaćeno ${acceptedRows.length} od ${openRows}. Svaki prihvaćen predlog mora da ima ime, telefon, naziv i (za slanje) adresu, a cene moraju biti brojevi.`
+        : `Prihvaćeno ${acceptedRows.length} od ${openRows}.`;
+
   return (
-    <div className="space-y-6">
-      <Dialog
+    <div className="space-y-5 md:space-y-6">
+      <ConfirmDialog
         open={isConfirmOpen}
         onOpenChange={(open) => {
           if (!open && !isSaving) setIsConfirmOpen(false);
         }}
+        title="Potvrdi upis"
+        description={`Upisaće se ${validAcceptedRows.length} ${
+          validAcceptedRows.length === 1 ? "narudžbina" : "narudžbine"
+        } (stage: poručeno). Duplikati po WhatsApp poruci se automatski preskaču.`}
+        confirmLabel={`Upiši (${validAcceptedRows.length})`}
+        onConfirm={async () => {
+          if (!(await handleConfirmSubmit())) throw new Error("Upis nije uspeo.");
+        }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Potvrdi upis</DialogTitle>
-            <DialogDescription>
-              Upisace se {validAcceptedRows.length}{" "}
-              {validAcceptedRows.length === 1 ? "narudzbina" : "narudzbina"} (stage: poruceno). Duplikati po WhatsApp
-              poruci se automatski preskacu.
-            </DialogDescription>
-          </DialogHeader>
-          <ul className="max-h-48 space-y-1 overflow-y-auto text-sm text-slate-700">
-            {validAcceptedRows.map((row) => (
-              <li key={row.key} className="flex items-center justify-between gap-3">
-                <span className="truncate">
-                  {row.customerName} · {row.title}
-                </span>
-                <span className="text-xs text-slate-500">{row.pickup ? "licno" : "slanje"}</span>
-              </li>
-            ))}
-          </ul>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setIsConfirmOpen(false)} disabled={isSaving}>
-              Otkazi
-            </Button>
-            <Button type="button" onClick={() => void handleConfirmSubmit()} disabled={isSaving}>
-              {isSaving ? "Upisivanje..." : "Potvrdi i upisi sve"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <ul className="max-h-48 space-y-1 overflow-y-auto text-sm text-text">
+          {validAcceptedRows.map((row) => (
+            <li key={row.key} className="flex items-center justify-between gap-3">
+              <span className="truncate">
+                {row.customerName} · {row.title}
+              </span>
+              <span className="shrink-0 text-xs text-text-muted">{row.pickup ? "lično" : "slanje"}</span>
+            </li>
+          ))}
+        </ul>
+      </ConfirmDialog>
 
-      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">WhatsApp uvoz porudzbina</h1>
-          <p className="text-sm text-slate-500">
-            Na dugme povuce nove poruke iz chata, Qwen ih grupise i procita, KP daje prodajnu cenu. Nista se ne
-            upisuje bez tvoje potvrde.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button type="button" className="gap-2" onClick={() => void handlePull()} disabled={isPulling}>
-            <Download className="h-4 w-4" />
-            {isPulling ? "Povlacenje..." : "Povuci iz WhatsApp-a"}
-          </Button>
-          <Button asChild variant="outline" className="gap-2">
+      <ImportHeader
+        title="WA uvoz"
+        description="Povuče nove poruke iz WhatsApp chata, grupiše ih i pročita, a KP daje prodajnu cenu. Ništa se ne upisuje bez tvoje potvrde."
+        aside={
+          <Button asChild variant="outline" className={`gap-2 max-md:hidden ${outlineButtonClass}`}>
             <Link href="/narudzbine">
-              <ArrowLeft className="h-4 w-4" />
-              Narudzbine
+              <ArrowLeft className="size-4" aria-hidden />
+              Narudžbine
             </Link>
           </Button>
+        }
+      />
+
+      <Stepper
+        label="Koraci WA uvoza"
+        steps={[
+          { key: "povuci", label: "Povuci" },
+          { key: "proveri", label: "Proveri" },
+          { key: "upis", label: "Upis" },
+        ]}
+        current={currentStep}
+      />
+
+      <section aria-label="Povlačenje poruka" className="space-y-3 rounded-2xl bg-surface p-4 ring-1 ring-border">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold text-text">Nove poruke iz WhatsApp-a</h2>
+          <p className="text-[13px] leading-5 text-text-muted">
+            Poruke se čitaju automatski. Za svaku narudžbinu dobijaš predlog koji proveravaš pre upisa.
+          </p>
         </div>
-      </header>
+        <Button type="button" size="lg" className="w-full gap-2 md:w-auto" onClick={() => void handlePull()} disabled={isPulling}>
+          {isPulling ? <Spinner /> : <Download className="size-4" aria-hidden />}
+          {isPulling ? "Povlačenje…" : "Povuci iz WhatsApp-a"}
+        </Button>
+        {lastPullInfo && !isPulling ? <p className="text-[13px] leading-5 text-text-muted">{lastPullInfo}</p> : null}
+      </section>
 
       {isPulling ? (
-        <LoadingDots show label="Citam chat, segmentiram i vadim podatke (Qwen + KP)... moze potrajati." />
-      ) : null}
-
-      {lastPullInfo && !isPulling ? <p className="text-xs text-slate-500">{lastPullInfo}</p> : null}
-
-      <div className="space-y-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900">Dev helper: proveri ime chata</h2>
-            <p className="text-xs text-slate-500">
-              Izlista sve chatove — tacno IME ide u WA_PORUDZBINE_CHAT / WA_PAPIRICI_CHAT u .env.local.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => void handleListChats()}
-            disabled={isListingChats}
-          >
-            <List className="h-4 w-4" />
-            {isListingChats ? "Ucitavanje..." : "Izlistaj WhatsApp chatove"}
-          </Button>
-        </div>
-
-        {isListingChats ? <LoadingDots show label="Ucitavam chatove (skeniraj QR u konzoli servera ako je prvi put)..." /> : null}
-
-        {!isListingChats && chats && chats.length > 0 ? (
-          <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
-            {chats.map((chat) => (
-              <li
-                key={chat.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-slate-900">
-                    {chat.name || "(bez imena)"}
-                    {chat.isGroup ? <span className="ml-2 text-xs font-normal text-slate-500">grupa</span> : null}
-                  </p>
-                  <p className="truncate font-mono text-xs text-slate-500">{chat.id}</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 gap-1"
-                  onClick={() => void handleCopyChatId(chat.id)}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  Kopiraj ID
-                </Button>
-              </li>
+        <>
+          <ProgressNote>
+            Čitam chat i vadim podatke. Može potrajati. Ako je prvi put, prijavi nalog preko{" "}
+            <a href="/api/wa-intake/qr" target="_blank" rel="noreferrer" className={qrLinkClass}>
+              QR stranice
+            </a>{" "}
+            (otvara se u novom tabu).
+          </ProgressNote>
+          <ul className="space-y-3" aria-hidden>
+            {[0, 1].map((index) => (
+              <RowCard key={index}>
+                <Skeleton className="h-5 w-24 rounded-full" />
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <Skeleton className="h-11 w-2/3 rounded-xl" />
+              </RowCard>
             ))}
           </ul>
-        ) : null}
+        </>
+      ) : rows.length > 0 ? (
+        <WaRows
+          rows={rows}
+          productOptions={productOptions}
+          priceInputValid={priceInputValid}
+          updateRow={updateRow}
+          removeRow={removeRow}
+        />
+      ) : (
+        <EmptyState
+          icon={Inbox}
+          compact
+          title={lastPullInfo ? "Nema novih predloga" : "Još ništa nije povučeno"}
+          description={
+            lastPullInfo
+              ? "U chatu nema novih narudžbina za uvoz."
+              : "Klikni „Povuci iz WhatsApp-a“ da bi se pojavili predlozi narudžbina."
+          }
+        />
+      )}
 
-        {!isListingChats && chats && chats.length === 0 ? (
-          <p className="text-xs text-slate-500">Nema chatova za prikaz.</p>
-        ) : null}
-      </div>
-
-      {rows.length > 0 ? (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tip</TableHead>
-                <TableHead>Kupac</TableHead>
-                <TableHead>Proizvod</TableHead>
-                <TableHead>Cene</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Upozorenja</TableHead>
-                <TableHead className="text-center">Prihvati</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => {
-                const frozen = Boolean(row.writeResult);
-                const badge = confidenceBadge(row.draft.confidence);
-                return (
-                  <TableRow key={row.key}>
-                    <TableCell>
-                      <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          checked={row.pickup}
-                          disabled={frozen}
-                          onChange={(event) => updateRow(row.key, { pickup: event.target.checked })}
-                        />
-                        Licno
-                      </label>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <Input
-                          value={row.customerName}
-                          placeholder="Ime i prezime"
-                          className="h-8 w-44 text-sm"
-                          disabled={frozen}
-                          onChange={(event) => updateRow(row.key, { customerName: event.target.value })}
-                        />
-                        <Input
-                          value={row.phone}
-                          placeholder="Telefon"
-                          className="h-8 w-44 font-mono text-xs"
-                          disabled={frozen}
-                          onChange={(event) => updateRow(row.key, { phone: event.target.value })}
-                        />
-                        {!row.pickup ? (
-                          <Input
-                            value={row.address}
-                            placeholder="Adresa"
-                            className="h-8 w-44 text-xs"
-                            disabled={frozen}
-                            onChange={(event) => updateRow(row.key, { address: event.target.value })}
-                          />
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <Input
-                          value={row.title}
-                          placeholder="Naziv narudzbine"
-                          className="h-8 w-52 text-sm"
-                          disabled={frozen}
-                          onChange={(event) => updateRow(row.key, { title: event.target.value })}
-                        />
-                        <select
-                          className="w-52 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
-                          value={row.productId}
-                          disabled={frozen}
-                          onChange={(event) => updateRow(row.key, { productId: event.target.value })}
-                        >
-                          <option value="">— bez proizvoda iz kataloga —</option>
-                          {productOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        {row.draft.productText ? (
-                          <p className="max-w-52 truncate text-xs text-slate-500" title={row.draft.productText}>
-                            Iz poruke: {row.draft.productText}
-                          </p>
-                        ) : null}
-                        {row.draft.kpLink ? (
-                          <a
-                            href={row.draft.kpLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="block max-w-52 truncate text-xs text-blue-600 hover:underline"
-                          >
-                            KP oglas
-                          </a>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={row.nabavnaDraft}
-                            placeholder="Nabavna"
-                            className="h-8 w-24 text-xs"
-                            disabled={frozen}
-                            onChange={(event) => updateRow(row.key, { nabavnaDraft: event.target.value })}
-                          />
-                          {row.draft.nabavnaSource ? (
-                            <span className="text-[11px] text-slate-500">{sourceLabels[row.draft.nabavnaSource]}</span>
-                          ) : null}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={row.prodajnaDraft}
-                            placeholder="Prodajna"
-                            className="h-8 w-24 text-xs"
-                            disabled={frozen}
-                            onChange={(event) => updateRow(row.key, { prodajnaDraft: event.target.value })}
-                          />
-                          {row.draft.prodajnaSource ? (
-                            <span className="text-[11px] text-slate-500">{sourceLabels[row.draft.prodajnaSource]}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {frozen ? (
-                        row.writeResult?.status === "inserted" ? (
-                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
-                            Upisano
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
-                            Preskoceno
-                          </span>
-                        )
-                      ) : (
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium ${badge.tone}`}
-                        >
-                          {badge.label}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {frozen && row.writeResult?.reason ? (
-                        <p className="text-xs text-amber-700">{row.writeResult.reason}</p>
-                      ) : row.draft.warnings.length > 0 ? (
-                        <ul className="max-w-56 space-y-0.5 text-xs text-amber-700">
-                          {row.draft.warnings.map((warning, index) => (
-                            <li key={index}>{warning}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span className="text-xs text-slate-400">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        checked={row.accepted}
-                        disabled={frozen}
-                        onChange={(event) => updateRow(row.key, { accepted: event.target.checked })}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeRow(row.key)}
-                        aria-label="Ukloni predlog"
-                      >
-                        <Trash2 className="h-4 w-4 text-slate-400" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      ) : null}
-
-      {rows.length > 0 ? (
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm text-slate-500">
-            Prihvaceno {acceptedRows.length} od {rows.filter((row) => !row.writeResult).length}
-            {acceptedRows.length !== validAcceptedRows.length
-              ? " — svaki prihvacen red mora da ima ime, telefon, naziv i (za slanje) adresu, a cene moraju biti brojevi."
-              : "."}
-          </p>
-          <Button type="button" onClick={() => setIsConfirmOpen(true)} disabled={!canConfirm}>
-            Potvrdi i upisi sve ({validAcceptedRows.length})
+      {rows.length > 0 && !isPulling ? (
+        <ImportActionBar summary={summary}>
+          <Button type="button" className="w-full md:w-auto" onClick={() => setIsConfirmOpen(true)} disabled={!canConfirm}>
+            Upiši ({validAcceptedRows.length})
           </Button>
-        </div>
+        </ImportActionBar>
       ) : null}
+
+      <details className="group rounded-2xl bg-surface ring-1 ring-border">
+        <summary className="flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl px-4 text-sm font-medium text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+          <List className="size-4 text-text-muted" aria-hidden />
+          Pomoć: proveri ime chata
+        </summary>
+        <div className="space-y-3 border-t border-border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <p className="text-[13px] leading-5 text-text-muted">
+              Izlista sve chatove. Tačno IME ide u WA_PORUDZBINE_CHAT / WA_PAPIRICI_CHAT u .env.local.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={`shrink-0 gap-2 ${outlineButtonClass}`}
+              onClick={() => void handleListChats()}
+              disabled={isListingChats}
+            >
+              {isListingChats ? <Spinner /> : <List className="size-4" aria-hidden />}
+              {isListingChats ? "Učitavanje…" : "Izlistaj WhatsApp chatove"}
+            </Button>
+          </div>
+
+          {isListingChats ? (
+            <ProgressNote>
+              Učitavam chatove. Ako je prvi put, prijavi nalog preko{" "}
+              <a href="/api/wa-intake/qr" target="_blank" rel="noreferrer" className={qrLinkClass}>
+                QR stranice
+              </a>{" "}
+              (otvara se u novom tabu).
+            </ProgressNote>
+          ) : null}
+
+          {!isListingChats && chats && chats.length > 0 ? (
+            <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
+              {chats.map((chat) => (
+                <li key={chat.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 px-3 py-1.5">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-text">
+                      {chat.name || "(bez imena)"}
+                      {chat.isGroup ? <span className="ml-2 text-xs font-normal text-text-muted">grupa</span> : null}
+                    </p>
+                    <p className="truncate font-mono text-xs text-text-muted">{chat.id}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 gap-1 text-text hover:bg-surface-3"
+                    onClick={() => void handleCopyChatId(chat.id)}
+                  >
+                    <Copy className="size-3.5" aria-hidden />
+                    Kopiraj ID
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {!isListingChats && chats && chats.length === 0 ? (
+            <p className="text-[13px] text-text-muted">Nema chatova za prikaz.</p>
+          ) : null}
+        </div>
+      </details>
     </div>
   );
 }
