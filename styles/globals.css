@@ -71,7 +71,7 @@
 
   /* Semantika (light) */
   --ui-raised: #ffffff;
-  --ui-border-strong: #7c889c; /* ≥ 3:1 na svim površinama (WCAG 1.4.11) */
+  --ui-border-strong: #718096; /* ≥ 3:1 na svim površinama, i na muted-strong #e2e8f0 (WCAG 1.4.11) */
   --ui-accent: #7c3aed;
   --ui-accent-hover: #6d28d9;
   --ui-accent-text: #6d28d9;
@@ -89,14 +89,14 @@
   --shadow-sheet: 0 -8px 40px -12px rgba(15, 23, 42, 0.25);
   --shadow-fab: 0 4px 12px -2px rgba(15, 23, 42, 0.28);
 
-  /* Stage boje (light: tekst ≥ 4.5:1 i na 12% tintu) */
+  /* Stage boje (light: tekst ≥ 4.5:1 na 12% tintu preko surface, surface-2, muted-strong i accent-soft) */
   --stage-poruceno: #92400e;
   --stage-aks: #9a3412;
   --stage-na-stanju: #4338ca;
   --stage-poslato: #1d4ed8;
-  --stage-stiglo: #047857;
+  --stage-stiglo: #065f46;
   --stage-leglo: #334155;
-  --stage-vraceno: #be123c;
+  --stage-vraceno: #9f1239;
 }
 
 @media (min-width: 768px) {

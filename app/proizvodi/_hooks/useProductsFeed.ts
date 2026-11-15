@@ -1,7 +1,7 @@
 "use client";
 
 // Doslovno izvuceno iz app/proizvodi/page.tsx (refaktor bez promene ponasanja).
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect } from "react";
 import { clearListState, writeListState } from "@/lib/listState";
 import type { Product, ProductListResponse } from "@/types/order";
 import type { useProductsState } from "./useProductsState";
@@ -91,7 +91,8 @@ export function useProductsFeed({ restore, router, pathname, searchParams, searc
     }, 400);
   }, [pendingScrollY, setPendingScrollY]);
 
-  useEffect(() => {
+  // Layout cleanup: upis pre nego što Next skroluje novu stranicu na vrh (inače bi se sačuvao skrol 0).
+  useLayoutEffect(() => {
     return () => {
       const snapshot = listStateRef.current;
       if (!snapshot) return;

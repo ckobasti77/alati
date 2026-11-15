@@ -11,15 +11,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-accent text-accent-fg hover:bg-accent-hover focus-visible:ring-ring",
+          "bg-accent text-accent-fg hover:bg-accent-hover",
         secondary:
-          "bg-surface-2 text-text hover:bg-surface-3 focus-visible:ring-[var(--accent-soft)]",
+          "bg-surface-2 text-text hover:bg-surface-3",
         ghost:
-          "bg-transparent text-text hover:bg-surface-2 focus-visible:ring-[var(--border-soft)]",
+          "bg-transparent text-text hover:bg-surface-2",
         outline:
-          "border border-border-strong bg-surface hover:bg-surface-2 focus-visible:ring-[var(--border-soft)]",
+          "border border-border-strong bg-surface hover:bg-surface-2",
         destructive:
-          "bg-danger-solid text-accent-fg hover:bg-danger-solid/90 focus-visible:ring-danger-solid",
+          "bg-danger-solid text-accent-fg hover:bg-danger-solid/90",
       },
       size: {
         // max-md: tap meta 44px na telefonu, desktop ostaje isti

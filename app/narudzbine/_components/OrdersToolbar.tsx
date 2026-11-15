@@ -85,6 +85,8 @@ export function OrdersToolbar({ feed, ordersView, refund, searchRef, now }: Orde
             </Button>
           </PopoverTrigger>
           <PopoverContent className="max-h-[min(80dvh,640px)] w-[380px] overflow-y-auto p-4" align="start" aria-label="Filteri">
+            {/* Sekcije panela su h3; u Sheet-u je naslov h2, ovde ga daje skriveni naslov (redosled naslova). */}
+            <h2 className="sr-only">Filteri</h2>
             {panel}
             {feed.activeFilterCount > 0 ? (
               <div className="mt-4 flex justify-end border-t border-border pt-3">

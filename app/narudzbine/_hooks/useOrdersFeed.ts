@@ -260,7 +260,9 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     return () => cancelAnimationFrame(frame);
   }, [initial]);
 
-  useEffect(() => {
+  // Layout cleanup, ne useEffect: pri odlasku na detalj Next skroluje novu stranicu na vrh u istom commit-u,
+  // a scroll događaj (0) stigne pre pasivnog cleanup-a, pa bi se upisao skrol 0. Ovaj cleanup ide pre toga.
+  useLayoutEffect(() => {
     return () => {
       const snapshot = listStateRef.current;
       writeListState<Order, Pagination>(listStateKey, {

@@ -187,8 +187,12 @@ function DescriptionItem({ title, text, onCopy }: { title: string; text: string;
         aria-label={`Kopiraj: ${title}`}
       >
         {copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}
-        {copied ? "Kopirano" : "Kopiraj"}
+        <span aria-hidden>{copied ? "Kopirano" : "Kopiraj"}</span>
       </button>
+      {/* Potvrda za čitače ekrana (aria-label dugmeta je stalan). */}
+      <span className="sr-only" aria-live="polite">
+        {copied ? "Kopirano" : ""}
+      </span>
     </div>
   );
 }

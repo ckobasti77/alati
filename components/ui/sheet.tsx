@@ -87,6 +87,10 @@ export function Sheet({
   // Drag-to-dismiss (telefon, sheet sa ručkom): prati prst; zatvara se preko 30% visine ili brzim potezom,
   // inače se vraća. Dugmad u zaglavlju i dalje rade (Draggable ne kreće sa dugmeta/linka).
   const isFullSize = size === "full";
+  const openRef = useRef(open);
+  useLayoutEffect(() => {
+    openRef.current = open;
+  }, [open]);
   useLayoutEffect(() => {
     if (!open || !panel || !dragZone || isDesktop || isFullSize) return;
     const overlay = overlayRef.current;
@@ -112,13 +116,21 @@ export function Sheet({
         const last = samples[samples.length - 1];
         const velocity = first && last && last.t > first.t ? (last.y - first.y) / (last.t - first.t) : 0;
         const shouldClose = this.y > panel.offsetHeight * SHEET_DRAG.closeRatio || velocity > SHEET_DRAG.closeVelocity;
-        if (shouldClose) {
-          onOpenChange(false);
+        const snapBack = () => {
+          const duration = prefersReducedMotion() ? 0 : SHEET_DRAG.snapBack;
+          gsap.to(panel, { y: 0, duration, ease: SHEET_DRAG.ease, clearProps: "transform" });
+          if (overlay) gsap.to(overlay, { opacity: 1, duration, ease: SHEET_DRAG.ease, clearProps: "opacity" });
+        };
+        if (!shouldClose) {
+          snapBack();
           return;
         }
-        const duration = prefersReducedMotion() ? 0 : SHEET_DRAG.snapBack;
-        gsap.to(panel, { y: 0, duration, ease: SHEET_DRAG.ease, clearProps: "transform" });
-        if (overlay) gsap.to(overlay, { opacity: 1, duration, ease: SHEET_DRAG.ease, clearProps: "opacity" });
+        onOpenChange(false);
+        // Roditelj može da odbije zatvaranje (npr. potvrda izlaska): tada se sheet vraća na mesto.
+        // Ako se zatvara, efekat iznad je već ugasio Draggable i krenuo izlaznu animaciju.
+        requestAnimationFrame(() => {
+          if (openRef.current) snapBack();
+        });
       },
     });
     return () => {

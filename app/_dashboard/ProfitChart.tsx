@@ -114,7 +114,9 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
       },
     );
     return () => {
+      // Prekinut rast (npr. period ponovo „stale“): barovi ne smeju ostati delimično skalirani.
       tween.kill();
+      gsap.set(bars, { clearProps: "transform" });
     };
   }, [settledPeriod, width, y0]);
   const slot = series.length > 0 ? width / series.length : 0;

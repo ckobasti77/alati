@@ -110,7 +110,8 @@ export function useObjaveProducts(sessionToken: string | null) {
     return () => cancelAnimationFrame(frame);
   }, [initial]);
 
-  useEffect(() => {
+  // Layout cleanup: upis pre nego što Next skroluje novu stranicu na vrh (inače bi se sačuvao skrol 0).
+  useLayoutEffect(() => {
     return () => {
       const snapshot = listStateRef.current;
       writeListState<Product, Pagination>(listStateKey, {
