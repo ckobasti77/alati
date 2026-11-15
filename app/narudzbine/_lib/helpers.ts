@@ -190,7 +190,7 @@ export const buildOrdersPdfRows = (
     });
     const shipmentNumber = resolveShipmentNumber(order);
     const contactParts = [order.customerName, order.phone];
-    if (order.pickup) contactParts.push("Licno");
+    if (order.pickup) contactParts.push("Lično");
 
     return {
       date: formatDate(order.kreiranoAt),

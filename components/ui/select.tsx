@@ -14,7 +14,7 @@ export const SelectValue = forwardRef<
   <SelectPrimitive.Value
     ref={ref}
     className={cn(
-      "flex-1 text-left text-sm text-inherit data-[placeholder]:text-slate-500",
+      "flex-1 text-left text-sm text-inherit data-[placeholder]:text-text-muted",
       className,
     )}
     {...props}
@@ -30,7 +30,7 @@ export const SelectTrigger = forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-10 max-md:h-11 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-2 text-sm max-md:text-base text-inherit shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900",
+      "flex h-10 max-md:h-11 w-full items-center justify-between rounded-md border border-border-strong bg-surface px-3 py-2 text-sm max-md:text-base text-inherit shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-60",
       className,
     )}
     {...props}
@@ -54,7 +54,7 @@ export const SelectContent = forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "z-(--z-popover) min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white text-inherit shadow-lg animate-in fade-in-80 data-[state=closed]:animate-out data-[state=open]:zoom-in-90 data-[state=closed]:zoom-out-95 dark:border-slate-700 dark:bg-slate-900",
+        "z-(--z-popover) min-w-[8rem] overflow-hidden rounded-md border border-border bg-surface text-inherit shadow-lg animate-in fade-in-80 data-[state=closed]:animate-out data-[state=open]:zoom-in-90 data-[state=closed]:zoom-out-95",
         className,
       )}
       position={position}
@@ -82,7 +82,7 @@ export const SelectItem = forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm px-3 py-2 text-sm outline-none transition-colors focus:bg-blue-50 focus:text-blue-700 data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 dark:focus:bg-slate-800 dark:focus:text-slate-50 dark:data-[highlighted]:bg-slate-800 dark:data-[highlighted]:text-slate-50",
+      "relative flex w-full cursor-default select-none items-center rounded-sm px-3 py-2 text-sm outline-none transition-colors focus:bg-accent-soft focus:text-accent-text data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent-text data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,
     )}
     {...props}

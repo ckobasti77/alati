@@ -106,8 +106,8 @@ export function useProductDetailUpdate({ normalizeProductImages, sessionToken, u
       setProduct(previous);
       const message =
         error instanceof Error && error.message.toLowerCase().includes("medjuvremenu promenjen")
-          ? "Proizvod je u medjuvremenu promenjen. Osvezi stranicu i probaj ponovo."
-          : "Cuvanje nije uspelo.";
+          ? "Proizvod je u međuvremenu promenjen. Osveži stranicu i probaj ponovo."
+          : "Čuvanje nije uspelo.";
       toast.error(message);
       throw error;
     }

@@ -6,20 +6,20 @@ import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60 ring-offset-background",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-60",
   {
     variants: {
       variant: {
         default:
           "bg-accent text-accent-fg hover:bg-accent-hover focus-visible:ring-ring",
         secondary:
-          "bg-slate-100 text-slate-900 hover:bg-slate-200 focus-visible:ring-[var(--accent-soft)]",
+          "bg-surface-2 text-text hover:bg-surface-3 focus-visible:ring-[var(--accent-soft)]",
         ghost:
-          "bg-transparent text-slate-900 hover:bg-slate-100 focus-visible:ring-[var(--border-soft)]",
+          "bg-transparent text-text hover:bg-surface-2 focus-visible:ring-[var(--border-soft)]",
         outline:
-          "border border-slate-300 bg-white hover:bg-slate-50 focus-visible:ring-[var(--border-soft)]",
+          "border border-border-strong bg-surface hover:bg-surface-2 focus-visible:ring-[var(--border-soft)]",
         destructive:
-          "bg-danger-solid text-white hover:bg-danger-solid/90 focus-visible:ring-danger-solid",
+          "bg-danger-solid text-accent-fg hover:bg-danger-solid/90 focus-visible:ring-danger-solid",
       },
       size: {
         // max-md: tap meta 44px na telefonu, desktop ostaje isti

@@ -68,7 +68,7 @@ export function useProductGalleryManager({ ensureMainImage, sessionToken, genera
           ...current,
           adImage: nextImage,
         }),
-        "Ad slika sacuvana.",
+        "Ad slika sačuvana.",
       );
     } catch (error) {
       console.error(error);
@@ -156,7 +156,7 @@ export function useProductGalleryManager({ ensureMainImage, sessionToken, genera
           }),
         };
       },
-      "Glavna slika podesena.",
+      "Glavna slika podešena.",
     );
   };
 
@@ -179,7 +179,7 @@ export function useProductGalleryManager({ ensureMainImage, sessionToken, genera
         );
         return { ...current, variants };
       },
-      "Sacuvano.",
+      "Sačuvano.",
     );
   };
 
@@ -223,7 +223,7 @@ export function useProductGalleryManager({ ensureMainImage, sessionToken, genera
         }
         return current;
       },
-      "Redosled sacuvan.",
+      "Redosled sačuvan.",
     );
   };
 
@@ -342,7 +342,7 @@ export function useProductGalleryManager({ ensureMainImage, sessionToken, genera
     if (group.length === 0) return;
     const parsed = Number.parseInt(reorderInputValue, 10);
     if (!Number.isFinite(parsed) || parsed < 1) {
-      toast.error("Upisi redni broj (1 ili vise).");
+      toast.error("Upiši redni broj (1 ili više).");
       return;
     }
     const targetIndex = Math.min(Math.max(parsed - 1, 0), group.length - 1);
@@ -397,7 +397,7 @@ export function useProductGalleryManager({ ensureMainImage, sessionToken, genera
     if (target.type === "variant") {
       const exists = (currentProduct.variants ?? []).some((variant) => variant.id === target.variantId);
       if (!exists) {
-        toast.error("Izabrani tip vise ne postoji.");
+        toast.error("Izabrani tip više ne postoji.");
         setImageUploadTarget("product");
         return;
       }

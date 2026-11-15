@@ -54,7 +54,7 @@ export function useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUk
     }
     try {
       await navigator.share({
-        title: order?.title ?? "Narudzbina",
+        title: order?.title ?? "Narudžbina",
         url: shareUrl,
       });
     } catch (error) {
@@ -84,18 +84,18 @@ export function useOrderDetailShare({ order, copyText, prodajnoUkupno, nabavnoUk
           refundProfit: formatCurrency(profitShare, "EUR"),
           refundNote: isFullRefund100
             ? isExcludedBecauseReturned
-              ? `Povrat 100% - povrat uradjen (obracunato ${formatCurrency(calculatedPovrat, "EUR")})`
-              : `${isManualRefund100 ? "Rucno dodat 100%" : "Period 100%"}: nabavna + ceo profit + transport`
-            : `Standardni obracun (${formatPercent(profitSharePercent)})`,
+              ? `Povrat 100% - povrat urađen (obračunato ${formatCurrency(calculatedPovrat, "EUR")})`
+              : `${isManualRefund100 ? "Ručno dodat 100%" : "Period 100%"}: nabavna + ceo profit + transport`
+            : `Standardni obračun (${formatPercent(profitSharePercent)})`,
         });
 
         if (mode === "share") {
           const result = await sharePdfFile(file, {
-            title: "Narudzbina PDF",
-            text: `Narudzbina: ${order.title}`,
+            title: "Narudžbina PDF",
+            text: `Narudžbina: ${order.title}`,
           });
           if (result === "shared") toast.success("PDF je poslat u share.");
-          if (result === "downloaded") toast.info("Uredjaj ne podrzava deljenje PDF fajla, PDF je preuzet.");
+          if (result === "downloaded") toast.info("Uređaj ne podržava deljenje PDF fajla, PDF je preuzet.");
         } else {
           downloadPdfFile(file);
           toast.success("PDF je preuzet.");

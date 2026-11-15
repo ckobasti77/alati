@@ -48,7 +48,7 @@ export function useProductDetailShare({ product, setShareOpen }: UseProductDetai
       return;
     }
     if (!canShare || typeof navigator === "undefined") {
-      toast.error("Share nije podrzan.");
+      toast.error("Share nije podržan.");
       return;
     }
     setShareOpen(false);

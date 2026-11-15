@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const account = new URL(request.url).searchParams.get("account") ?? "porudzbine";
   if (account !== "porudzbine" && account !== "papirici") {
     return NextResponse.json(
-      { error: 'Nepoznat account (dozvoljeno: "porudzbine" ili "papirici").' },
+      { error: 'Nepoznat nalog (dozvoljeno: "porudzbine" ili "papirici").' },
       { status: 400 },
     );
   }
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ chats });
   } catch (error) {
     console.error(`[wa-intake:${account}] listChats nije uspeo`, error);
-    const message = error instanceof Error ? error.message : "Nepoznata greska.";
+    const message = error instanceof Error ? error.message : "Nepoznata greška.";
     return NextResponse.json(
       { error: `${message} Ako je ovo prvo pokretanje naloga, skeniraj QR iz konzole servera pa probaj ponovo.` },
       { status: 503 },

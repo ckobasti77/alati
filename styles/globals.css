@@ -71,7 +71,7 @@
 
   /* Semantika (light) */
   --ui-raised: #ffffff;
-  --ui-border-strong: #cbd5e1;
+  --ui-border-strong: #7c889c; /* ≥ 3:1 na svim površinama (WCAG 1.4.11) */
   --ui-accent: #7c3aed;
   --ui-accent-hover: #6d28d9;
   --ui-accent-text: #6d28d9;
@@ -107,7 +107,7 @@
 
 :root[data-theme="dark"] {
   --ui-raised: #1f1f22;
-  --ui-border-strong: #3a3a3f;
+  --ui-border-strong: #6b6b74; /* ≥ 3:1 na svim površinama (WCAG 1.4.11) */
   --ui-accent: #7c3aed;
   --ui-accent-hover: #6d28d9;
   --ui-accent-text: #a78bfa;
@@ -236,172 +236,29 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-* {
-  border-color: var(--border-soft);
+/* Podrazumevane ivice i naslovi su u @layer base, pa ih Tailwind utilitiji (border-*, text-*, font-*)
+   mogu da prepišu. Ranije su bili van slojeva i gazili su obojene ivice i boje naslova. */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border-soft);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-weight: 600;
-  color: var(--text-primary);
-}
+/* Legacy override sloj (.bg-white, .text-slate-*, .border-slate-*, …) uklonjen u sesiji 5: klase su zamenjene
+   tokenima u app/ i components/ (grep = 0, osim svetlih kontrola na tamnom zastoru lightbox-a). */
 
-/* ─── Background overrides ─── */
-.bg-white {
-  background-color: var(--surface);
-}
-
-.bg-white\/95 {
-  background-color: rgba(var(--surface-rgb), 0.95);
-}
-
-.bg-white\/90 {
-  background-color: rgba(var(--surface-rgb), 0.9);
-}
-
-.bg-white\/80 {
-  background-color: rgba(var(--surface-rgb), 0.8);
-}
-
-.bg-white\/75 {
-  background-color: rgba(var(--surface-rgb), 0.75);
-}
-
-.bg-white\/60 {
-  background-color: rgba(var(--surface-rgb), 0.6);
-}
-
-.bg-white\/20 {
-  background-color: rgba(var(--surface-rgb), 0.2);
-}
-
-.bg-slate-50 {
-  background-color: var(--muted-surface);
-}
-
-.bg-slate-50\/50 {
-  background-color: rgba(var(--muted-surface-rgb), 0.5);
-}
-
-.bg-slate-50\/60 {
-  background-color: rgba(var(--muted-surface-rgb), 0.6);
-}
-
-.bg-slate-50\/70 {
-  background-color: rgba(var(--muted-surface-rgb), 0.7);
-}
-
-.bg-slate-50\/80 {
-  background-color: rgba(var(--muted-surface-rgb), 0.8);
-}
-
-.bg-slate-100 {
-  background-color: var(--muted-surface);
-}
-
-.bg-slate-200 {
-  background-color: var(--muted-strong);
-}
-
-.hover\:bg-slate-50:hover {
-  background-color: var(--muted-surface);
-}
-
-.hover\:bg-slate-100:hover {
-  background-color: var(--muted-surface);
-}
-
-.hover\:bg-slate-200:hover {
-  background-color: var(--muted-strong);
-}
-
-.hover\:bg-white:hover {
-  background-color: var(--surface);
-}
-
-/* ─── Text overrides ─── */
-.text-slate-900,
-.text-slate-800 {
-  color: var(--text-primary);
-}
-
-.text-slate-700 {
-  color: var(--text-secondary);
-}
-
-.text-slate-600 {
-  color: var(--text-muted);
-}
-
-.text-slate-500 {
-  color: var(--text-soft);
-}
-
-.text-slate-400 {
-  color: var(--text-faint);
-}
-
-.text-slate-200 {
-  color: var(--text-ghost);
-}
-
-.hover\:text-slate-900:hover,
-.hover\:text-slate-800:hover {
-  color: var(--text-primary);
-}
-
-.hover\:text-slate-700:hover {
-  color: var(--text-secondary);
-}
-
-/* ─── Border overrides ─── */
-.border-slate-200 {
-  border-color: var(--border-soft);
-}
-
-.border-slate-200\/80 {
-  border-color: rgba(var(--border-soft-rgb), 0.8);
-}
-
-.border-slate-200\/70 {
-  border-color: rgba(var(--border-soft-rgb), 0.7);
-}
-
-.border-slate-300 {
-  border-color: var(--border-strong);
-}
-
-.ring-slate-200 {
-  --tw-ring-color: var(--border-soft);
-}
-
-.ring-slate-400 {
-  --tw-ring-color: var(--border-strong);
-}
-
-.ring-offset-background {
-  --tw-ring-offset-color: var(--surface);
-}
-
-.shadow-soft {
-  box-shadow: var(--shadow-soft);
-}
-
-/* ─── Animations ─── */
-@keyframes shimmer {
-  0% { opacity: 0.5; }
-  50% { opacity: 1; }
-  100% { opacity: 0.5; }
-}
-
-@keyframes glow-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.8; }
-}
 
 /* ─── Globalna mobilna pravila (DESIGN_RULES §6) ─── */
 @layer base {

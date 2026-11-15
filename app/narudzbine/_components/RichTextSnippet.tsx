@@ -11,7 +11,7 @@ export function RichTextSnippet({ text, className }: { text?: string | null; cla
     <div
       className={cn(
         richTextOutputClassNames,
-        "max-h-16 overflow-hidden text-xs text-slate-500 [&_p]:mb-0 [&_ul]:mb-0",
+        "max-h-16 overflow-hidden text-xs text-text-muted [&_p]:mb-0 [&_ul]:mb-0",
         className,
       )}
       dangerouslySetInnerHTML={{ __html: html }}

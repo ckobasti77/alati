@@ -28,7 +28,7 @@ export async function POST() {
     return NextResponse.json({ images, scannedMessages: messages.length });
   } catch (error) {
     console.error("[wa-intake:papirici] povlacenje papirica nije uspelo", error);
-    const message = error instanceof Error ? error.message : "Nepoznata greska.";
+    const message = error instanceof Error ? error.message : "Nepoznata greška.";
     return NextResponse.json(
       { error: `${message} Ako je ovo prvo pokretanje naloga, skeniraj QR iz konzole servera pa probaj ponovo.` },
       { status: 503 },

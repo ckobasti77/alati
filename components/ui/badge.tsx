@@ -3,12 +3,12 @@
 import { cn } from "@/lib/utils";
 
 const variants: Record<string, string> = {
-  default: "bg-white/[0.06] text-zinc-300",
-  blue: "bg-violet-500/10 text-violet-400",
-  green: "bg-emerald-500/10 text-emerald-400",
-  yellow: "bg-amber-500/10 text-amber-400",
-  red: "bg-rose-500/10 text-rose-400",
-  secondary: "bg-white/[0.06] text-zinc-400",
+  default: "bg-surface-2 text-text-muted",
+  blue: "bg-accent-soft text-accent-text",
+  green: "bg-success-soft text-success",
+  yellow: "bg-warning-soft text-warning",
+  red: "bg-danger-soft text-danger",
+  secondary: "bg-surface-2 text-text-muted",
 };
 
 interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {

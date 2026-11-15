@@ -6,19 +6,20 @@ import { AppHeader } from "@/components/shell/AppHeader";
 import { BottomNav } from "@/components/shell/BottomNav";
 import { ShellProvider } from "@/components/shell/ShellProvider";
 
+// latin-ext: č ć š ž đ iz Geist-a (bez njega slova sa dijakritikom dolaze iz rezervnog fonta).
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
 });
 
 export const metadata: Metadata = {
-  title: "Evidencija Narudzbina",
-  description: "Interna evidencija narudzbina - brz unos i pregled profita.",
+  title: { default: "Evidencija narudžbina", template: "%s · Alati" },
+  description: "Interna evidencija narudžbina: brz unos i pregled profita.",
   applicationName: "Alati",
   appleWebApp: {
     capable: true,

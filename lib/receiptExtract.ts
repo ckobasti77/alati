@@ -62,26 +62,26 @@ function postProcess(raw: Record<string, unknown>): ReceiptExtraction {
   let imePrimaoca = asString(raw.imePrimaoca);
   if (imePrimaoca.toUpperCase().includes("IVAN RISTOVIC") || imePrimaoca.toUpperCase().includes("IVAN RISTOVIĆ")) {
     imePrimaoca = "";
-    warnings.push("Model je procitao posiljaoca umesto primaoca.");
+    warnings.push("Model je pročitao pošiljaoca umesto primaoca.");
   }
 
   let telefonPrimaoca = asString(raw.telefonPrimaoca);
   const phoneDigits = digitsOnly(telefonPrimaoca);
   if (phoneDigits === SENDER_PHONE_DIGITS || phoneDigits.includes(SENDER_ACCOUNT_DIGITS)) {
     telefonPrimaoca = "";
-    warnings.push("Model je procitao telefon/racun posiljaoca — proveri rucno.");
+    warnings.push("Model je pročitao telefon/račun pošiljaoca — proveri ručno.");
   }
 
   let brojPosiljke = digitsOnly(asString(raw.brojPosiljke));
   if (brojPosiljke === SENDER_PHONE_DIGITS.replace(/^0/, "") || brojPosiljke.includes(SENDER_ACCOUNT_DIGITS)) {
     brojPosiljke = "";
-    warnings.push("Model je procitao podatke posiljaoca umesto broja posiljke.");
+    warnings.push("Model je pročitao podatke pošiljaoca umesto broja pošiljke.");
   } else if (brojPosiljke && brojPosiljke.length < 10) {
     // "Kurir: 92008" i slicni kratki brojevi nisu broj posiljke.
     brojPosiljke = "";
-    warnings.push("Procitan broj je prekratak (verovatno sifra kurira) — proveri rucno.");
+    warnings.push("Pročitan broj je prekratak (verovatno šifra kurira) — proveri ručno.");
   } else if (brojPosiljke && !/^92\d{12}$/.test(brojPosiljke)) {
-    warnings.push("Broj posiljke ne lici na standardni AKS format (14 cifara, pocinje sa 92).");
+    warnings.push("Broj pošiljke ne liči na standardni AKS format (14 cifara, počinje sa 92).");
   }
 
   return {

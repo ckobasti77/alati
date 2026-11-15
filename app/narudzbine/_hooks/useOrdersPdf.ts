@@ -44,7 +44,7 @@ export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, s
       }
       if (showUnreturnedOnly) filters.push("Povrat: nije urađen");
       if (showReturnedOnly) filters.push("Povrat: urađen");
-      if (showPickupOnly) filters.push("Preuzimanje: licno");
+      if (showPickupOnly) filters.push("Preuzimanje: lično");
       if (showShippingOnly) filters.push("Preuzimanje: slanje");
       if (showLateOnly) filters.push("Isporuka: kasni");
       if (showRefund100Only) filters.push("Povrat: samo 100%");
@@ -52,7 +52,7 @@ export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, s
         filters.push(`Datum: ${dateFrom || "pocetak"} - ${dateTo || "danas"}`);
       }
       const filterText = filters.length > 0 ? filters.join(" | ") : "Bez aktivnih filtera";
-      return `Izvezeno ${count} od ${total} narudzbina. ${filterText}.`;
+      return `Izvezeno ${count} od ${total} narudžbina. ${filterText}.`;
     },
     [dateFilterActive, dateFrom, dateTo, search, showLateOnly, showPickupOnly, showRefund100Only, showShippingOnly, showReturnedOnly, showUnreturnedOnly, stageFilters],
   );
@@ -98,7 +98,7 @@ export function useOrdersPdf({ convex, search, dateFrom, dateTo, stageFilters, s
           rows,
           totals: exportData.totals,
           fileName: `${sanitizePdfFileName(`narudzbine-${today}`)}.pdf`,
-          title: "Narudzbine",
+          title: "Narudžbine",
           subtitle: buildOrdersPdfSubtitle(rows.length, exportData.total),
         });
 

@@ -26,11 +26,11 @@ export function useProductAdminActions({ sessionToken, editingProduct, newSuppli
   const handleArchive = async (product: Product, archived: boolean) => {
     try {
       await setProductArchived({ id: product._id, token: sessionToken, archived });
-      toast.success(archived ? "Proizvod je arhiviran." : "Proizvod je vracen iz arhive.");
+      toast.success(archived ? "Proizvod je arhiviran." : "Proizvod je vraćen iz arhive.");
       resetProductsFeed();
     } catch (error: any) {
       console.error(error);
-      toast.error(error?.message ?? "Azuriranje arhive nije uspelo.");
+      toast.error(error?.message ?? "Ažuriranje arhive nije uspelo.");
     }
   };
 
@@ -53,7 +53,7 @@ export function useProductAdminActions({ sessionToken, editingProduct, newSuppli
   const handleCreateSupplierEntry = async () => {
     const name = newSupplierName.trim();
     if (!name) {
-      toast.error("Unesi naziv dobavljaca.");
+      toast.error("Unesi naziv dobavljača.");
       return;
     }
     if (isCreatingSupplier) return;
@@ -61,10 +61,10 @@ export function useProductAdminActions({ sessionToken, editingProduct, newSuppli
     try {
       await createSupplier({ token: sessionToken, name });
       setNewSupplierName("");
-      toast.success("Dobavljac je dodat.");
+      toast.success("Dobavljač je dodat.");
     } catch (error: any) {
       console.error(error);
-      toast.error(error?.message ?? "Nije moguce dodati dobavljaca.");
+      toast.error(error?.message ?? "Nije moguće dodati dobavljača.");
     } finally {
       setIsCreatingSupplier(false);
     }
@@ -74,16 +74,16 @@ export function useProductAdminActions({ sessionToken, editingProduct, newSuppli
     const productsUsing = usage?.products ?? 0;
     const ordersUsing = usage?.orders ?? 0;
     if (productsUsing > 0 || ordersUsing > 0) {
-      toast.error("Dobavljac je vezan za proizvode ili narudzbine.");
+      toast.error("Dobavljač je vezan za proizvode ili narudžbine.");
       return;
     }
     // Potvrdu traži ConfirmDialog u panelu Dobavljači (pre poziva).
     try {
       await removeSupplier({ token: sessionToken, id });
-      toast.success("Dobavljac je obrisan.");
+      toast.success("Dobavljač je obrisan.");
     } catch (error: any) {
       console.error(error);
-      toast.error(error?.message ?? "Brisanje dobavljaca nije uspelo.");
+      toast.error(error?.message ?? "Brisanje dobavljača nije uspelo.");
     }
   };
 

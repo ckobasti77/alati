@@ -63,11 +63,7 @@ export function useProductFormFields({ isModalOpen, setExitConfirmOpen, setVaria
   useEffect(() => {
     if (!isModalOpen) return;
     if (form.formState.submitCount === 0 && Object.keys(form.formState.errors).length === 0) return;
-    const target = findFirstErrorPath(form.formState.errors, [
-      ...productFocusOrder,
-      "supplierOffers",
-      "variants",
-    ]);
+    const target = findFirstErrorPath(form.formState.errors, productFocusOrder);
     if (!target) return;
     const timer = window.setTimeout(() => focusProductField(target as string), 0);
     return () => window.clearTimeout(timer);
@@ -230,7 +226,7 @@ export function useProductFormFields({ isModalOpen, setExitConfirmOpen, setVaria
 
   const handleAddSupplierOffer = (variantId?: string) => {
     if (!suppliers || suppliers.length === 0) {
-      toast.error("Dodaj bar jednog dobavljaca pre dodavanja ponude.");
+      toast.error("Dodaj bar jednog dobavljača pre dodavanja ponude.");
       return;
     }
     const scopedVariantId = resolvedProductType === "variant" ? variantId : undefined;

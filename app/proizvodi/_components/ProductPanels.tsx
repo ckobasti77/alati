@@ -78,9 +78,9 @@ export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingS
                     </div>
                     <div className="space-y-2">
                       {suppliers === undefined ? (
-                        <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
+                        <p className="text-sm text-text-muted">Učitavanje dobavljača...</p>
                       ) : suppliers.length === 0 ? (
-                        <p className="text-sm text-slate-500">Nema dobavljaca. Dodaj Petrit i Menad za pocetak.</p>
+                        <p className="text-sm text-text-muted">Nema dobavljača. Dodaj Petrit i Menad za početak.</p>
                       ) : (
                         suppliers.map((supplier) => {
                           const usageProducts = supplier.usage?.products ?? 0;
@@ -89,12 +89,12 @@ export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingS
                           return (
                             <div
                               key={supplier._id}
-                              className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                              className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2 shadow-sm"
                             >
                               <div>
-                                <p className="text-sm font-semibold text-slate-800">{supplier.name}</p>
-                                <p className="text-xs text-slate-500">
-                                  Proizvodi: {usageProducts} | Narudzbine: {usageOrders}
+                                <p className="text-sm font-semibold text-text">{supplier.name}</p>
+                                <p className="text-xs text-text-muted">
+                                  Proizvodi: {usageProducts} | Narudžbine: {usageOrders}
                                 </p>
                               </div>
                               <div className="flex items-center gap-2">
@@ -127,13 +127,13 @@ export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingS
         <div className="space-y-3">
           <SegmentedControl ariaLabel="Slike za ubacivanje" fullWidth columns={3} value={inboxView} onChange={setInboxView} options={inboxFilters} />
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-sm text-slate-600">
-                        Dodaj vise slika, pregledaj ih u punoj velicini i obrisi kada ih povezes sa proizvodom. Trenutno gledas{" "}
+                      <div className="text-sm text-text-muted">
+                        Dodaj više slika, pregledaj ih u punoj veličini i obriši kada ih povežeš sa proizvodom. Trenutno gledaš{" "}
                         {inboxView === "withPurchasePrice"
                           ? "slike sa nabavnom cenom."
                           : inboxView === "withoutPurchasePrice"
                             ? "slike bez nabavne cene."
-                            : "slike oznacene da se ne ubacuju."}
+                            : "slike označene da se ne ubacuju."}
                       </div>
                       <div className="flex items-center gap-2">
                         <input
@@ -158,9 +158,9 @@ export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingS
                       </div>
                     </div>
                     {inboxImages === undefined ? (
-                      <p className="text-sm text-slate-500">Ucitavanje slika...</p>
+                      <p className="text-sm text-text-muted">Učitavanje slika...</p>
                     ) : inboxList.length === 0 ? (
-                      <p className="text-sm text-slate-500">{inboxEmptyMessage}</p>
+                      <p className="text-sm text-text-muted">{inboxEmptyMessage}</p>
                     ) : (
                       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                         {inboxList.map((image, index) => {
@@ -168,12 +168,12 @@ export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingS
                           return (
                             <div
                               key={image._id}
-                              className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
+                              className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-surface-2 shadow-sm"
                               onContextMenu={(event) => handleInboxContextMenu(event, image._id)}
                             >
                               <button
                                 type="button"
-                                className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow transition hover:bg-white md:hidden"
+                                className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full bg-surface/90 text-text shadow transition hover:bg-surface md:hidden"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   handleInboxContextMenu(event, image._id);
@@ -205,7 +205,7 @@ export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingS
                                   {safeUrl ? (
                                     <button
                                       type="button"
-                                      className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-slate-700 shadow hover:bg-white"
+                                      className="inline-flex items-center justify-center rounded-full bg-surface/95 p-1 text-text shadow hover:bg-surface"
                                       title="Preuzmi"
                                       onClick={(event) => {
                                         event.stopPropagation();
@@ -218,13 +218,13 @@ export function ProductPanels({ newSupplierName, setNewSupplierName, isCreatingS
                                   ) : null}
                                   <button
                                     type="button"
-                                    className="inline-flex items-center justify-center rounded-full bg-white/95 p-1 text-red-600 shadow hover:bg-white"
+                                    className="inline-flex items-center justify-center rounded-full bg-surface/95 p-1 text-danger shadow hover:bg-surface"
                                     onClick={(event) => {
                                       event.stopPropagation();
                                       handleDeleteInboxImage(image._id);
                                     }}
                                     onKeyDown={(event) => event.stopPropagation()}
-                                    title="Obrisi"
+                                    title="Obriši"
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </button>

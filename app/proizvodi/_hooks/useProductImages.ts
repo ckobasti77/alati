@@ -36,7 +36,7 @@ export function useProductImages({ sessionToken, isModalOpen, images, setImages,
       target: { type: "product" } | { type: "variant"; variantId: string } = { type: "product" },
     ) => {
       if (isUploadingImages) {
-        toast.info("Sacekaj da se zavrsi trenutno otpremanje.");
+        toast.info("Sačekaj da se završi trenutno otpremanje.");
         return;
       }
 
@@ -172,7 +172,7 @@ export function useProductImages({ sessionToken, isModalOpen, images, setImages,
 
   const handleOpenVariantPicker = (variantId: string) => {
     if (isUploadingImages) {
-      toast.info("Sacekaj da se zavrsi trenutno otpremanje.");
+      toast.info("Sačekaj da se završi trenutno otpremanje.");
       return;
     }
     const scrollContainer = dialogScrollRef.current;
@@ -187,7 +187,7 @@ export function useProductImages({ sessionToken, isModalOpen, images, setImages,
 
   const handleOpenProductPicker = () => {
     if (isUploadingImages) {
-      toast.info("Sacekaj da se zavrsi trenutno otpremanje.");
+      toast.info("Sačekaj da se završi trenutno otpremanje.");
       return;
     }
     const scrollContainer = dialogScrollRef.current;

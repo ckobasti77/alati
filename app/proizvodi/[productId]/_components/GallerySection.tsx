@@ -65,6 +65,10 @@ type GallerySectionProps = {
 };
 
 type GalleryItem = ReturnType<typeof useProductGalleryManager>["filteredGallery"][number];
+
+/** Posle izmene pozicije fokus se vraća na dugme „#n“ te slike (pločica se možda pomerila). */
+const focusPositionButton = (id: string) =>
+  requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-gallery-id="${CSS.escape(id)}"] [data-position-button]`)?.focus());
 type ConfirmTarget = { kind: "one"; item: GalleryItem } | { kind: "all" } | { kind: "ad" } | null;
 
 /** FB/IG uključivanje slike u objavu: uključeno = akcenat, isključeno = prigušeno (uz aria-pressed). */
@@ -199,8 +203,10 @@ export function GallerySection({ uploadInputId, adUploadInputId, product, isUplo
                       <GripVertical className="size-4 shrink-0 text-text-muted" aria-hidden />
                       <span className="min-w-0 flex-1 truncate text-[13px] text-text">{item.label}</span>
                       {isReorderEditing ? (
-                        <span className="flex items-center gap-1">
+                        // data-nested-layer: Esc u polju zatvara samo editor pozicije, ne ceo Sheet.
+                        <span data-nested-layer className="flex items-center gap-1">
                           <input
+                            autoFocus
                             type="number"
                             inputMode="numeric"
                             min={1}
@@ -212,27 +218,35 @@ export function GallerySection({ uploadInputId, adUploadInputId, product, isUplo
                             onKeyDown={(event) => {
                               if (event.key === "Enter") {
                                 event.preventDefault();
-                                void handleConfirmReorderInput(item);
+                                void handleConfirmReorderInput(item).then(() => focusPositionButton(item.id));
                               }
                               if (event.key === "Escape") {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 handleCancelReorderInput();
+                                focusPositionButton(item.id);
                               }
                             }}
                           />
-                          <IconButton aria-label="Potvrdi poziciju" variant="solid" onClick={() => void handleConfirmReorderInput(item)}>
+                          <IconButton aria-label="Potvrdi poziciju" variant="solid" onClick={() => void handleConfirmReorderInput(item).then(() => focusPositionButton(item.id))}>
                             <Check />
                           </IconButton>
-                          <IconButton aria-label="Odustani od promene pozicije" onClick={handleCancelReorderInput}>
+                          <IconButton
+                            aria-label="Odustani od promene pozicije"
+                            onClick={() => {
+                              handleCancelReorderInput();
+                              focusPositionButton(item.id);
+                            }}
+                          >
                             <X />
                           </IconButton>
                         </span>
                       ) : (
                         <button
                           type="button"
+                          data-position-button
                           onClick={() => handleOpenReorderInput(item)}
-                          aria-label={`Pozicija ${currentPosition} od ${totalInGroup}, promeni`}
+                          aria-label={`#${currentPosition}: pozicija ${currentPosition} od ${totalInGroup}, promeni`}
                           className="num inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl px-2 text-[13px] font-medium text-text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-ring md:h-9 md:min-w-9"
                         >
                           #{currentPosition}
@@ -257,7 +271,7 @@ export function GallerySection({ uploadInputId, adUploadInputId, product, isUplo
                       <button
                         type="button"
                         aria-pressed={fbActive}
-                        aria-label="Facebook objava"
+                        aria-label={`FB objava: ${item.label}`}
                         title={fbActive ? "Ukloni iz FB objave" : "Uključi u FB objavu"}
                         onClick={() => handleImagePublishToggle(item, "publishFb", !fbActive)}
                         className={toggleClass(fbActive)}
@@ -268,7 +282,7 @@ export function GallerySection({ uploadInputId, adUploadInputId, product, isUplo
                       <button
                         type="button"
                         aria-pressed={igActive}
-                        aria-label="Instagram objava"
+                        aria-label={`IG objava: ${item.label}`}
                         title={igActive ? "Ukloni iz IG objave" : "Uključi u IG objavu"}
                         onClick={() => handleImagePublishToggle(item, "publishIg", !igActive)}
                         className={toggleClass(igActive)}

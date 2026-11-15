@@ -31,6 +31,6 @@ export async function POST(request: Request) {
       );
     }
     console.error("Receipt extract failed", error);
-    return jsonResponse({ error: "Neocekivana greska pri ekstrakciji." }, 500);
+    return jsonResponse({ error: "Neočekivana greška pri ekstrakciji." }, 500);
   }
 }

@@ -19,7 +19,7 @@ export function TableHeader({
   ...props
 }: React.HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <thead className={cn("text-[11px] uppercase tracking-wider text-zinc-500", className)} {...props} />
+    <thead className={cn("text-[11px] uppercase tracking-wider text-text-muted", className)} {...props} />
   );
 }
 
@@ -36,7 +36,7 @@ export function TableRow({
 }: React.HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
-      className={cn("border-b border-white/[0.03] transition-colors hover:bg-white/[0.03]", className)}
+      className={cn("border-b border-border transition-colors hover:bg-surface-2", className)}
       {...props}
     />
   );

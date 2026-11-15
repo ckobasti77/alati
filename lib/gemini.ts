@@ -24,7 +24,7 @@ export function geminiModel(): string {
 // Baca VisionUnavailableError za nedostupnost, SyntaxError ako odgovor nije JSON.
 export async function geminiVision(prompt: string, images: string[]): Promise<unknown> {
   const key = process.env.GEMINI_API_KEY?.trim();
-  if (!key) throw new VisionUnavailableError("GEMINI_API_KEY nije podesen u .env.local");
+  if (!key) throw new VisionUnavailableError("GEMINI_API_KEY nije podešen u .env.local");
   const model = geminiModel();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
   const body = {
@@ -48,11 +48,11 @@ export async function geminiVision(prompt: string, images: string[]): Promise<un
     });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new VisionUnavailableError(`Gemini nije dostupan (mreza?): ${reason}`);
+    throw new VisionUnavailableError(`Gemini nije dostupan (mreža?): ${reason}`);
   }
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new VisionUnavailableError(`Gemini greska ${res.status}: ${detail.slice(0, 300)}`);
+    throw new VisionUnavailableError(`Gemini greška ${res.status}: ${detail.slice(0, 300)}`);
   }
 
   const json = (await res.json().catch(() => null)) as {

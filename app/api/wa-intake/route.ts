@@ -83,8 +83,8 @@ async function buildDraft(
 
   const pickup = group.tip === "licno";
   const warnings = [...prices.warnings];
-  if (!fields.phone) warnings.push("Telefon kupca nije procitan — proveri.");
-  if (!pickup && !fields.address) warnings.push("Adresa za slanje nije procitana — proveri.");
+  if (!fields.phone) warnings.push("Telefon kupca nije pročitan — proveri.");
+  if (!pickup && !fields.address) warnings.push("Adresa za slanje nije pročitana — proveri.");
   if (fields.productText && !productHit) warnings.push("Proizvod nije prepoznat u katalogu (ostaje slobodan tekst).");
 
   // Dedup kljuc = PRVA poruka grupe: i posle preseka prozora (overlap) ista
@@ -127,7 +127,7 @@ export async function POST(request: Request) {
     }
     const scope = body?.scope === "kalaba" ? ("kalaba" as const) : ("default" as const);
     if (!CONVEX_URL) {
-      return jsonResponse({ error: "NEXT_PUBLIC_CONVEX_URL nije podesen." }, 500);
+      return jsonResponse({ error: "NEXT_PUBLIC_CONVEX_URL nije podešen." }, 500);
     }
     const convex = new ConvexHttpClient(CONVEX_URL);
 

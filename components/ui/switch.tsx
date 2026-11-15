@@ -24,7 +24,7 @@ export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(({ className, l
       )}
       {...props}
     >
-      <SwitchPrimitive.Thumb className="pointer-events-none block size-5 translate-x-0.5 rounded-full bg-white shadow-sm transition-transform duration-(--duration-fast) data-[state=checked]:translate-x-[18px]" />
+      <SwitchPrimitive.Thumb className="pointer-events-none block size-5 translate-x-0.5 rounded-full bg-accent-fg shadow-sm transition-transform duration-(--duration-fast) data-[state=checked]:translate-x-[18px]" />
     </SwitchPrimitive.Root>
   );
   if (!label) return control;

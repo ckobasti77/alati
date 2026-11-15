@@ -216,7 +216,7 @@ export function useProductFormSubmit({ sessionToken, isKodMajstor, isModalOpen, 
   const publishToSocial = useCallback(
     async (productId: string, options: { publishFb: boolean; publishIg: boolean }) => {
       if (!sessionToken) {
-        toast.error("Nedostaje token za objavu na mrezama.");
+        toast.error("Nedostaje token za objavu na mrežama.");
         return;
       }
       const targets: SocialPlatform[] = [];
@@ -334,7 +334,7 @@ export function useProductFormSubmit({ sessionToken, isKodMajstor, isModalOpen, 
           updatedAt: Date.now(),
           ...payload,
         });
-        toast.success("Proizvod je azuriran.");
+        toast.success("Proizvod je ažuriran.");
       } else {
         const productId = await createProduct(payload);
         toast.success("Proizvod je dodat.");
@@ -349,7 +349,7 @@ export function useProductFormSubmit({ sessionToken, isKodMajstor, isModalOpen, 
       closeModal();
     } catch (error) {
       console.error(error);
-      toast.error("Cuvanje nije uspelo.");
+      toast.error("Čuvanje nije uspelo.");
     }
   };
 

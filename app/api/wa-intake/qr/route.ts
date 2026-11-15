@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   const account = url.searchParams.get("account") ?? "porudzbine";
   if (!isAccount(account)) {
     return NextResponse.json(
-      { error: 'Nepoznat account (dozvoljeno: "porudzbine" ili "papirici").' },
+      { error: 'Nepoznat nalog (dozvoljeno: "porudzbine" ili "papirici").' },
       { status: 400 },
     );
   }

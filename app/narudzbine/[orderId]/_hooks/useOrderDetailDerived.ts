@@ -21,15 +21,15 @@ export function useOrderDetailDerived({ refundPeriodOverview, shippingOwners, or
   const prof = totals?.profit ?? 0;
   const slanjeOwnerLabel =
     order?.slanjeMode === "Posta"
-      ? "Posta - na ime"
+      ? "Pošta - na ime"
       : order?.slanjeMode
-        ? "Aks/Bex - na ciji racun"
-        : "Slanje - na ciji racun";
+        ? "Aks/Bex - na čiji račun"
+        : "Slanje - na čiji račun";
   const slanjeOwnerPlaceholder =
     order?.slanjeMode === "Posta"
       ? "Unesi na ime"
       : order?.slanjeMode
-        ? "Unesi na ciji racun"
+        ? "Unesi na čiji račun"
         : "Izaberi slanje prvo";
   const isAksBexMode = order?.slanjeMode === "Aks" || order?.slanjeMode === "Bex";
   const aksBexOwnerOptions = shippingOwners?.aksBexAccounts ?? [];

@@ -152,7 +152,7 @@ async function fetchPageAccessToken(userToken: string) {
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}?fields=access_token,instagram_business_account&access_token=${userToken}`;
   const data = await fetchJson<{ access_token: string; instagram_business_account?: { id: string } }>(url);
   if (!data.access_token) {
-    throw new Error("Nije moguce dobiti page access token.");
+    throw new Error("Nije moguće dobiti page access token.");
   }
   return {
     pageId,
@@ -245,7 +245,7 @@ async function getPageAccess(adminToken: string) {
   }
 
   if (!pageAccessToken) {
-    throw new Error("Nije moguce dobiti page access token.");
+    throw new Error("Nije moguće dobiti page access token.");
   }
 
   await persistFacebookTokens(adminToken, {
@@ -389,7 +389,7 @@ function parseSchedule(value?: string | null) {
   if (!value) return undefined;
   const ts = Number(new Date(value));
   if (!Number.isFinite(ts) || ts <= Date.now()) {
-    throw new Error("Vreme za zakazivanje mora biti u buducnosti.");
+    throw new Error("Vreme za zakazivanje mora biti u budućnosti.");
   }
   return Math.floor(ts / 1000);
 }
@@ -417,7 +417,7 @@ export async function POST(req: Request) {
       token: body.token,
     });
     if (!product) {
-      return jsonResponse({ error: "Proizvod nije pronadjen." }, 404);
+      return jsonResponse({ error: "Proizvod nije pronađen." }, 404);
     }
 
     const images = sortImages(mergeSocialImages(product as ProductForPosting), body.platform);
@@ -460,6 +460,6 @@ export async function POST(req: Request) {
     return jsonResponse({ error: "Nepoznata platforma." }, 400);
   } catch (error: any) {
     console.error("Social publish failed", error);
-    return jsonResponse({ error: error?.message ?? "Greska pri objavi." }, 500);
+    return jsonResponse({ error: error?.message ?? "Greška pri objavi." }, 500);
   }
 }

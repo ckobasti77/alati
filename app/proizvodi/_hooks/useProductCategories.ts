@@ -118,7 +118,7 @@ export function useProductCategories({ sessionToken, setImageLightbox, setCatego
   const handleCreateCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) {
-      toast.error("Upisi naziv kategorije.");
+      toast.error("Upiši naziv kategorije.");
       return;
     }
     setIsCreatingCategory(true);

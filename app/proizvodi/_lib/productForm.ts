@@ -11,7 +11,7 @@ export const priceField = (label: string) =>
     .refine((value) => {
       const parsed = parsePrice(value);
       return Number.isFinite(parsed) && parsed >= 0;
-    }, `${label} mora biti broj veci ili jednak nuli.`);
+    }, `${label} mora biti broj veći ili jednak nuli.`);
 
 export const variantSchema = z.object({
   id: z.string(),
@@ -25,8 +25,8 @@ export const variantSchema = z.object({
 
 export const supplierOfferSchema = z.object({
   id: z.string().optional(),
-  supplierId: z.string({ message: "Dobavljac je obavezan." }).min(1, "Dobavljac je obavezan."),
-  price: priceField("Cena dobavljaca"),
+  supplierId: z.string({ message: "Dobavljač je obavezan." }).min(1, "Dobavljač je obavezan."),
+  price: priceField("Cena dobavljača"),
   variantId: z.string().optional(),
 });
 
@@ -64,7 +64,7 @@ export const productSchema = z
     if (!variants.some((variant) => variant.isDefault)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Oznaci bar jedan tip kao glavni.",
+        message: "Označi bar jedan tip kao glavni.",
         path: ["variants"],
       });
     }
@@ -108,7 +108,8 @@ export const emptyProductForm = (): ProductFormValues => ({
   variants: [],
 });
 
-export const productFocusOrder: (keyof ProductFormValues)[] = ["kpName", "name", "nabavnaCena", "prodajnaCena", "opisKp", "opisFbInsta"];
+/** Redosled fokusa na prvu grešku: isti kao redosled polja u formi (nazivi → cene → dobavljači → tipovi → opisi). */
+export const productFocusOrder: (keyof ProductFormValues)[] = ["kpName", "name", "nabavnaCena", "prodajnaCena", "supplierOffers", "variants", "opisKp", "opisFbInsta"];
 export const variantFocusOrder: (keyof VariantFormEntry)[] = ["label", "nabavnaCena", "prodajnaCena", "opis"];
 
 export const collectErrorPaths = (node: unknown, prefix = ""): string[] => {

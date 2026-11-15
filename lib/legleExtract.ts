@@ -60,12 +60,12 @@ function postProcessRow(raw: Record<string, unknown>): LegleRow | null {
   if (platilac.toUpperCase().includes("IVAN RISTOVI")) {
     // Model je procitao kolonu "Naziv" (vlasnik naloga) umesto "Platilac".
     platilac = "";
-    warnings.push("Model je procitao vlasnika naloga umesto platioca.");
+    warnings.push("Model je pročitao vlasnika naloga umesto platioca.");
   }
 
   const nalogId = digitsOnly(asString(raw.nalogId));
   if (nalogId && !/^92\d{12}$/.test(nalogId)) {
-    warnings.push("NalogID ne lici na standardni AKS format (14 cifara, pocinje sa 92).");
+    warnings.push("NalogID ne liči na standardni AKS format (14 cifara, počinje sa 92).");
   }
 
   // Prazan red bez ijednog upotrebljivog podatka -> odbaci.
@@ -107,5 +107,5 @@ export async function extractLegle(imageBase64: string): Promise<LegleExtraction
     .map(postProcessRow)
     .filter((row): row is LegleRow => row !== null);
 
-  return { rows, warning: rows.length === 0 ? "Nijedan red nije procitan sa specifikacije." : undefined };
+  return { rows, warning: rows.length === 0 ? "Nijedan red nije pročitan sa specifikacije." : undefined };
 }

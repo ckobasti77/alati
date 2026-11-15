@@ -26,7 +26,7 @@ export function useProductDetailFields({ sessionToken, isKodMajstor, productRef,
     }
     const latestProduct = productRef.current;
     if (!latestProduct) {
-      toast.error("Proizvod nije ucitan.");
+      toast.error("Proizvod nije učitan.");
       return;
     }
     try {
@@ -53,7 +53,7 @@ export function useProductDetailFields({ sessionToken, isKodMajstor, productRef,
           await applyUpdate((current) => ({ ...current, [publishField]: true }));
         } catch (error) {
           console.error(error);
-          toast.error("Objava je poslata, ali cuvanje oznake nije uspelo.");
+          toast.error("Objava je poslata, ali čuvanje oznake nije uspelo.");
         }
       }
     } catch (error: any) {

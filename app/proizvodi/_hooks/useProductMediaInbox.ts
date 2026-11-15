@@ -66,7 +66,7 @@ export function useProductMediaInbox({ sessionToken, adImage, setAdImage, setIma
         fileType: file.type,
         uploadedAt: Date.now(),
       });
-      toast.success("Glavna slika sacuvana.");
+      toast.success("Glavna slika sačuvana.");
     } catch (error) {
       console.error(error);
       toast.error("Dodavanje glavne slike nije uspelo.");
@@ -97,7 +97,7 @@ export function useProductMediaInbox({ sessionToken, adImage, setAdImage, setIma
     async (files: FileList | null, options?: { status?: InboxImageStatus }) => {
       if (!files || files.length === 0) return;
       if (isUploadingInboxImages) {
-        toast.info("Otpremanje slika je vec u toku.");
+        toast.info("Otpremanje slika je već u toku.");
         return;
       }
       const imagesOnly = Array.from(files).filter(
@@ -167,7 +167,7 @@ export function useProductMediaInbox({ sessionToken, adImage, setAdImage, setIma
       toast.success("Slika je obrisana.");
     } catch (error) {
       console.error(error);
-      toast.error("Nije moguce obrisati sliku.");
+      toast.error("Nije moguće obrisati sliku.");
     }
   };
 
@@ -176,14 +176,14 @@ export function useProductMediaInbox({ sessionToken, adImage, setAdImage, setIma
       await updateInboxImage({ token: sessionToken, id, status });
       toast.success(
         status === "skip"
-          ? "Slika oznacena za ne ubacivati."
+          ? "Slika označena za ne ubacivati."
           : status === "withoutPurchasePrice"
-            ? "Slika prebacena u Bez nabavne."
-            : "Slika vracena u Sa nabavnom.",
+            ? "Slika prebačena u Bez nabavne."
+            : "Slika vraćena u Sa nabavnom.",
       );
     } catch (error) {
       console.error(error);
-      toast.error("Nije moguce promeniti grupu slike.");
+      toast.error("Nije moguće promeniti grupu slike.");
     } finally {
       setInboxContextMenu(null);
     }

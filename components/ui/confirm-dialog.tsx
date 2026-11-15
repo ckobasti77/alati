@@ -84,7 +84,7 @@ export function ConfirmDialog({
                 onClick={confirm}
                 className={cn(
                   buttonClass,
-                  tone === "danger" ? "bg-danger-solid text-white hover:bg-danger-solid/90" : "bg-accent text-accent-fg hover:bg-accent-hover",
+                  tone === "danger" ? "bg-danger-solid text-accent-fg hover:bg-danger-solid/90" : "bg-accent text-accent-fg hover:bg-accent-hover",
                 )}
               >
                 {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}

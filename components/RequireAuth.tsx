@@ -25,7 +25,7 @@ export function RequireAuth({ children, adminOnly = false }: { children: ReactNo
 
   if (status === "checking") {
     return (
-      <div className="flex items-center justify-center py-10 text-slate-600">
+      <div className="flex items-center justify-center py-10 text-text-muted">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
         Provera naloga...
       </div>

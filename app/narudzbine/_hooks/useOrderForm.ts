@@ -87,15 +87,15 @@ export function useOrderForm({ orderScope, searchParams, sessionToken, products,
   const showShippingFields = !pickupValue;
   const slanjeOwnerLabel =
     slanjeModeValue === "Posta"
-      ? "Posta - na ime"
+      ? "Pošta - na ime"
       : slanjeModeValue
-        ? "Aks - na ciji racun"
-        : "Slanje - na ciji racun";
+        ? "Aks - na čiji račun"
+        : "Slanje - na čiji račun";
   const slanjeOwnerPlaceholder =
     slanjeModeValue === "Posta"
       ? "Unesi na ime"
       : slanjeModeValue
-        ? "Unesi na ciji racun"
+        ? "Unesi na čiji račun"
         : "Izaberi slanje prvo";
   const slanjeOwnerOptions = useMemo<ShippingOwnerOption[]>(() => {
     if (pickupValue) return [];

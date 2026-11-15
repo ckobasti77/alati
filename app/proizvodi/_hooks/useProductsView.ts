@@ -181,13 +181,13 @@ export function useProductsView({ archiveView, sortBy, productSearch, productFee
       ? "Nema slika sa nabavnom cenom. Dodaj ih ili prebaci filter."
       : inboxView === "withoutPurchasePrice"
         ? "Nema slika bez nabavne cene. Dodaj ih ili prebaci filter."
-        : "Nema oznacenih za ignorisanje. Prebaci neku sliku u ovu grupu.";
+        : "Nema označenih za ignorisanje. Prebaci neku sliku u ovu grupu.";
   const emptyProductsMessage =
     items.length === 0
       ? archiveView === "archived"
         ? "Nema arhiviranih proizvoda."
         : "Dodaj prvi proizvod."
-      : "Nema proizvoda koji odgovaraju pretrazi.";
+      : "Nema proizvoda koji odgovaraju pretraži.";
 
   useEffect(() => {
     setInboxContextMenu(null);

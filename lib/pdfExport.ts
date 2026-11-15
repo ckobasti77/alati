@@ -399,7 +399,7 @@ export const createOrdersTablePdfFile = async ({
     { header: "Prodajno", subheader: `${moneyNumber(totals.prodajno)} EUR`, width: 68, align: "right", getValue: (row) => row.prodajno },
     { header: "Profit za povrat", subheader: `${moneyNumber(totals.profit)} EUR`, width: 72, align: "right", getValue: (row) => row.profit },
     { header: "Povrat", subheader: `${moneyNumber(totals.povrat)} EUR`, width: 68, align: "right", getValue: (row) => row.povrat },
-    { header: "Broj porudzbine", width: 80, getValue: (row) => row.shipmentNumber },
+    { header: "Broj porudžbine", width: 80, getValue: (row) => row.shipmentNumber },
   ];
 
   const canvases: Array<{ canvas: HTMLCanvasElement; pageWidth: number; pageHeight: number }> = [];
@@ -466,7 +466,7 @@ export const createOrdersTablePdfFile = async ({
   addPage();
 
   if (rows.length === 0) {
-    drawText(ctx!, "Nema narudzbina za izvoz.", margin, y + 20, { size: 11, weight: "600", color: "#64748b" });
+    drawText(ctx!, "Nema narudžbina za izvoz.", margin, y + 20, { size: 11, weight: "600", color: "#64748b" });
   } else {
     rows.forEach((row, rowIndex) => {
       const lineHeight = 9.5;
@@ -537,7 +537,7 @@ export const createOrderDetailPdfFile = async ({
   canvases.push({ canvas, pageWidth: page.width, pageHeight: page.height });
 
   let y = margin;
-  drawText(ctx, "Narudzbina", margin, y, { size: 22, weight: "700" });
+  drawText(ctx, "Narudžbina", margin, y, { size: 22, weight: "700" });
   drawText(ctx, createdAt, page.width - margin, y + 6, { size: 10, weight: "600", color: "#64748b", align: "right" });
   y += 34;
   const titleLines = wrapText(ctx, orderTitle, page.width - margin * 2, 12, "600");
@@ -585,7 +585,7 @@ export const createOrderDetailPdfFile = async ({
   drawRow("Ime i prezime kupca", [{ text: customerName || "-" }]);
   drawRow("Finansije", [
     { text: `Nabavna: ${nabavno} - Transport: ${transport} - Prodajna: ${prodajno} - ` },
-    { text: `Cista zarada (100%): ${cleanProfit}`, bold: true, color: cleanProfit.trim().startsWith("-") ? "#dc2626" : "#0f172a" },
+    { text: `Čista zarada (100%): ${cleanProfit}`, bold: true, color: cleanProfit.trim().startsWith("-") ? "#dc2626" : "#0f172a" },
   ]);
   drawRow("Povrat", [
     { text: `${refund} - Profit za povrat: ${refundProfit}`, bold: true },

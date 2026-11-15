@@ -145,7 +145,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
           <div className="space-y-3">
             <div>
               <FormLabel>Slike</FormLabel>
-              <p className="text-sm text-slate-500">Dodaj vise slika i oznaci jednu kao glavnu.</p>
+              <p className="text-sm text-text-muted">Dodaj više slika i označi jednu kao glavnu.</p>
             </div>
             <div
               onDragEnter={handleDragEnter}
@@ -154,8 +154,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               onDrop={handleDropFiles}
               className={`relative overflow-hidden rounded-2xl border-2 border-dashed transition duration-200 ${
                 isDraggingFiles
-                  ? "border-blue-500/80 bg-gradient-to-br from-blue-50 via-white to-indigo-50 shadow-[0_22px_60px_-34px_rgba(37,99,235,0.55)]"
-                  : "border-slate-200/80 bg-slate-50/60 hover:border-slate-300 hover:shadow-[0_16px_50px_-40px_rgba(15,23,42,0.35)]"
+                  ? "ring-1 ring-inset ring-accent bg-accent-soft"
+                  : "border-border bg-surface-2/60 hover:border-border-strong hover:shadow-[0_16px_50px_-40px_rgba(15,23,42,0.35)]"
               }`}
             >
               <input
@@ -171,46 +171,46 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 ref={productUploadInputRef}
               />
               <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3 text-slate-700">
-                  <div className="rounded-full bg-blue-100 p-3 text-blue-600 shadow-inner shadow-blue-200">
+                <div className="flex items-center gap-3 text-text">
+                  <div className="rounded-full bg-accent-soft p-3 text-accent-text shadow-inner">
                     <CloudUpload className="h-6 w-6" />
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-semibold">Prevuci ili izaberi slike</p>
-                    <p className="text-xs text-slate-500">Podrzani su PNG, JPG, WebP i ostali standardni formati.</p>
-                    {isUploadingImages && <p className="text-xs font-semibold text-blue-600">Otpremanje...</p>}
+                    <p className="text-xs text-text-muted">Podržani su PNG, JPG, WebP i ostali standardni formati.</p>
+                    {isUploadingImages && <p className="text-xs font-semibold text-accent-text">Otpremanje...</p>}
                   </div>
                 </div>
                 <div className="flex flex-col items-center gap-2 sm:items-end">
                   <Button
                     type="button"
                     onClick={handleOpenProductPicker}
-                    className={`rounded-full px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-600/30 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+                    className={`rounded-full px-4 py-2 text-xs font-semibold text-accent-fg shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
                       isUploadingImages
-                        ? "bg-slate-400 opacity-70"
-                        : "bg-blue-600 hover:-translate-y-[1px] hover:bg-blue-700"
+                        ? "bg-text-muted opacity-70"
+                        : "bg-accent hover:-translate-y-[1px] hover:bg-accent"
                     }`}
                     disabled={isUploadingImages}
                   >
                     Izaberi fajlove
                   </Button>
-                  <div className="flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 ring-1 ring-slate-200">
-                    <Images className="h-4 w-4 text-slate-400" />
+                  <div className="flex items-center gap-2 rounded-full bg-surface/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted ring-1 ring-border">
+                    <Images className="h-4 w-4 text-text-muted" />
                     Drag & Drop
                   </div>
                 </div>
               </div>
               {isDraggingFiles && (
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-500/10 via-indigo-500/12 to-purple-500/20">
-                  <div className="absolute inset-4 rounded-xl border border-blue-500/40 shadow-[0_0_0_1px_rgba(37,99,235,0.25)] blur-[0.5px]" />
+                <div className="pointer-events-none absolute inset-0 bg-accent-soft">
+                  <div className="absolute inset-4 rounded-xl ring-1 ring-inset ring-accent blur-[0.5px]" />
                 </div>
               )}
             </div>
             {!isUploadingImages && (
-              <p className="text-xs text-slate-500">Prevuci slike iz Windows foldera ili klikni na dugme.</p>
+              <p className="text-xs text-text-muted">Prevuci slike iz Windows foldera ili klikni na dugme.</p>
             )}
             {images.length === 0 ? (
-              <p className="text-sm italic text-slate-500">Jos nema dodatih slika.</p>
+              <p className="text-sm italic text-text-muted">Još nema dodatih slika.</p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 {images.map((image) => {
@@ -218,9 +218,9 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                   const fbActive = image.publishFb ?? true;
                   const igActive = image.publishIg ?? true;
                   return (
-                    <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
+                    <div key={image.storageId} className="space-y-2 rounded-lg border border-border p-3">
                       <div
-                        className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
+                        className={`relative aspect-video overflow-hidden rounded-md bg-surface-2 ${
                           resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
                         }`}
                         onClick={() => handleOpenImageGroup(images, image.storageId)}
@@ -229,7 +229,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={resolvedUrl} alt={image.fileName ?? "Product image"} className="h-full w-full object-cover" />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
+                          <div className="flex h-full w-full items-center justify-center text-xs uppercase text-text-muted">
                             Bez pregleda
                           </div>
                         )}
@@ -250,8 +250,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                               type="button"
                               className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
                                 fbActive
-                                  ? "bg-blue-600 text-white hover:bg-blue-700"
-                                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                  ? "bg-accent text-accent-fg hover:bg-accent-hover"
+                                  : "bg-surface text-text ring-1 ring-border hover:bg-surface-2"
                               }`}
                               onClick={() => handleToggleImagePublish(image.storageId, "publishFb", !fbActive)}
                             >
@@ -262,8 +262,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                               type="button"
                               className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
                                 igActive
-                                  ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
-                                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                  ? "bg-accent text-accent-fg hover:bg-accent-hover"
+                                  : "bg-surface text-text ring-1 ring-border hover:bg-surface-2"
                               }`}
                               onClick={() => handleToggleImagePublish(image.storageId, "publishIg", !igActive)}
                             >
@@ -276,7 +276,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                           Ukloni
                         </Button>
                       </div>
-                      {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
+                      {image.fileName && <p className="truncate text-xs text-text-muted">{image.fileName}</p>}
                     </div>
                   );
                 })}
@@ -286,8 +286,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
           <div className="space-y-3">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <FormLabel>Glavna slika za drustvene mreze</FormLabel>
-                <p className="text-sm text-slate-500">Prva fotka koja ide uz FB / Instagram objave.</p>
+                <FormLabel>Glavna slika za društvene mreže</FormLabel>
+                <p className="text-sm text-text-muted">Prva fotka koja ide uz FB / Instagram objave.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <input
@@ -312,7 +312,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                   {adImage ? "Zameni sliku" : "Dodaj glavnu sliku"}
                 </Button>
                 {adImage ? (
-                  <Button type="button" size="sm" variant="ghost" className="gap-1 text-red-600" onClick={handleRemoveAdImage}>
+                  <Button type="button" size="sm" variant="ghost" className="gap-1 text-danger" onClick={handleRemoveAdImage}>
                     <X className="h-4 w-4" />
                     Ukloni
                   </Button>
@@ -321,7 +321,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
             </div>
             <div
               className={`relative overflow-hidden rounded-xl border border-dashed transition ${
-                isAdDragActive ? "border-blue-400 bg-blue-50/60" : "border-slate-200 bg-slate-50"
+                isAdDragActive ? "ring-1 ring-inset ring-accent bg-accent-soft" : "border-border bg-surface-2"
               }`}
               onDragEnter={handleAdDragOver}
               onDragOver={handleAdDragOver}
@@ -332,41 +332,41 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 const previewUrl = adImage?.previewUrl ?? adImage?.url;
                 if (previewUrl) {
                   return (
-                    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white/60">
+                    <div className="relative overflow-hidden rounded-xl border border-border bg-surface/60">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={previewUrl}
-                        alt="Glavna slika za drustvene mreze"
+                        alt="Glavna slika za društvene mreže"
                         className="h-[200px] w-full object-cover sm:h-[260px]"
                       />
-                      <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow">
-                        <Tag className="h-3 w-3 text-slate-500" />
-                        Glavna za drustvene mreze
+                      <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-surface/90 px-3 py-1 text-[11px] font-semibold text-text shadow">
+                        <Tag className="h-3 w-3 text-text-muted" />
+                        Glavna za društvene mreže
                       </div>
-                      <div className="absolute right-3 top-3 hidden gap-2 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow sm:inline-flex">
-                        <CloudUpload className="h-3.5 w-3.5 text-blue-600" />
-                        Prevuci novu fotku da zamenis
+                      <div className="absolute right-3 top-3 hidden gap-2 rounded-full bg-surface/90 px-3 py-1 text-[11px] font-semibold text-text shadow sm:inline-flex">
+                        <CloudUpload className="h-3.5 w-3.5 text-accent-text" />
+                        Prevuci novu fotku da zameniš
                       </div>
                     </div>
                   );
                 }
                 return (
                   <div className="flex min-h-[160px] items-center justify-between gap-3 p-4 sm:p-6">
-                    <div className="flex items-center gap-3 text-slate-700">
-                      <div className="rounded-full bg-blue-100 p-3 text-blue-600 shadow-inner shadow-blue-200">
+                    <div className="flex items-center gap-3 text-text">
+                      <div className="rounded-full bg-accent-soft p-3 text-accent-text shadow-inner">
                         <Images className="h-5 w-5" />
                       </div>
                       <div className="space-y-0.5">
                         <p className="text-sm font-semibold">Dodaj glavnu sliku</p>
-                        <p className="text-xs text-slate-500">Prevuci je ovde ili klikni na dugme.</p>
+                        <p className="text-xs text-text-muted">Prevuci je ovde ili klikni na dugme.</p>
                       </div>
                     </div>
-                    <div className="hidden text-xs text-slate-500 sm:block">Koristi se kao prva na FB/IG.</div>
+                    <div className="hidden text-xs text-text-muted sm:block">Koristi se kao prva na FB/IG.</div>
                   </div>
                 );
               })()}
               {isAdDragActive ? (
-                <div className="pointer-events-none absolute inset-0 rounded-xl border-2 border-blue-400/60 bg-blue-100/50" />
+                <div className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-inset ring-accent bg-accent-soft" />
               ) : null}
             </div>
           </div>
@@ -413,15 +413,15 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                     {hasSupplierOffers ? (
                       <div className="flex flex-wrap gap-2">
                         {normalizedSupplierOffers.map((offer) => {
-                          const supplierName = supplierMap.get(offer.supplierId)?.name ?? "Dobavljac";
+                          const supplierName = supplierMap.get(offer.supplierId)?.name ?? "Dobavljač";
                           const isBest = bestFormOffer && offer.price === bestFormOffer.price;
                           return (
                             <span
                               key={`${offer.supplierId}-${offer.variantId ?? "base"}`}
                               className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[12px] font-semibold shadow ${
                                 isBest
-                                  ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200"
-                                  : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
+                                  ? "bg-success-soft text-success ring-1 ring-inset ring-success/30"
+                                  : "bg-surface-2 text-text ring-1 ring-border"
                               }`}
                             >
                               {supplierName}
@@ -460,24 +460,24 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
             <FormField
               name="pickupAvailable"
               render={({ field }) => (
-                <FormItem className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2">
+                <FormItem className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
                   <Switch
                     id="pickup-available"
                     checked={!!field.value}
                     onCheckedChange={(checked) => field.onChange(checked)}
                   />
                   <FormLabel htmlFor="pickup-available" className="m-0 flex min-h-11 flex-1 cursor-pointer items-center">
-                    Licno preuzimanje
+                    Lično preuzimanje
                   </FormLabel>
                 </FormItem>
               )}
             />
           </div>
-          <div className="space-y-3 rounded-lg border border-blue-100 bg-slate-50/60 px-3 py-3">
+          <div className="space-y-3 rounded-lg border border-border bg-surface-2/60 px-3 py-3">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <FormLabel>Dobavljaci i nabavne ponude</FormLabel>
-                <p className="text-xs text-slate-600">Najniza ponuda postaje prava nabavna cena proizvoda.</p>
+                <FormLabel>Dobavljači i nabavne ponude</FormLabel>
+                <p className="text-xs text-text-muted">Najniža ponuda postaje prava nabavna cena proizvoda.</p>
               </div>
               {!showSupplierForm && supplierOffersField.length === 0 ? (
                 <Button
@@ -488,7 +488,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                   disabled={suppliers === undefined}
                 >
                   <Plus className="h-4 w-4" />
-                  Dodaj dobavljaca
+                  Dodaj dobavljača
                 </Button>
               ) : (
                 <Button
@@ -499,21 +499,21 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                   disabled={suppliers === undefined}
                 >
                   <Plus className="h-4 w-4" />
-                  Dodaj dobavljaca
+                  Dodaj dobavljača
                 </Button>
               )}
             </div>
             {suppliers === undefined ? (
-              <p className="text-sm text-slate-500">Ucitavanje dobavljaca...</p>
+              <p className="text-sm text-text-muted">Učitavanje dobavljača...</p>
             ) : suppliers.length === 0 ? (
-              <p className="text-sm text-slate-500">
-                Dodaj dobavljace u kartici ispod, pa ih povezi sa proizvodima.
+              <p className="text-sm text-text-muted">
+                Dodaj dobavljače u kartici ispod, pa ih poveži sa proizvodima.
               </p>
             ) : showSupplierForm || supplierOffersField.length > 0 ? (
               <div className="space-y-2">
                 {supplierOffersField.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-blue-200 bg-white px-3 py-2 text-sm text-slate-600">
-                    Nema vezanih dobavljaca. Najnizu cenu iz ponude dobavljaca cuvamo kao nabavnu cenu.
+                  <div className="rounded-md border border-dashed border-border bg-surface px-3 py-2 text-sm text-text-muted">
+                    Nema vezanih dobavljača. Najnižu cenu iz ponude dobavljača čuvamo kao nabavnu cenu.
                   </div>
                 ) : (
                   supplierOffersField.map((offer, index) => {
@@ -522,11 +522,11 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                     return (
                       <div
                         key={rowId}
-                        className="rounded-md border border-blue-200 bg-white px-3 py-3 shadow-sm ring-1 ring-blue-50"
+                        className="rounded-md border border-border bg-surface px-3 py-3 shadow-sm ring-1 ring-accent-soft"
                       >
                         <div className="grid gap-3 md:grid-cols-12 md:items-end">
                           <div className="md:col-span-4 space-y-1">
-                            <FormLabel className="text-xs text-slate-500">Dobavljac</FormLabel>
+                            <FormLabel className="text-xs text-text-muted">Dobavljač</FormLabel>
                             <Select
                               value={offer.supplierId}
                               onValueChange={(value) => handleUpdateSupplierOffer(rowId, "supplierId", value)}
@@ -535,7 +535,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                                 name={`${pathBase}.supplierId`}
                                 data-focus-target={`${pathBase}.supplierId`}
                               >
-                                <SelectValue placeholder="Izaberi dobavljaca" />
+                                <SelectValue placeholder="Izaberi dobavljača" />
                               </SelectTrigger>
                               <SelectContent>
                                 {suppliers.map((supplier) => (
@@ -548,7 +548,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                           </div>
                           {resolvedProductType === "variant" ? (
                             <div className="md:col-span-4 space-y-1">
-                              <FormLabel className="text-xs text-slate-500">Vazi za</FormLabel>
+                              <FormLabel className="text-xs text-text-muted">Važi za</FormLabel>
                               <Select
                                 value={offer.variantId ?? "base"}
                                 onValueChange={(value) =>
@@ -575,7 +575,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                           <div
                             className={`space-y-1 ${resolvedProductType === "variant" ? "md:col-span-3" : "md:col-span-6"}`}
                           >
-                            <FormLabel className="text-xs text-slate-500">Cena (EUR)</FormLabel>
+                            <FormLabel className="text-xs text-text-muted">Cena (EUR)</FormLabel>
                             <Input
                               name={`${pathBase}.price`}
                               value={offer.price}
@@ -597,13 +597,13 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               </div>
             ) : null}
             {bestFormOffer ? (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                Najniza nabavna: {formatCurrency(bestFormOffer.price, "EUR")}{" "}
+              <div className="rounded-md bg-success-soft ring-1 ring-inset ring-success/30 px-3 py-2 text-sm text-success">
+                Najniža nabavna: {formatCurrency(bestFormOffer.price, "EUR")}{" "}
                 {bestFormSupplierName ? `(${bestFormSupplierName})` : ""}
               </div>
             ) : (
-              <p className="text-xs text-slate-500">
-                Kada dodelis dobavljaca, ova cena ce biti oznacena kao prava nabavna cena.
+              <p className="text-xs text-text-muted">
+                Kada dodeliš dobavljača, ova cena će biti označena kao prava nabavna cena.
               </p>
             )}
           </div>
@@ -615,7 +615,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 variant={resolvedProductType === "single" ? "default" : "outline"}
                 onClick={() => handleProductTypeChange("single")}
               >
-                Obican proizvod
+                Običan proizvod
               </Button>
               <Button
                 type="button"
@@ -626,8 +626,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 Tipski proizvod
               </Button>
             </div>
-            <p className="text-sm text-slate-500">
-              Obican ima jednu cenu i KP / FB opis, tipski moze da ima vise tipova sa sopstvenim cenama i opisima.
+            <p className="text-sm text-text-muted">
+              Običan ima jednu cenu i KP / FB opis, tipski može da ima više tipova sa sopstvenim cenama i opisima.
             </p>
           </div>
           {resolvedProductType === "variant" ? (
@@ -635,7 +635,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <FormLabel>Tipovi proizvoda</FormLabel>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-text-muted">
                     Svaki tip ima svoje cene i opis. Glavni tip se koristi kao podrazumevani za liste i kalkulacije.
                   </p>
                 </div>
@@ -653,7 +653,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={handleAddVariant}>
-                      Dodaj jos tip
+                      Dodaj još tip
                     </Button>
                     <Button type="button" variant="ghost" size="sm" onClick={handleClearVariants}>
                       Vrati na jednostavni
@@ -662,13 +662,13 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                 )}
               </div>
               {normalizedVariants.length === 0 ? (
-                <p className="text-sm text-slate-500">Dodaj bar jedan tip da bi sacuvao tipski proizvod.</p>
+                <p className="text-sm text-text-muted">Dodaj bar jedan tip da bi sačuvao tipski proizvod.</p>
               ) : (
                 <div className="space-y-4">
                   {normalizedVariants.map((variant, index) => (
-                    <div key={variant.id} className="space-y-3 rounded-lg border border-slate-200 p-4">
+                    <div key={variant.id} className="space-y-3 rounded-lg border border-border p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-slate-600">Tip #{index + 1}</span>
+                        <span className="text-sm font-semibold text-text-muted">Tip #{index + 1}</span>
                         <div className="flex items-center gap-3 text-xs">
                           <label className="-mx-1 flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-1 font-medium text-text-muted md:min-h-8">
                             <input
@@ -699,7 +699,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                         render={({ field, fieldState }) => (
                           <FormItem>
                             <FormLabel>Opis tipa (opciono)</FormLabel>
-                            <Textarea rows={2} placeholder="npr. Bela boja, velicina M" autoResize {...field} />
+                            <Textarea rows={2} placeholder="npr. Bela boja, veličina M" autoResize {...field} />
                             <FormMessage>{fieldState.error?.message}</FormMessage>
                           </FormItem>
                         )}
@@ -751,7 +751,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                           <Button
                             type="button"
                             size="sm"
-                            className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-slate-900/20 transition hover:bg-slate-800"
+                            className="rounded-full bg-text px-3 py-1.5 text-xs font-semibold text-surface shadow-sm transition hover:bg-text/90"
                             disabled={isUploadingImages}
                             onClick={() => handleOpenVariantPicker(variant.id)}
                             aria-controls={`variant-upload-${variant.id}`}
@@ -785,9 +785,9 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                             const fbActive = image.publishFb ?? true;
                             const igActive = image.publishIg ?? true;
                             return (
-                              <div key={image.storageId} className="space-y-2 rounded-lg border border-slate-200 p-3">
+                              <div key={image.storageId} className="space-y-2 rounded-lg border border-border p-3">
                                 <div
-                                  className={`relative aspect-video overflow-hidden rounded-md bg-slate-100 ${
+                                  className={`relative aspect-video overflow-hidden rounded-md bg-surface-2 ${
                                     resolvedUrl ? "cursor-pointer transition hover:opacity-95" : ""
                                   }`}
                                   onClick={() => handleOpenImageGroup(variantImages[variant.id] ?? [], image.storageId)}
@@ -796,7 +796,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img src={resolvedUrl} alt={image.fileName ?? "Variant image"} className="h-full w-full object-cover" />
                                   ) : (
-                                    <div className="flex h-full w-full items-center justify-center text-xs uppercase text-slate-400">
+                                    <div className="flex h-full w-full items-center justify-center text-xs uppercase text-text-muted">
                                       Bez pregleda
                                     </div>
                                   )}
@@ -817,8 +817,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                                         type="button"
                                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
                                           fbActive
-                                            ? "bg-blue-600 text-white hover:bg-blue-700"
-                                            : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                            ? "bg-accent text-accent-fg hover:bg-accent-hover"
+                                            : "bg-surface text-text ring-1 ring-border hover:bg-surface-2"
                                         }`}
                                         onClick={() =>
                                           handleToggleVariantImagePublish(variant.id, image.storageId, "publishFb", !fbActive)
@@ -831,8 +831,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                                         type="button"
                                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm transition ${
                                           igActive
-                                            ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600"
-                                            : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                            ? "bg-accent text-accent-fg hover:bg-accent-hover"
+                                            : "bg-surface text-text ring-1 ring-border hover:bg-surface-2"
                                         }`}
                                         onClick={() =>
                                           handleToggleVariantImagePublish(variant.id, image.storageId, "publishIg", !igActive)
@@ -852,13 +852,13 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                                     Ukloni
                                   </Button>
                                 </div>
-                                {image.fileName && <p className="truncate text-xs text-slate-500">{image.fileName}</p>}
+                                {image.fileName && <p className="truncate text-xs text-text-muted">{image.fileName}</p>}
                               </div>
                             );
                           })}
                         </div>
                       ) : (
-                        <p className="text-xs text-slate-500">Jos nema slika za ovaj tip.</p>
+                        <p className="text-xs text-text-muted">Još nema slika za ovaj tip.</p>
                       )}
                     </div>
                   </div>
@@ -872,11 +872,11 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               ) : null}
             </div>
           ) : (
-            <div className="space-y-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="space-y-2 rounded-lg border border-dashed border-border bg-surface-2 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <FormLabel>Tipovi proizvoda</FormLabel>
-                  <p className="text-sm text-slate-500">Dodaj tip i proizvod se automatski prebacuje na tipski.</p>
+                  <p className="text-sm text-text-muted">Dodaj tip i proizvod se automatski prebacuje na tipski.</p>
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={handleAddVariantFromSingle}>
                   Dodaj tip
@@ -886,21 +886,21 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
           )}
             <div className="space-y-2" ref={categoryDropdownRef}>
               <FormLabel>Kategorije</FormLabel>
-              <p className="text-sm text-slate-500">Biraj postojecu ili napravi novu na licu mesta.</p>
+              <p className="text-sm text-text-muted">Biraj postojeću ili napravi novu na licu mesta.</p>
               <div className="flex flex-wrap gap-2">
                 {selectedCategories.length === 0 ? (
-                  <span className="text-xs text-slate-500">Nema izabranih kategorija.</span>
+                  <span className="text-xs text-text-muted">Nema izabranih kategorija.</span>
               ) : (
                 selectedCategories.map((category) => (
                   <span
                     key={category._id}
-                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700"
+                    className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-sm font-medium text-text"
                   >
-                    <Tag className="h-4 w-4 text-slate-500" />
+                    <Tag className="h-4 w-4 text-text-muted" />
                     {category.name}
                     <button
                       type="button"
-                      className="rounded-full p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+                      className="rounded-full p-1 text-text-muted hover:bg-surface-3 hover:text-text"
                       onClick={() => handleRemoveCategory(category._id)}
                       title="Ukloni kategoriju"
                     >
@@ -913,7 +913,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
             <div className="relative">
               <Input
                 value={categorySearch}
-                placeholder={categories === undefined ? "Ucitavanje kategorija..." : "Pretrazi ili dodaj kategoriju"}
+                placeholder={categories === undefined ? "Učitavanje kategorija..." : "Pretraži ili dodaj kategoriju"}
                 disabled={categories === undefined}
                 onChange={(event) => {
                   setCategorySearch(event.target.value);
@@ -934,14 +934,14 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               />
                 {categoryMenuOpen && (
                   <div
-                    className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg"
+                    className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-border bg-surface shadow-lg"
                     onMouseDown={(event) => event.stopPropagation()}
                   >
-                  <div className="border-b border-slate-100 bg-slate-50/60">
+                  <div className="border-b border-border bg-surface-2/60">
                     {isAddingCategory ? (
                       <div className="flex items-center gap-2 px-3 py-2">
                         <div
-                          className="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-white text-slate-500 hover:border-blue-400"
+                          className="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-border-strong bg-surface text-text-muted hover:border-border-strong"
                           onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
@@ -987,7 +987,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                             ) : (
                               <Check className="h-4 w-4" />
                             )}
-                            Sacuvaj
+                            Sačuvaj
                           </Button>
                           <Button
                             type="button"
@@ -1005,7 +1005,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                     ) : (
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-accent-text hover:bg-accent-soft"
                         onMouseDown={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
@@ -1019,9 +1019,9 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                     )}
                   </div>
                   {categories === undefined ? (
-                    <div className="px-3 py-2 text-sm text-slate-500">Ucitavanje...</div>
+                    <div className="px-3 py-2 text-sm text-text-muted">Učitavanje...</div>
                   ) : filteredCategories.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-slate-500">Nema rezultata</div>
+                    <div className="px-3 py-2 text-sm text-text-muted">Nema rezultata</div>
                   ) : (
                     filteredCategories.map((category, idx) => {
                       const isSelected = categoryIds.includes(category._id);
@@ -1031,8 +1031,8 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                           key={category._id}
                           type="button"
                           className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition ${
-                            idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"
-                          } ${isSelected ? "text-blue-700" : "text-slate-800"} hover:bg-blue-50`}
+                            idx % 2 === 0 ? "bg-surface" : "bg-surface-2/50"
+                          } ${isSelected ? "text-accent-text" : "text-text"} hover:bg-accent-soft`}
                           onMouseDown={(event) => {
                             event.preventDefault();
                             handleSelectCategory(category._id);
@@ -1042,23 +1042,23 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={category.iconUrl} alt={category.name} className="h-8 w-8 rounded-md object-cover" />
                           ) : (
-                            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-500">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-surface-2 text-text-muted">
                               <Tag className="h-4 w-4" />
                             </div>
                           )}
                           <div className="flex-1">
                             <p className="font-semibold">{category.name}</p>
-                            {isSelected ? <p className="text-[11px] text-emerald-600">Izabrana</p> : null}
+                            {isSelected ? <p className="text-[11px] text-success">Izabrana</p> : null}
                             {usageCount > 0 ? (
-                              <p className="text-[11px] text-amber-600">{usageCount} proizvoda vezano</p>
+                              <p className="text-[11px] text-warning">{usageCount} proizvoda vezano</p>
                             ) : null}
                           </div>
                           <div className="flex items-center gap-2">
-                            {isSelected ? <Check className="h-4 w-4 text-emerald-600" /> : null}
+                            {isSelected ? <Check className="h-4 w-4 text-success" /> : null}
                             <span
                               role="button"
-                              aria-label="Obrisi kategoriju"
-                              className="rounded-full p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                              aria-label="Obriši kategoriju"
+                              className="rounded-full p-1 text-text-muted hover:bg-danger-soft hover:text-danger"
                               onMouseDown={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
@@ -1093,7 +1093,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel htmlFor="pf-opisFbInsta">FB / Insta opis</FormLabel>
-                  <Textarea id="pf-opisFbInsta" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-opisFbInsta-greska" : undefined} rows={3} placeholder="Opis za drustvene mreze" autoResize {...field} />
+                  <Textarea id="pf-opisFbInsta" aria-invalid={Boolean(fieldState.error)} aria-describedby={fieldState.error ? "pf-opisFbInsta-greska" : undefined} rows={3} placeholder="Opis za društvene mreže" autoResize {...field} />
                   <FormMessage id="pf-opisFbInsta-greska">{fieldState.error?.message}</FormMessage>
                 </FormItem>
               )}
@@ -1105,18 +1105,18 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               <FormField
                 name="publishKp"
                 render={({ field }) => (
-                  <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+                  <FormItem className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
                     <Switch
                       id="publish-kp"
                       checked={!!field.value}
                       onCheckedChange={(checked) => field.onChange(checked)}
                     />
                     <FormLabel htmlFor="publish-kp" className="m-0 flex min-h-11 flex-1 items-center gap-2 cursor-pointer">
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white shadow-sm ring-1 ring-slate-200">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-surface shadow-sm ring-1 ring-border">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/kp.png" alt="KP" className="h-7 w-7 object-contain" />
                       </span>
-                      <span className="text-sm font-semibold text-slate-800">KupujemProdajem</span>
+                      <span className="text-sm font-semibold text-text">KupujemProdajem</span>
                     </FormLabel>
                   </FormItem>
                 )}
@@ -1124,7 +1124,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               <FormField
                 name="publishFbProfile"
                 render={({ field }) => (
-                  <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+                  <FormItem className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
                     <Switch
                       id="publish-fb-profile"
                       checked={!!field.value}
@@ -1132,10 +1132,12 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                     />
                     <FormLabel
                       htmlFor="publish-fb-profile"
-                      className="m-0 flex min-h-11 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      className="m-0 flex min-h-11 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-text"
                     >
-                      <Facebook className="h-5 w-5 text-blue-600" />
-                      <span>Kod Majstora</span>
+                      <Facebook className="h-5 w-5 text-accent-text" aria-hidden />
+                      <span>
+                        <span className="sr-only">Facebook: </span>Kod Majstora
+                      </span>
                     </FormLabel>
                   </FormItem>
                 )}
@@ -1143,7 +1145,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               <FormField
                 name="publishIg"
                 render={({ field }) => (
-                  <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+                  <FormItem className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
                     <Switch
                       id="publish-ig"
                       checked={!!field.value}
@@ -1151,12 +1153,14 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                     />
                     <FormLabel
                       htmlFor="publish-ig"
-                      className="m-0 flex min-h-11 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      className="m-0 flex min-h-11 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-text"
                     >
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-tr from-pink-500 to-rose-500 text-white shadow-sm">
-                        <Instagram className="h-4 w-4" />
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent text-accent-fg shadow-sm">
+                        <Instagram className="h-4 w-4" aria-hidden />
                       </span>
-                      <span>kod.majstora</span>
+                      <span>
+                        <span className="sr-only">Instagram: </span>kod.majstora
+                      </span>
                     </FormLabel>
                   </FormItem>
                 )}
@@ -1164,7 +1168,7 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
               <FormField
                 name="publishMarketplace"
                 render={({ field }) => (
-                  <FormItem className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2">
+                  <FormItem className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
                     <Switch
                       id="publish-marketplace"
                       checked={!!field.value}
@@ -1172,19 +1176,21 @@ export function ProductFormDialog({ isKodMajstor, isModalOpen, setIsModalOpen, e
                     />
                     <FormLabel
                       htmlFor="publish-marketplace"
-                      className="m-0 flex min-h-11 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800"
+                      className="m-0 flex min-h-11 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-text"
                     >
-                      <Facebook className="h-5 w-5 text-blue-600" />
-                      <span>Marketplace</span>
+                      <Facebook className="h-5 w-5 text-accent-text" aria-hidden />
+                      <span>
+                        <span className="sr-only">Facebook </span>Marketplace
+                      </span>
                     </FormLabel>
                   </FormItem>
                 )}
               />
             </div>
             {!editingProduct && publishIgSelected ? (
-              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-sm">
+              <div className="flex items-start gap-2 rounded-md bg-warning-soft ring-1 ring-inset ring-warning/30 px-3 py-2 text-sm text-warning shadow-sm">
                 <AlertCircle className="mt-0.5 h-4 w-4" />
-                <p className="leading-snug">Kada cekiras Instagram ovde, posle cuvanja novog proizvoda objava ide automatski na nalog kod.majstora.</p>
+                <p className="leading-snug">Kada čekiraš Instagram ovde, posle čuvanja novog proizvoda objava ide automatski na nalog kod.majstora.</p>
               </div>
             ) : null}
             </div>

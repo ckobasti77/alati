@@ -59,7 +59,8 @@ export function Lightbox({
       onClick={onClose}
       onKeyDown={(event) => {
         if (event.key !== "Tab") return;
-        // Fokus ostaje u pregledu.
+        // Fokus ostaje u pregledu; događaj ne ide dalje do fokus zamke Sheet-a ispod (inače bi je preuzela).
+        event.stopPropagation();
         const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not([disabled])")];
         const position = buttons.indexOf(document.activeElement as HTMLButtonElement);
         const next = event.shiftKey ? (position <= 0 ? buttons.length - 1 : position - 1) : (position + 1) % buttons.length;
