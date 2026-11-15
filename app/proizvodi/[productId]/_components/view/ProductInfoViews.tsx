@@ -5,6 +5,7 @@ import { Check, ChevronDown, Copy, Layers, MapPin, Star } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { cn } from "@/lib/utils";
 import type { Category, Product, Supplier } from "@/types/order";
+import { toggleDetails } from "@/lib/motion/height";
 
 /** Detalj radi sa `ProductWithUrls` (adImage može biti null), pa prikaz ne zavisi od tog polja. */
 type ProductView = Omit<Product, "adImage">;
@@ -164,11 +165,16 @@ function DescriptionItem({ title, text, onCopy }: { title: string; text: string;
   return (
     <div className="relative border-b border-border last:border-b-0">
       <details className="group">
-        <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 py-1 pr-28 text-sm font-medium text-text [&::-webkit-details-marker]:hidden">
-          <ChevronDown className="size-4 text-text-muted transition-transform group-open:rotate-180" aria-hidden />
+        <summary
+          onClick={toggleDetails}
+          className="flex min-h-12 cursor-pointer list-none items-center gap-2 py-1 pr-28 text-sm font-medium text-text [&::-webkit-details-marker]:hidden"
+        >
+          <ChevronDown className="size-4 text-text-muted transition-transform duration-(--duration-base) group-open:rotate-180" aria-hidden />
           {title}
         </summary>
-        <p className="pb-3 text-[15px] leading-[22px] whitespace-pre-wrap break-words text-text md:text-sm md:leading-6">{text}</p>
+        <div data-details-body>
+          <p className="pb-3 text-[15px] leading-[22px] whitespace-pre-wrap break-words text-text md:text-sm md:leading-6">{text}</p>
+        </div>
       </details>
       <button
         type="button"

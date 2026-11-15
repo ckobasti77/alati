@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useMemo, useRef } from "react";
+import { useListEntrance } from "@/lib/motion/useListEntrance";
 import { ChevronRight, ClipboardList, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -14,6 +18,10 @@ import type { DashboardOverview } from "./types";
 const MOBILE_LIMIT = 5;
 
 export function RecentOrders({ latest }: { latest: DashboardOverview["latest"] | undefined }) {
+  // Prvo učitavanje: redovi ulaze stagger-om (prvih 12, 20 ms).
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const keys = useMemo(() => (latest ?? []).map((order) => order._id), [latest]);
+  useListEntrance(listRef, keys);
   return (
     <section aria-labelledby="poslednje-narudzbine" className="flex flex-col rounded-2xl bg-surface ring-1 ring-border">
       <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-1 md:px-5 md:pt-5 md:pb-2">
@@ -51,9 +59,9 @@ export function RecentOrders({ latest }: { latest: DashboardOverview["latest"] |
           }
         />
       ) : (
-        <ul className="flex flex-col divide-y divide-border px-2 pb-2 md:px-3 md:pb-3">
+        <ul ref={listRef} className="flex flex-col divide-y divide-border px-2 pb-2 md:px-3 md:pb-3">
           {latest.map((order, index) => (
-            <li key={order._id} className={cn(index >= MOBILE_LIMIT && "max-md:hidden")}>
+            <li key={order._id} data-flip-id={order._id} className={cn(index >= MOBILE_LIMIT && "max-md:hidden")}>
               <Link
                 href={`/narudzbine/${order._id}`}
                 className={cn(

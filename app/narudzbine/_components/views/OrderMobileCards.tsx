@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, Copy, ExternalLink, Phone } from "lucide-react";
+import { Check, ExternalLink, Phone } from "lucide-react";
 import Link from "next/link";
-import { IconButton } from "@/components/ui/icon-button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { Money } from "@/components/ui/money";
 import { StageBadge } from "@/components/ui/stage-badge";
 import { cn } from "@/lib/utils";
@@ -193,14 +193,12 @@ export function OrderDetailCard({ entry, longPress }: { entry: OrderEntry; longP
                 <Phone className="size-4" aria-hidden />
                 <span className="num">{order.phone}</span>
               </a>
-              <IconButton
+              <CopyButton
                 aria-label="Kopiraj broj telefona"
                 tabIndex={interactive ? undefined : -1}
                 className="-mr-2"
-                onClick={() => void ctx.rowActions.copyText(order.phone, "Broj telefona je kopiran.")}
-              >
-                <Copy />
-              </IconButton>
+                onCopy={() => ctx.rowActions.copyText(order.phone, "Broj telefona je kopiran.")}
+              />
             </>
           ) : null}
         </div>

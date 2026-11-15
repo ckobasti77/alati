@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { IconButton } from "@/components/ui/icon-button";
 import { captureFocusReturn, restoreFocus } from "@/lib/focusReturn";
-import { animateSheetIn, animateSheetOut } from "@/lib/motion";
+import { animateSheetIn, animateSheetOut, Draggable, gsap, prefersReducedMotion, SHEET_DRAG } from "@/lib/motion";
 import { useIsDesktop } from "@/lib/useMediaQuery";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +60,9 @@ export function Sheet({
   // Panel je u state-u: Radix Portal montira sadržaj tek u drugom prolazu, pa ref ne bi okinuo animaciju.
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  // Ručka i zaglavlje su zona za povlačenje nadole (drag-to-dismiss) na telefonu.
+  const [dragZone, setDragZone] = useState<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
   const returnFocusRef = useRef<ReturnType<typeof captureFocusReturn> | null>(null);
   const lastPathnameRef = useRef(pathname);
   // `present` drži sheet u DOM-u dok traje izlazna animacija.
@@ -80,6 +83,48 @@ export function Sheet({
       timeline?.kill();
     };
   }, [open, present, isDesktop, panel]);
+
+  // Drag-to-dismiss (telefon, sheet sa ručkom): prati prst; zatvara se preko 30% visine ili brzim potezom,
+  // inače se vraća. Dugmad u zaglavlju i dalje rade (Draggable ne kreće sa dugmeta/linka).
+  const isFullSize = size === "full";
+  useLayoutEffect(() => {
+    if (!open || !panel || !dragZone || isDesktop || isFullSize) return;
+    const overlay = overlayRef.current;
+    let samples: { y: number; t: number }[] = [];
+    const [draggable] = Draggable.create(panel, {
+      type: "y",
+      trigger: [dragZone, headerRef.current].filter((item): item is HTMLElement => Boolean(item)),
+      bounds: { minY: 0, maxY: window.innerHeight },
+      zIndexBoost: false,
+      allowContextMenu: true,
+      cursor: "grab",
+      activeCursor: "grabbing",
+      onPress() {
+        samples = [{ y: this.y, t: performance.now() }];
+      },
+      onDrag() {
+        const now = performance.now();
+        samples = [...samples.filter((sample) => now - sample.t < 100), { y: this.y, t: now }];
+        if (overlay) overlay.style.opacity = String(Math.max(0.2, 1 - this.y / panel.offsetHeight));
+      },
+      onRelease() {
+        const first = samples[0];
+        const last = samples[samples.length - 1];
+        const velocity = first && last && last.t > first.t ? (last.y - first.y) / (last.t - first.t) : 0;
+        const shouldClose = this.y > panel.offsetHeight * SHEET_DRAG.closeRatio || velocity > SHEET_DRAG.closeVelocity;
+        if (shouldClose) {
+          onOpenChange(false);
+          return;
+        }
+        const duration = prefersReducedMotion() ? 0 : SHEET_DRAG.snapBack;
+        gsap.to(panel, { y: 0, duration, ease: SHEET_DRAG.ease, clearProps: "transform" });
+        if (overlay) gsap.to(overlay, { opacity: 1, duration, ease: SHEET_DRAG.ease, clearProps: "opacity" });
+      },
+    });
+    return () => {
+      draggable.kill();
+    };
+  }, [open, panel, dragZone, isDesktop, isFullSize, onOpenChange]);
 
   // Navigacija ispod otvorenog sheet-a (back gest, link) ga zatvara.
   useEffect(() => {
@@ -140,12 +185,15 @@ export function Sheet({
             )}
           >
             {!isFull && (
-              <div aria-hidden className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-border-strong md:hidden" />
+              <div ref={setDragZone} aria-hidden className="flex h-5 shrink-0 touch-none justify-center pt-2 md:hidden">
+                <span className="h-1 w-9 rounded-full bg-border-strong" />
+              </div>
             )}
             {hideHeader ? (
               <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
             ) : (
               <header
+                ref={headerRef}
                 className={cn(
                   "flex min-h-14 shrink-0 items-center gap-1 border-b py-1.5 pl-4 pr-2",
                   isFull && "pt-[max(0.375rem,env(safe-area-inset-top))] md:pt-1.5",

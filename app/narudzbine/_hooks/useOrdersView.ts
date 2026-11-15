@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import type { useRouter } from "next/navigation";
 import { useIsDesktop } from "@/lib/useMediaQuery";
+import { useViewFlip } from "@/lib/motion/useViewFlip";
 import {
   DEFAULT_ORDER_COLUMNS,
   normalizeDensity,
@@ -42,13 +43,17 @@ type UseOrdersViewParams = {
   basePath: string;
   router: ReturnType<typeof useRouter>;
   searchParamsString: string;
+  /** Kontejner stavki liste (data-flip-id): prelaz između prikaza ide preko GSAP Flip-a. */
+  flipContainerRef?: React.RefObject<HTMLElement | null>;
 };
+
+const NO_CONTAINER = { current: null };
 
 /**
  * Prikaz liste (Tabela/Kartice na desktopu, Kompaktno/Detaljno na telefonu), gustina i kolone tabele.
  * Pamti se u localStorage, a prikaz i u URL-u (`?prikaz=`). Stranica se renderuje samo na klijentu (RequireAuth).
  */
-export function useOrdersView({ basePath, router, searchParamsString }: UseOrdersViewParams) {
+export function useOrdersView({ basePath, router, searchParamsString, flipContainerRef = NO_CONTAINER }: UseOrdersViewParams) {
   const isDesktop = useIsDesktop();
   const [stored, setStored] = useState(() => ({
     desktop: readStorage(STORAGE.desktop),
@@ -74,9 +79,12 @@ export function useOrdersView({ basePath, router, searchParamsString }: UseOrder
 
   const urlView = new URLSearchParams(searchParamsString).get("prikaz");
   const view = resolveOrdersView({ isDesktop, url: urlView, stored: isDesktop ? stored.desktop : stored.phone });
+  const captureViewFlip = useViewFlip(view, flipContainerRef);
 
   const setView = useCallback(
     (next: OrdersListView) => {
+      // Položaji vidljivih stavki pre promene (Flip posle sledećeg crtanja; > 60 vidljivih: samo crossfade).
+      captureViewFlip();
       const key = next === "tabela" || next === "kartice" ? "desktop" : "phone";
       writeStorage(STORAGE[key], next);
       setStored((prev) => ({ ...prev, [key]: next }));
@@ -85,7 +93,7 @@ export function useOrdersView({ basePath, router, searchParamsString }: UseOrder
       params.set("prikaz", next);
       router.replace(`${basePath}?${params.toString()}`, { scroll: false });
     },
-    [basePath, router],
+    [basePath, router, captureViewFlip],
   );
 
   const toggleView = useCallback(() => setView(otherView(view)), [setView, view]);

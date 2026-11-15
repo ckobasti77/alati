@@ -1,7 +1,7 @@
 "use client";
 
-import { Copy, ExternalLink } from "lucide-react";
-import { IconButton } from "@/components/ui/icon-button";
+import { ExternalLink } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { OrderWithProduct } from "@/types/order";
 import { resolveOrderShippingMode } from "../_lib/detailHelpers";
 import { DetailRow, DetailSection, SectionAction } from "./DetailSection";
@@ -41,9 +41,7 @@ export function ShippingSection({ order, shipmentNumber, copyText, onTrack, onEd
           {shipmentNumber ? (
             <dd className="flex min-w-0 items-center gap-1">
               <span className="num truncate text-sm font-medium text-text">{shipmentNumber}</span>
-              <IconButton aria-label="Kopiraj broj pošiljke" className="text-text-muted" onClick={() => void copyText(shipmentNumber, "Broj pošiljke je kopiran.")}>
-                <Copy />
-              </IconButton>
+              <CopyButton aria-label="Kopiraj broj pošiljke" className="text-text-muted" onCopy={() => copyText(shipmentNumber, "Broj pošiljke je kopiran.")} />
               <button
                 type="button"
                 onClick={onTrack}

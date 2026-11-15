@@ -3,26 +3,59 @@
 import { Ellipsis, Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { MoreSheet } from "@/components/shell/MoreSheet";
 import { useAuth } from "@/lib/auth-client";
-import { prefersReducedMotion } from "@/lib/motion";
+import { gsap, NAV_INDICATOR, prefersReducedMotion } from "@/lib/motion";
 import { BOTTOM_TABS, NEW_ORDER_HREF, getRouteMeta, type NavTab } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 const tabClass =
   "group flex h-full w-full cursor-pointer flex-col items-center justify-center gap-0.5 text-[11px] leading-4 font-medium text-text-muted transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-ring data-[active=true]:text-text";
-const indicatorClass =
-  "flex h-7 w-14 items-center justify-center rounded-full transition-colors duration-(--duration-fast) group-active:bg-surface-2 group-data-[active=true]:bg-accent-soft group-data-[active=true]:text-accent-text [&_svg]:size-5";
+// Pilula oko ikonice: boju aktivnog taba nosi zajednički klizni indikator; pritisak smanjuje ikonicu na 0,92.
+const pillClass =
+  "relative z-10 flex h-7 w-14 items-center justify-center rounded-full transition-[transform,color] duration-(--duration-fast) group-active:scale-[0.92] group-data-[active=true]:text-accent-text [&_svg]:size-5";
 
-/** Donja navigacija na telefonu: Tabla · Narudžbine · [+] · Proizvodi · Više. */
+/** Donja navigacija na telefonu: Tabla · Narudžbine · [+] · Proizvodi · Više, sa kliznim indikatorom aktivnog taba. */
 export function BottomNav() {
   const pathname = usePathname();
   const { status } = useAuth();
   const [moreOpen, setMoreOpen] = useState(false);
-  if (status !== "authenticated" || pathname === "/login") return null;
-
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const indicatorRef = useRef<HTMLSpanElement | null>(null);
+  const placedRef = useRef(false);
+  const visible = status === "authenticated" && pathname !== "/login";
   const activeTab: NavTab | null = moreOpen ? "vise" : getRouteMeta(pathname).tab;
+
+  // Indikator klizi do pilule aktivnog taba (samo transform); prvo postavljanje i reduced motion bez animacije.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const indicator = indicatorRef.current;
+    if (!visible || !list || !indicator) return;
+    const place = (animate: boolean) => {
+      const pill = list.querySelector<HTMLElement>('[data-active="true"] [data-nav-pill]');
+      if (!pill) {
+        gsap.set(indicator, { opacity: 0 });
+        placedRef.current = false;
+        return;
+      }
+      const listRect = list.getBoundingClientRect();
+      const rect = pill.getBoundingClientRect();
+      const target = { x: rect.left - listRect.left, y: rect.top - listRect.top, opacity: 1 };
+      if (animate && placedRef.current && !prefersReducedMotion()) {
+        gsap.to(indicator, { ...target, duration: NAV_INDICATOR.duration, ease: NAV_INDICATOR.ease, overwrite: true });
+      } else {
+        gsap.set(indicator, target);
+      }
+      placedRef.current = true;
+    };
+    place(true);
+    const observer = new ResizeObserver(() => place(false));
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [activeTab, visible]);
+
+  if (!visible) return null;
 
   const scrollTopIfCurrent = (event: React.MouseEvent, href: string) => {
     // Tap na tab stranice na kojoj si već: na vrh umesto ponovnog učitavanja.
@@ -44,7 +77,7 @@ export function BottomNav() {
           onClick={(event) => scrollTopIfCurrent(event, item.href)}
           className={tabClass}
         >
-          <span className={indicatorClass}>
+          <span data-nav-pill className={pillClass}>
             <Icon aria-hidden />
           </span>
           {item.shortLabel}
@@ -59,7 +92,8 @@ export function BottomNav() {
         aria-label="Donja navigacija"
         className="fixed inset-x-0 bottom-0 z-(--z-nav) border-t bg-(--header-bg) pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
       >
-        <ul className="mx-auto grid h-(--bottom-nav-h) max-w-md grid-cols-5">
+        <ul ref={listRef} className="relative mx-auto grid h-(--bottom-nav-h) max-w-md grid-cols-5">
+          <span ref={indicatorRef} aria-hidden className="pointer-events-none absolute top-0 left-0 h-7 w-14 rounded-full bg-accent-soft opacity-0" />
           {tab(0)}
           {tab(1)}
           <li className="flex items-center justify-center">
@@ -67,7 +101,7 @@ export function BottomNav() {
               href={NEW_ORDER_HREF}
               scroll={pathname !== "/narudzbine"}
               aria-label="Nova narudžbina"
-              className="inline-flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-fg shadow-(--shadow-fab) transition-transform duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-95"
+              className="inline-flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-fg shadow-(--shadow-fab) transition-transform duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.92]"
             >
               <Plus className="size-6" strokeWidth={2.25} aria-hidden />
             </Link>
@@ -82,7 +116,7 @@ export function BottomNav() {
               onClick={() => setMoreOpen(true)}
               className={cn(tabClass)}
             >
-              <span className={indicatorClass}>
+              <span data-nav-pill className={pillClass}>
                 <Ellipsis aria-hidden />
               </span>
               Više

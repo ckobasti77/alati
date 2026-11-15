@@ -1,7 +1,7 @@
 "use client";
 
-import { Copy, MapPin, Phone, UserRound } from "lucide-react";
-import { IconButton } from "@/components/ui/icon-button";
+import { MapPin, Phone, UserRound } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { OrderWithProduct } from "@/types/order";
 import { phoneHref } from "../../_lib/orderView";
 import { DetailSection, SectionAction } from "./DetailSection";
@@ -27,9 +27,7 @@ function Row({ icon: Icon, children, copyValue, copyLabel, copyMessage, copyText
       <Icon className="size-4 shrink-0 text-text-muted" aria-hidden />
       <div className="min-w-0 flex-1 break-words text-[15px] leading-[22px] text-text md:text-sm">{children}</div>
       {copyValue ? (
-        <IconButton aria-label={copyLabel} className="-mr-2 shrink-0 text-text-muted" onClick={() => void copyText(copyValue, copyMessage)}>
-          <Copy />
-        </IconButton>
+        <CopyButton aria-label={copyLabel} className="-mr-2 shrink-0 text-text-muted" onCopy={() => copyText(copyValue, copyMessage)} />
       ) : null}
     </div>
   );

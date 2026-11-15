@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Package } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
+import { GALLERY_DOT, gsap, prefersReducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { GalleryItem } from "../../_lib/detailTypes";
 
@@ -16,6 +17,21 @@ export function ProductGalleryView({ items, name, onOpen }: { items: GalleryItem
   // Dok traje programski (smooth) skrol, onScroll ne sme da vrati indeks na međuvrednost (brze strelice).
   const targetRef = useRef<number | null>(null);
   const count = items.length;
+  // Telefon: aktivna tačka je jedan klizni indikator (transform), pomera se kad swipe stane na novoj slici.
+  const dotsRef = useRef<HTMLDivElement | null>(null);
+  const indicatorRef = useRef<HTMLSpanElement | null>(null);
+  const placedRef = useRef(false);
+  useLayoutEffect(() => {
+    const dots = dotsRef.current;
+    const indicator = indicatorRef.current;
+    if (!dots || !indicator) return;
+    const dot = dots.querySelector<HTMLElement>(`[data-dot="${Math.min(index, 9)}"]`);
+    if (!dot) return;
+    const x = dot.offsetLeft + dot.offsetWidth / 2 - indicator.offsetWidth / 2;
+    if (!placedRef.current || prefersReducedMotion()) gsap.set(indicator, { x });
+    else gsap.to(indicator, { x, duration: GALLERY_DOT.duration, ease: GALLERY_DOT.ease, overwrite: true });
+    placedRef.current = true;
+  }, [index, count]);
 
   const goTo = (next: number) => {
     const target = Math.max(0, Math.min(count - 1, next));
@@ -91,18 +107,22 @@ export function ProductGalleryView({ items, name, onOpen }: { items: GalleryItem
         <>
           {/* Telefon: tačke + brojač ispod slike (ništa preko fotografije). */}
           <div className="flex items-center justify-center gap-1 md:hidden">
+            <div ref={dotsRef} className="relative flex items-center gap-1">
+            <span ref={indicatorRef} aria-hidden className="pointer-events-none absolute top-1/2 left-0 h-2 w-4 -translate-y-1/2 rounded-full bg-accent" />
             {items.slice(0, 10).map((item, dotIndex) => (
               <button
                 key={item.id}
+                data-dot={dotIndex}
                 type="button"
                 onClick={() => goTo(dotIndex)}
                 aria-label={`Slika ${dotIndex + 1}`}
                 aria-current={dotIndex === index ? "true" : undefined}
                 className="flex size-6 cursor-pointer items-center justify-center after:absolute after:size-11 after:content-[''] relative"
               >
-                <span className={cn("block rounded-full transition-all duration-(--duration-fast)", dotIndex === index ? "h-2 w-4 bg-accent" : "size-2 bg-text-muted/50")} />
+                <span className={cn("block size-2 rounded-full bg-text-muted/50", dotIndex === index && "opacity-0")} />
               </button>
             ))}
+            </div>
             <span className="num ml-2 text-xs text-text-muted" aria-live="polite">
               {index + 1} / {count}
             </span>

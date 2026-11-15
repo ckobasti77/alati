@@ -1,6 +1,7 @@
 "use client";
 
-import { Copy, GripVertical, Phone } from "lucide-react";
+import { GripVertical, Phone } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
 import type { DragEvent } from "react";
 import { Money } from "@/components/ui/money";
@@ -138,18 +139,12 @@ export function OrderTableRow({
                 <Phone className="size-3 shrink-0" aria-hidden />
                 <span className="num truncate">{order.phone}</span>
               </a>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void ctx.rowActions.copyText(order.phone, "Broj telefona je kopiran.");
-                }}
+              <CopyButton
                 title="Kopiraj broj telefona"
                 aria-label={`Kopiraj broj ${order.phone}`}
-                className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-muted opacity-0 transition hover:bg-surface-3 hover:text-text focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring group-hover:opacity-100"
-              >
-                <Copy className="size-3" aria-hidden />
-              </button>
+                className="size-6 rounded-md opacity-0 transition-opacity hover:bg-surface-3 focus-visible:opacity-100 group-hover:opacity-100 md:size-6 [&_svg]:size-3"
+                onCopy={() => ctx.rowActions.copyText(order.phone, "Broj telefona je kopiran.")}
+              />
             </div>
           ) : null}
           {comfy && place ? <p className="mt-0.5 truncate text-xs text-text-muted">{place}</p> : null}

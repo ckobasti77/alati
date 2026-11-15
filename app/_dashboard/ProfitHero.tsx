@@ -1,5 +1,5 @@
 import { TrendingDown, TrendingUp } from "lucide-react";
-import { Money } from "@/components/ui/money";
+import { AnimatedMoney } from "@/components/ui/animated-money";
 import { Skeleton } from "@/components/ui/skeleton";
 import { profitDelta, type DashboardPeriod, type DashboardTotals } from "@/lib/dashboard";
 import { formatCurrency } from "@/lib/format";
@@ -45,7 +45,7 @@ function Delta({ period, totals, previous }: { period: DashboardPeriod; totals: 
         <span className="num">{formatPercent(delta)}</span>
       </span>
       <span>
-        u odnosu na {versus} (<Money value={previous?.profit} className="text-text-muted" />)
+        u odnosu na {versus} (<AnimatedMoney value={previous?.profit} className="text-text-muted" />)
       </span>
     </p>
   );
@@ -76,7 +76,7 @@ export function ProfitHero({ period: requestedPeriod, data, stale = false }: Pro
         </h2>
         {totals ? (
           <>
-            <Money
+            <AnimatedMoney
               value={totals.profit}
               tone={totals.brojNarudzbina > 0 ? "profit" : "muted"}
               className="text-4xl font-semibold leading-[44px] tracking-tight md:text-5xl md:leading-[56px]"
@@ -99,22 +99,22 @@ export function ProfitHero({ period: requestedPeriod, data, stale = false }: Pro
         {totals ? (
           <>
             <Stat label="Prodajno">
-              <Money value={totals.ukupnoProdajno} />
+              <AnimatedMoney value={totals.ukupnoProdajno} />
             </Stat>
             <Stat label="Nabavno">
-              <Money value={totals.ukupnoNabavno} />
+              <AnimatedMoney value={totals.ukupnoNabavno} />
             </Stat>
             <Stat label="Transport">
-              <Money value={totals.ukupnoTransport} />
+              <AnimatedMoney value={totals.ukupnoTransport} />
             </Stat>
             <Stat label="Omer (Aks × 2,5 €)">
-              <Money value={totals.omerUkupno > 0 ? -totals.omerUkupno : 0} />
+              <AnimatedMoney value={totals.omerUkupno > 0 ? -totals.omerUkupno : 0} />
             </Stat>
             <Stat label="Leglo">
               <span className="num">{pluralNarudzbina(totals.brojNarudzbina)}</span>
             </Stat>
             <Stat label="Prosečno po narudžbini">
-              <Money value={average} tone="profit" />
+              <AnimatedMoney value={average} tone="profit" />
             </Stat>
           </>
         ) : (

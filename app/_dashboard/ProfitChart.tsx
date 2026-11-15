@@ -1,11 +1,12 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { BarChart3 } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Money } from "@/components/ui/money";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TODAY_CHART_DAYS } from "@/lib/dashboard";
+import { BAR_GROW, gsap, prefersReducedMotion } from "@/lib/motion";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { formatAxisMoney, formatDayKey, formatDayLong, formatMonthLong, formatMonthShort, formatWeekday, pluralNarudzbina } from "./format";
@@ -87,6 +88,35 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
   const plotBottom = Math.max(plotTop + 1, height - 1);
   const y = (value: number) => plotTop + ((maxValue - value) / span) * (plotBottom - plotTop);
   const y0 = y(0);
+
+  // Promena perioda: barovi rastu iz nulte linije (samo transform; prvo crtanje i reduced motion bez animacije).
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const lastPeriodRef = useRef<string | null>(null);
+  const settledPeriod = data && !stale ? data.period.key : null;
+  useLayoutEffect(() => {
+    if (!settledPeriod || width === 0) return;
+    const previous = lastPeriodRef.current;
+    lastPeriodRef.current = settledPeriod;
+    const svg = svgRef.current;
+    if (previous === null || previous === settledPeriod || !svg || prefersReducedMotion()) return;
+    const bars = svg.querySelectorAll("path[data-bar]");
+    if (bars.length === 0) return;
+    const tween = gsap.fromTo(
+      bars,
+      { scaleY: 0 },
+      {
+        scaleY: 1,
+        svgOrigin: `0 ${y0}`,
+        duration: BAR_GROW.duration,
+        ease: BAR_GROW.ease,
+        stagger: Math.min(0.02, BAR_GROW.staggerTotal / bars.length),
+        clearProps: "transform",
+      },
+    );
+    return () => {
+      tween.kill();
+    };
+  }, [settledPeriod, width, y0]);
   const slot = series.length > 0 ? width / series.length : 0;
   const barWidth = Math.max(1, Math.min(BAR_MAX, slot - 2, slot * 0.72));
 
@@ -172,6 +202,7 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
                     </span>
                   ) : null}
                   <svg
+                    ref={svgRef}
                     width={width}
                     height={height}
                     className="block overflow-visible"
@@ -198,6 +229,7 @@ export function ProfitChart({ data, stale = false }: ProfitChartProps) {
                       const x = index * slot + (slot - barWidth) / 2;
                       return (
                         <path
+                          data-bar
                           key={point.key}
                           d={barPath(x, barWidth, y0, y(point.profit))}
                           className={point.profit < 0 ? "fill-danger" : "fill-accent"}

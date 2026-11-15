@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
+import { animateHeight } from "@/lib/motion/height";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,6 +36,24 @@ function GroupTitle({ children }: { children: React.ReactNode }) {
 export function AccountsCard({ obracun, allTime }: AccountsCardProps) {
   const [open, setOpen] = useState(false);
   const contentId = useId();
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  // Telefon: otvaranje/zatvaranje animira visinu (0 ↔ auto); zatvaranje sakriva sadržaj tek posle animacije.
+  const animateOpenRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!open || !animateOpenRef.current || !contentRef.current) return;
+    animateOpenRef.current = false;
+    animateHeight(contentRef.current, true);
+  }, [open]);
+  const toggle = () => {
+    const content = contentRef.current;
+    if (open) {
+      if (content) animateHeight(content, false, () => setOpen(false));
+      else setOpen(false);
+      return;
+    }
+    animateOpenRef.current = true;
+    setOpen(true);
+  };
 
   const aksBex = obracun?.aksBex;
   const fromOrders = aksBex ? (aksBex.totalFromOrders ?? aksBex.totalAks + aksBex.totalBex) : 0;
@@ -51,7 +70,7 @@ export function AccountsCard({ obracun, allTime }: AccountsCardProps) {
           type="button"
           aria-expanded={open}
           aria-controls={contentId}
-          onClick={() => setOpen((value) => !value)}
+          onClick={toggle}
           className="flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
         >
           <span className="flex min-w-0 flex-1 flex-col text-left">
@@ -83,7 +102,7 @@ export function AccountsCard({ obracun, allTime }: AccountsCardProps) {
         </Link>
       </div>
 
-      <div id={contentId} className={cn("px-4 pb-4 md:block md:px-5 md:pb-5", !open && "max-md:hidden")}>
+      <div ref={contentRef} id={contentId} className={cn("px-4 pb-4 md:block md:px-5 md:pb-5", !open && "max-md:hidden")}>
         {obracun === undefined ? (
           <div className="flex flex-col gap-2 pt-3">
             {Array.from({ length: 4 }, (_, index) => (

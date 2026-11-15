@@ -1,7 +1,8 @@
 "use client";
 
-import { CircleAlert, CircleCheck, Info, Loader2, TriangleAlert } from "lucide-react";
+import { CircleAlert, Info, Loader2, TriangleAlert } from "lucide-react";
 import { Toaster as Sonner } from "sonner";
+import { SuccessCheck } from "@/components/ui/success-check";
 import { useIsDesktop } from "@/lib/useMediaQuery";
 
 /**
@@ -22,7 +23,8 @@ export function Toaster({ theme }: { theme: "light" | "dark" }) {
       visibleToasts={3}
       style={{ zIndex: "var(--z-toast)" } as React.CSSProperties}
       icons={{
-        success: <CircleCheck className="size-5 text-success" aria-hidden />,
+        // Uspešno snimanje: ✓ se iscrta (DrawSVG), jedini bounce u aplikaciji.
+        success: <SuccessCheck />,
         error: <CircleAlert className="size-5 text-danger" aria-hidden />,
         warning: <TriangleAlert className="size-5 text-warning" aria-hidden />,
         info: <Info className="size-5 text-accent-text" aria-hidden />,

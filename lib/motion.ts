@@ -2,6 +2,8 @@
 
 import gsap from "gsap";
 import { Flip } from "gsap/Flip";
+import { Draggable } from "gsap/Draggable";
+import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
 import { useGSAP } from "@gsap/react";
 
 // Motion tokeni. Sve animacije idu kroz ove vrednosti i helpere (bez magičnih brojeva po
@@ -37,7 +39,7 @@ export function dur(seconds: number): number {
 }
 
 if (typeof window !== "undefined") {
-  gsap.registerPlugin(useGSAP, Flip);
+  gsap.registerPlugin(useGSAP, Flip, Draggable, DrawSVGPlugin);
 }
 
 /** Izlazak stavke iz liste (npr. više ne prolazi filter): fade + blago smanjenje, ostale kliznu (Flip). */
@@ -119,4 +121,29 @@ export function animateRouteIn(element: HTMLElement) {
   );
 }
 
-export { Flip, gsap, useGSAP };
+/** Prekidač prikaza (Tabela ↔ Kartice, Mreža ↔ Lista): Flip; preko `maxElements` vidljivih samo crossfade. */
+export const FLIP_VIEW = { duration: DURATION.slow, ease: EASE.emphasized, maxElements: 60, crossfade: DURATION.base } as const;
+/** Prvo učitavanje liste: prvih 12, razmak 20 ms, fade + 8px; stavke iz infinite scroll-a samo kratak fade. */
+export const LIST_ENTRANCE = { max: 12, stagger: 0.02, y: 8, duration: DURATION.base, ease: EASE.out, appendDuration: DURATION.fast } as const;
+/** Brojevi na tabli pri promeni perioda. */
+export const COUNT_UP = { duration: 0.4, ease: EASE.out, snap: 0.01 } as const;
+/** Barovi grafikona rastu iz nulte linije; ukupno kašnjenje stagger-a najviše `staggerTotal`. */
+export const BAR_GROW = { duration: DURATION.slow, ease: EASE.emphasized, staggerTotal: 0.12 } as const;
+/** Promena statusa: mali pulse bedža (boja ide kroz CSS tranziciju). */
+export const STAGE_PULSE = { scale: 1.08, duration: DURATION.base, ease: EASE.out } as const;
+/** Drag-to-dismiss sheet-a: zatvara se preko 30% visine ili brzinom većom od 0,6 px/ms. */
+export const SHEET_DRAG = { closeRatio: 0.3, closeVelocity: 0.6, snapBack: DURATION.fast, ease: EASE.out } as const;
+/** Trake koje dolaze odozdo (izbor, grupne akcije). */
+export const BAR_SLIDE = { in: DURATION.base, out: DURATION.fast, easeIn: EASE.emphasized, easeOut: EASE.in } as const;
+/** Klizni indikator donje navigacije. */
+export const NAV_INDICATOR = { duration: DURATION.base, ease: EASE.emphasized } as const;
+/** Kopiranje: ikonica → ✓, drži 1,2 s. */
+export const COPY_CONFIRM = { swap: DURATION.fast, ease: EASE.out, holdMs: 1200 } as const;
+/** ✓ u success toast-u: iscrtavanje + mali pop (jedini bounce, samo za uspeh). */
+export const SUCCESS_CHECK = { draw: DURATION.slow, ease: EASE.out, pop: "back.out(2)", popDuration: DURATION.base } as const;
+/** Sklopivi paneli: visina 0 ↔ auto. */
+export const HEIGHT_TOGGLE = { duration: DURATION.base, easeOpen: EASE.out, easeClose: EASE.in } as const;
+/** Indikator tačkica galerije posle `scrollend`. */
+export const GALLERY_DOT = { duration: DURATION.fast, ease: EASE.out } as const;
+
+export { Draggable, DrawSVGPlugin, Flip, gsap, useGSAP };

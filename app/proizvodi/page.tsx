@@ -120,6 +120,7 @@ function ProductsContent() {
         archiveView={archiveView}
         onArchiveView={setArchiveView}
         viewMode={viewMode}
+        restored={Boolean(restore.restored)}
         onViewMode={(value) => {
           setViewMode(value);
           writeProductsViewPref(value);

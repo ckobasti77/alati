@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, LayoutGrid, List, PackageSearch, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
+import { useListEntrance } from "@/lib/motion/useListEntrance";
+import { useViewFlip } from "@/lib/motion/useViewFlip";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types/order";
 import { sortOptions, type SortOption } from "../../_lib/productHelpers";
@@ -59,6 +61,8 @@ type ProductsCatalogProps = {
   archiveView: "active" | "archived";
   onArchiveView: (value: "active" | "archived") => void;
   viewMode: "grid" | "list";
+  /** Lista je vraćena iz memorije (povratak sa detalja): bez ulazne animacije. */
+  restored?: boolean;
   onViewMode: (value: "grid" | "list") => void;
   onOpen: (product: Product) => void;
   onCreate: () => void;
@@ -66,7 +70,16 @@ type ProductsCatalogProps = {
 
 /** Pretraga + filteri (Sheet na telefonu, red kontrola na desktopu), brojač, mreža/lista/tabela i beskonačni skrol. */
 export function ProductsCatalog(props: ProductsCatalogProps) {
-  const { products, api, total, isDesktop, isLoading, isLoadingMore, hasMore, loaderRef, search, onSearch, sortBy, onSort, archiveView, onArchiveView, viewMode, onViewMode, onOpen, onCreate } = props;
+  const { products, api, total, isDesktop, isLoading, isLoadingMore, hasMore, loaderRef, search, onSearch, sortBy, onSort, archiveView, onArchiveView, viewMode, onViewMode: setViewMode, onOpen, onCreate, restored = false } = props;
+  // Mreža ↔ Lista: Flip po data-flip-id (samo vidljive stavke); prvo učitavanje: stagger; nova strana: fade.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const captureViewFlip = useViewFlip(viewMode, listRef);
+  const onViewMode = (value: "grid" | "list") => {
+    captureViewFlip();
+    setViewMode(value);
+  };
+  const productKeys = useMemo(() => products.map((product) => product._id), [products]);
+  useListEntrance(listRef, productKeys, { skip: restored });
   const [draft, setDraft] = useState(search);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const timerRef = useRef<number | undefined>(undefined);
@@ -199,17 +212,21 @@ export function ProductsCatalog(props: ProductsCatalogProps) {
             ) : undefined
           }
         />
-      ) : showTable ? (
-        <ProductTable products={products} api={api} sortBy={sortBy} onSort={onSort} onOpen={onOpen} />
-      ) : viewMode === "list" ? (
-        <ProductRows products={products} api={api} />
       ) : (
-        <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {products.map((product) => (
-            <ProductCard key={product._id} product={product} api={api} />
-          ))}
-          {isLoadingMore ? Array.from({ length: 4 }, (_, index) => <ProductCardSkeleton key={`s${index}`} />) : null}
-        </ul>
+        <div ref={listRef}>
+          {showTable ? (
+            <ProductTable products={products} api={api} sortBy={sortBy} onSort={onSort} onOpen={onOpen} />
+          ) : viewMode === "list" ? (
+            <ProductRows products={products} api={api} />
+          ) : (
+            <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {products.map((product) => (
+                <ProductCard key={product._id} product={product} api={api} />
+              ))}
+              {isLoadingMore ? Array.from({ length: 4 }, (_, index) => <ProductCardSkeleton key={`s${index}`} />) : null}
+            </ul>
+          )}
+        </div>
       )}
 
       <div ref={loaderRef} className="h-px" aria-hidden />

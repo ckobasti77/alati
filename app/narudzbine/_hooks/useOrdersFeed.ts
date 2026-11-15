@@ -449,6 +449,8 @@ export function useOrdersFeed({ basePath, orderScope, router, searchParams, sear
     orderListQueryArgs,
     isOrdersLoading,
     listError,
+    /** Lista je vraćena iz memorije (povratak sa detalja). */
+    restored: Boolean(initial.restored),
     hasMoreOrders,
     dateFilterActive,
     activeFilterCount,

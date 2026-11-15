@@ -56,11 +56,11 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
     }
   }, []);
 
-  const copyText = useCallback(async (value: string, successMessage: string) => {
+  const copyText = useCallback(async (value: string, successMessage: string): Promise<boolean> => {
     const text = value.trim();
     if (!text) {
       toast.error("Nema vrednosti za kopiranje.");
-      return;
+      return false;
     }
     try {
       if (navigator.clipboard?.writeText) {
@@ -77,9 +77,11 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
         document.body.removeChild(temp);
       }
       toast.success(successMessage);
+      return true;
     } catch (error) {
       console.error(error);
       toast.error("Kopiranje nije uspelo.");
+      return false;
     }
   }, []);
 

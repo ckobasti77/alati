@@ -1,16 +1,38 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet } from "@/components/ui/sheet";
 import { STAGE_FLOW, STAGES, getStage, type StageMeta } from "@/lib/stages";
+import { gsap, prefersReducedMotion, STAGE_PULSE } from "@/lib/motion";
 import { useIsDesktop } from "@/lib/useMediaQuery";
 import { cn } from "@/lib/utils";
 import type { OrderStage } from "@/types/order";
 
 const badgeBase =
-  "inline-flex h-6 items-center gap-1 rounded-full px-2 text-xs font-medium whitespace-nowrap ring-1 ring-inset ring-current/20";
+  "inline-flex h-6 items-center gap-1 rounded-full px-2 text-xs font-medium whitespace-nowrap ring-1 ring-inset ring-current/20 transition-[color,background-color,box-shadow] duration-(--duration-base)";
+
+/** Promena statusa: boja prelazi CSS tranzicijom, a bedž kratko pulsira (prvo crtanje i reduced motion bez pulsa). */
+function useStagePulse<T extends HTMLElement>(stage: string) {
+  const ref = useRef<T | null>(null);
+  const previous = useRef(stage);
+  useLayoutEffect(() => {
+    if (previous.current === stage) return;
+    previous.current = stage;
+    const element = ref.current;
+    if (!element || prefersReducedMotion()) return;
+    const tween = gsap.fromTo(
+      element,
+      { scale: 1 },
+      { scale: STAGE_PULSE.scale, duration: STAGE_PULSE.duration / 2, ease: STAGE_PULSE.ease, yoyo: true, repeat: 1, clearProps: "transform" },
+    );
+    return () => {
+      tween.kill();
+    };
+  }, [stage]);
+  return ref;
+}
 
 export type StageBadgeProps = {
   stage: OrderStage | string;
@@ -23,6 +45,7 @@ export type StageBadgeProps = {
 
 export function StageBadge({ stage, onChange, disabled = false, showIcon = true, className }: StageBadgeProps) {
   const meta = getStage(stage);
+  const pulseRef = useStagePulse<HTMLElement>(meta.value);
   const Icon = meta.icon;
   const content = (
     <>
@@ -32,9 +55,17 @@ export function StageBadge({ stage, onChange, disabled = false, showIcon = true,
   );
 
   if (!onChange) {
-    return <span className={cn(badgeBase, meta.tone, className)}>{content}</span>;
+    return (
+      <span ref={pulseRef as React.RefObject<HTMLSpanElement | null>} className={cn(badgeBase, meta.tone, className)}>
+        {content}
+      </span>
+    );
   }
-  return <StagePicker meta={meta} onChange={onChange} disabled={disabled} className={className}>{content}</StagePicker>;
+  return (
+    <StagePicker meta={meta} onChange={onChange} disabled={disabled} className={className} badgeRef={pulseRef as React.RefObject<HTMLButtonElement | null>}>
+      {content}
+    </StagePicker>
+  );
 }
 
 function StagePicker({
@@ -43,12 +74,14 @@ function StagePicker({
   disabled,
   className,
   children,
+  badgeRef,
 }: {
   meta: StageMeta;
   onChange: (stage: OrderStage) => void;
   disabled: boolean;
   className?: string;
   children: React.ReactNode;
+  badgeRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const isDesktop = useIsDesktop();
   const [open, setOpen] = useState(false);
@@ -60,6 +93,7 @@ function StagePicker({
 
   const trigger = (
     <button
+      ref={badgeRef}
       type="button"
       disabled={disabled}
       aria-haspopup="dialog"
@@ -73,7 +107,7 @@ function StagePicker({
         badgeBase,
         meta.tone,
         // Vidljivo 24px, a meta za prst 44px.
-        "relative cursor-pointer pr-1.5 transition-[filter] after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-[''] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
+        "relative cursor-pointer pr-1.5 after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-[''] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
     >

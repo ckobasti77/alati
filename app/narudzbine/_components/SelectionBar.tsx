@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Sheet } from "@/components/ui/sheet";
 import { StageList } from "@/components/ui/stage-badge";
 import { STAGES } from "@/lib/stages";
+import { usePresence } from "@/lib/motion/usePresence";
 import { cn } from "@/lib/utils";
 import type { OrderStage } from "@/types/order";
 import type { useOrderSelection } from "../_hooks/useOrderSelection";
@@ -23,7 +24,9 @@ export function SelectionBar({ selection, isDesktop, hasMore }: { selection: Sel
   const [stageOpen, setStageOpen] = useState(false);
   const { selectedVisibleCount: count, bulkAction, selectionMode, allVisibleSelected } = selection;
   const visible = isDesktop ? count > 0 : selectionMode || count > 0;
-  if (!visible) return null;
+  // Traka ulazi odozdo i izlazi nadole (ostaje u DOM-u dok traje izlazak).
+  const { mounted, ref } = usePresence<HTMLDivElement>(visible);
+  if (!mounted) return null;
 
   const busy = bulkAction !== null;
   const disabled = busy || count === 0;
@@ -41,6 +44,7 @@ export function SelectionBar({ selection, isDesktop, hasMore }: { selection: Sel
 
   return (
     <div
+      ref={ref}
       role="region"
       aria-label="Izabrane narudžbine"
       data-probe-bottom-bar

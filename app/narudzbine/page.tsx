@@ -7,6 +7,7 @@ import { Plus, SearchX, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useConvexMutation } from "@/lib/convex";
+import { useListEntrance } from "@/lib/motion/useListEntrance";
 import { usePresenceList } from "@/lib/usePresenceList";
 import { isZaPovratFilter } from "@/lib/zaPovrat";
 import type { Order, OrderStage } from "@/types/order";
@@ -99,7 +100,9 @@ function OrdersContent() {
 
   const orderDelete = useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, editingOrder, resetOrderForm });
   const reorder = useOrderReorder({ orderScope, sessionToken, orders, setOrders, draggingOrderId, setDraggingOrderId, dragOverOrderId, setDragOverOrderId });
-  const ordersView = useOrdersView({ basePath, router, searchParamsString });
+  const ordersView = useOrdersView({ basePath, router, searchParamsString, flipContainerRef: presence.containerRef });
+  // Prvo učitavanje: prvih 12 stavki ulazi stagger-om; povratak sa detalja (vraćena lista) bez animacije.
+  useListEntrance(presence.containerRef, visibleOrderIds, { skip: feed.restored });
   const searchRef = useRef<HTMLInputElement | null>(null);
   // Jedno "sada" po otvaranju stranice: relativni datumi ("juče") ne skaču između rendera.
   const [now] = useState(() => Date.now());

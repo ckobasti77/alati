@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useMemo, useRef } from "react";
+import { useListEntrance } from "@/lib/motion/useListEntrance";
 import type { LucideIcon } from "lucide-react";
 import { AlarmClock, CheckCircle2, ChevronRight, PackageOpen, RotateCcw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,6 +92,9 @@ const iconTone = {
 export function ActionList({ actions, token }: { actions: DashboardOverview["actions"] | undefined; token: string }) {
   const zaPovrat = useZaPovrat(token);
   const items = actions && !zaPovrat.loading ? buildItems(actions, zaPovrat.value) : null;
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const keys = useMemo(() => (items ?? []).map((item) => item.key), [items]);
+  useListEntrance(listRef, keys);
 
   return (
     <section aria-labelledby="za-akciju" className="flex flex-col gap-2 md:gap-3">
@@ -110,11 +117,11 @@ export function ActionList({ actions, token }: { actions: DashboardOverview["act
           Ništa ne čeka: nema zakasnelih, neposlatih ni povrata.
         </p>
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-2xl bg-surface ring-1 ring-border md:grid md:grid-cols-3 md:gap-3 md:divide-y-0 md:overflow-visible md:bg-transparent md:ring-0">
+        <ul ref={listRef} className="divide-y divide-border overflow-hidden rounded-2xl bg-surface ring-1 ring-border md:grid md:grid-cols-3 md:gap-3 md:divide-y-0 md:overflow-visible md:bg-transparent md:ring-0">
           {items.map((item) => {
             const Icon = item.icon;
             return (
-              <li key={item.key}>
+              <li key={item.key} data-flip-id={item.key}>
                 <Link
                   href={item.href}
                   className={cn(

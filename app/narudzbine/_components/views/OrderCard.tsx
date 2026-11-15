@@ -1,6 +1,7 @@
 "use client";
 
-import { Copy, ExternalLink, Phone } from "lucide-react";
+import { ExternalLink, Phone } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
 import { Money } from "@/components/ui/money";
 import { StageBadge } from "@/components/ui/stage-badge";
@@ -86,17 +87,11 @@ export function OrderCard({ entry }: { entry: OrderEntry }) {
               <Phone className="size-3.5" aria-hidden />
               <span className="num">{order.phone}</span>
             </a>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                void ctx.rowActions.copyText(order.phone, "Broj telefona je kopiran.");
-              }}
+            <CopyButton
               aria-label="Kopiraj broj telefona"
-              className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-text-muted transition hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              <Copy className="size-3.5" aria-hidden />
-            </button>
+              className="-my-2 shrink-0 md:size-8 [&_svg]:size-4"
+              onCopy={() => ctx.rowActions.copyText(order.phone, "Broj telefona je kopiran.")}
+            />
           </>
         ) : null}
       </div>
