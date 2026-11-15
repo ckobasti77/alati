@@ -51,3 +51,5 @@ next-env.d.ts
 
 # UX overhaul radni dokumenti i screenshotovi (pravi podaci kupaca) — samo lokalno
 /docs/ux-overhaul/
+/tmp/
+/.claude/
