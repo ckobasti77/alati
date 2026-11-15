@@ -81,7 +81,7 @@ function ProductDetailsContent() {
     : { price: defaultVariant?.nabavnaCena ?? current.nabavnaCena };
   const productStats = stats?.find((entry) => String(entry.productId) === String(current._id));
   const variantPurchase = (variantId: string) => {
-    const offers = (current.supplierOffers ?? []).filter((offer) => offer.variantId === variantId || !offer.variantId);
+    const offers = (current.supplierOffers ?? []).filter((offer) => offer.variantId === variantId);
     return offers.length ? Math.min(...offers.map((offer) => offer.price)) : undefined;
   };
   const isArchived = Boolean(current.archivedAt);

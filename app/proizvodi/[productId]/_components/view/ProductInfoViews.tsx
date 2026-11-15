@@ -114,7 +114,7 @@ export function ProductVariantCards({ product, purchaseFor }: { product: Product
               ) : null}
             </p>
             <p className="mt-0.5 text-[13px] text-text-muted">
-              <Money value={variant.prodajnaCena} className="font-semibold text-text" /> · nab. <Money value={variant.nabavnaCena} />
+              <Money value={variant.prodajnaCena} className="font-semibold text-text" /> · nab. nab. <Money value={purchaseFor(variant.id) ?? variant.nabavnaCena} />
             </p>
             {variant.opis ? <p className="mt-1 line-clamp-3 text-[13px] text-text-muted">{variant.opis}</p> : null}
           </li>
