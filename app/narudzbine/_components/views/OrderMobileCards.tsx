@@ -7,7 +7,7 @@ import { Money } from "@/components/ui/money";
 import { StageBadge } from "@/components/ui/stage-badge";
 import { cn } from "@/lib/utils";
 import { resolveShipmentNumber } from "../../_lib/helpers";
-import { formatRelativeDay, formatShortDate, getAddressPlace, getOrderTitle, phoneHref } from "../../_lib/orderView";
+import { formatRelativeDay, formatShortDate, getOrderAddressLine, getOrderTitle, phoneHref } from "../../_lib/orderView";
 import type { OrderEntry } from "../../_hooks/useOrderEntries";
 import type { useLongPress } from "../../_hooks/useLongPress";
 import { OrderActionsMenu, useOpenShipment } from "../list/OrderActionsMenu";
@@ -84,14 +84,13 @@ function SelectMark({ selected }: { selected: boolean }) {
   );
 }
 
-/** Kompaktna kartica (~120px): naslov + status, kupac · mesto + poziv, profit · prodajno · datum, oznake, povrat. */
+/** Kompaktna kartica (~140px): naslov + status, kupac + poziv, cela adresa, profit · prodajno · datum, oznake, povrat. */
 export function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; longPress: LongPress }) {
   const ctx = useOrdersList();
   const { order, prodajnoUkupno, profitShare } = entry;
   const title = getOrderTitle(order, ctx.productMap);
   const selected = ctx.selected.has(order._id);
-  const place = order.pickup ? "Lično" : getAddressPlace(order.address);
-  const who = [order.customerName, place].filter(Boolean).join(" · ");
+  const addressLine = getOrderAddressLine(order);
 
   return (
     <div data-flip-id={order._id} tabIndex={-1} className={cardShell(selected)}>
@@ -113,7 +112,9 @@ export function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; long
           )}
         </div>
         <div className="mt-1 flex min-h-11 items-center gap-2 text-[13px] leading-[18px]">
-          <p className="min-w-0 flex-1 truncate text-text-muted">{who || "—"}</p>
+          <p className="min-w-0 flex-1 truncate text-text-muted" title={order.customerName || undefined}>
+            {order.customerName || "—"}
+          </p>
           {order.phone ? (
             <a
               href={phoneHref(order.phone)}
@@ -130,6 +131,11 @@ export function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; long
             </a>
           ) : null}
         </div>
+        {addressLine ? (
+          <p className="mt-1 truncate text-[13px] leading-[18px] text-text-muted" title={addressLine}>
+            {addressLine}
+          </p>
+        ) : null}
         <div className="mt-1 flex items-center gap-1.5 text-[13px] leading-5">
           <span className="sr-only">Profit za povrat</span>
           <Money value={profitShare} tone="profit" trimZeroCents className="text-[15px] font-semibold" />

@@ -40,6 +40,12 @@ export function getAddressPlace(address?: string | null) {
   return last.replace(/^\d{5}\s+/, "").replace(/\s+\d{5}$/, "").trim() || last;
 }
 
+/** Ceo prikaz adrese narudžbine: "Lično preuzimanje" za lični preuzim, inače kompletna adresa (ne samo mesto). */
+export function getOrderAddressLine(order: { pickup?: boolean; address?: string | null }) {
+  if (order.pickup) return "Lično preuzimanje";
+  return (order.address ?? "").trim();
+}
+
 const dayKey = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
 
 /** "12. 3. 2025." bez vodećih nula; godina se izostavlja kad je tekuća i `short` je true. */

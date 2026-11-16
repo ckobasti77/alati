@@ -7,7 +7,7 @@ import { Money } from "@/components/ui/money";
 import { StageBadge } from "@/components/ui/stage-badge";
 import { cn } from "@/lib/utils";
 import { resolveShipmentNumber } from "../../_lib/helpers";
-import { formatShortDate, getOrderTitle, phoneHref } from "../../_lib/orderView";
+import { formatShortDate, getOrderAddressLine, getOrderTitle, phoneHref } from "../../_lib/orderView";
 import type { OrderEntry } from "../../_hooks/useOrderEntries";
 import { OrderActionsMenu, useOpenShipment } from "../list/OrderActionsMenu";
 import { OrderFlags } from "../list/OrderFlags";
@@ -25,6 +25,7 @@ export function OrderCard({ entry }: { entry: OrderEntry }) {
   const title = getOrderTitle(order, ctx.productMap);
   const selected = ctx.selected.has(order._id);
   const shipmentNumber = resolveShipmentNumber(order);
+  const addressLine = getOrderAddressLine(order);
 
   return (
     <article
@@ -95,6 +96,12 @@ export function OrderCard({ entry }: { entry: OrderEntry }) {
           </>
         ) : null}
       </div>
+
+      {addressLine ? (
+        <p className="truncate px-4 pt-1.5 text-xs text-text-muted" title={addressLine}>
+          {addressLine}
+        </p>
+      ) : null}
 
       <dl className="mx-4 mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3 text-[13px]">
         <div className="flex flex-col">

@@ -84,6 +84,12 @@ export const composeVariantLabel = (product: Product, variant?: ProductVariant) 
   return `${displayName} - ${variant.label}`;
 };
 
+/** Naslov narudžbine: naziv prve stavke, ili fiksni fallback ako naziv prazno/whitespace (Q10 — ne čuvati ''). */
+export const resolveOrderTitle = (title?: string | null) => {
+  if (title && title.trim()) return title;
+  return "Narudzbina";
+};
+
 export const resolveSupplierOptions = (product?: Product, variantId?: string) => {
   if (!product) return [];
   const offers = product.supplierOffers ?? [];

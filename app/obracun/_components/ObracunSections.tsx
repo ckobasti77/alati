@@ -45,6 +45,11 @@ export function SummaryTiles({ data }: { data: ObracunSummary }) {
   const aksBexTotal = data.aksBex.totalWithStarting ?? data.aksBex.total;
   const starting = data.aksBex.totalStarting ?? 0;
   const grandTotal = aksBexTotal + data.posta.total;
+  // Broj narudžbina koje su zapravo na računima (Aks/Bex + Pošta) — usklađeno sa tabelama ispod,
+  // ne sa meta.ordersCount koji broji i Legle bez računa (Q9).
+  const accountOrders =
+    data.aksBex.byOwner.reduce((sum, row) => sum + row.count, 0) +
+    data.posta.byOwner.reduce((sum, row) => sum + row.count, 0);
   return (
     <section aria-label="Zbirovi" className="overflow-hidden rounded-2xl ring-1 ring-border">
       <dl className="grid grid-cols-2 gap-px bg-border md:grid-cols-3">
@@ -55,7 +60,7 @@ export function SummaryTiles({ data }: { data: ObracunSummary }) {
           value={<Money value={grandTotal} />}
           sub={
             <>
-              {pluralNarudzbina(data.meta.ordersCount)} u Leglu
+              {pluralNarudzbina(accountOrders)} na računima
               {starting > 0 ? (
                 <>
                   {" "}· uključuje početno <Money value={starting} className="text-text-muted" />

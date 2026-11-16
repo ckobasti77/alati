@@ -8,7 +8,7 @@ import { Money } from "@/components/ui/money";
 import { StageBadge } from "@/components/ui/stage-badge";
 import { cn } from "@/lib/utils";
 import { resolveShipmentNumber } from "../../_lib/helpers";
-import { formatShortDate, getAddressPlace, getOrderTitle, phoneHref, type OrderColumnKey, type OrdersDensity } from "../../_lib/orderView";
+import { formatShortDate, getOrderAddressLine, getOrderTitle, phoneHref, type OrderColumnKey, type OrdersDensity } from "../../_lib/orderView";
 import type { OrderEntry } from "../../_hooks/useOrderEntries";
 import { OrderActionsMenu, useOpenShipment } from "../list/OrderActionsMenu";
 import { OrderFlags } from "../list/OrderFlags";
@@ -47,7 +47,7 @@ export function OrderTableRow({
   const comfy = density === "udobno";
   const selected = ctx.selected.has(order._id);
   const shipmentNumber = resolveShipmentNumber(order);
-  const place = order.pickup ? "Lično preuzimanje" : getAddressPlace(order.address);
+  const addressLine = getOrderAddressLine(order);
   const isDragging = drag.draggingId === order._id;
   const isDragOver = drag.dragOverId === order._id && !isDragging;
 
@@ -66,7 +66,7 @@ export function OrderTableRow({
         // j/k: aktivni red se ne skriva ispod sticky zaglavlja i zbira.
         "scroll-mt-[calc(var(--header-h)+3.5rem)] scroll-mb-14",
         "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring aria-[current=true]:bg-surface-2",
-        comfy ? "h-[88px]" : "h-16",
+        comfy ? "h-[88px]" : "h-[72px]",
         selected ? "bg-accent-soft/60 hover:bg-accent-soft" : "hover:bg-surface-2",
         isDragging && "opacity-50",
         isDragOver && "bg-accent-soft",
@@ -83,7 +83,7 @@ export function OrderTableRow({
           >
             <GripVertical className="size-4" aria-hidden />
           </div>
-          <label className="flex size-8 cursor-pointer items-center justify-center">
+          <label className="flex size-11 cursor-pointer items-center justify-center" title="Izaberi narudžbinu">
             <input
               type="checkbox"
               checked={selected}
@@ -147,7 +147,7 @@ export function OrderTableRow({
               />
             </div>
           ) : null}
-          {comfy && place ? <p className="mt-0.5 truncate text-xs text-text-muted">{place}</p> : null}
+          {addressLine ? <p className="mt-0.5 truncate text-xs text-text-muted" title={addressLine}>{addressLine}</p> : null}
         </td>
       ) : null}
       {columns.has("prodajno") ? (

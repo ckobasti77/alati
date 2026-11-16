@@ -4,6 +4,7 @@ import {
   formatRelativeDay,
   formatShortDate,
   getAddressPlace,
+  getOrderAddressLine,
   getOrderTitle,
   normalizeDensity,
   normalizeOrderColumns,
@@ -25,6 +26,17 @@ describe("getAddressPlace", () => {
     expect(getAddressPlace("Čačak")).toBe("Čačak");
     expect(getAddressPlace("  ")).toBe("");
     expect(getAddressPlace(undefined)).toBe("");
+  });
+});
+
+describe("getOrderAddressLine", () => {
+  it("lični preuzim ima prednost nad adresom", () => {
+    expect(getOrderAddressLine({ pickup: true, address: "Ulica 1, Beograd" })).toBe("Lično preuzimanje");
+  });
+  it("inace vraća kompletnu adresu, prazno ako je nema", () => {
+    expect(getOrderAddressLine({ address: "  Kneza Miloša 12, 34000 Kragujevac  " })).toBe("Kneza Miloša 12, 34000 Kragujevac");
+    expect(getOrderAddressLine({ address: "  " })).toBe("");
+    expect(getOrderAddressLine({})).toBe("");
   });
 });
 

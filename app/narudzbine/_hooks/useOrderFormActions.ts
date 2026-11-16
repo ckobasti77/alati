@@ -7,7 +7,7 @@ import { useConvexMutation } from "@/lib/convex";
 import type { Customer } from "@/types/customer";
 import type { Product } from "@/types/order";
 import { type OrderItemDraft } from "../_lib/types";
-import { normalizeOwnerLookupKey, generateId, getProductDisplayName, composeVariantLabel, resolveSupplierOptions, pickBestSupplier } from "../_lib/helpers";
+import { normalizeOwnerLookupKey, generateId, getProductDisplayName, composeVariantLabel, resolveSupplierOptions, pickBestSupplier, resolveOrderTitle } from "../_lib/helpers";
 import { type OrderFormValues, defaultFormValues, orderFocusOrder, findFirstErrorPath } from "../_lib/orderForm";
 import type { useRouter, useSearchParams } from "next/navigation";
 import type { Supplier } from "@/types/order";
@@ -483,7 +483,7 @@ export function useOrderFormActions({ basePath, orderScope, router, searchParams
       }));
       const payload = {
         stage: values.stage,
-        title: payloadItems[0]?.title ?? "Narudzbina",
+        title: resolveOrderTitle(payloadItems[0]?.title),
         transportCost: values.transportCost,
         slanjeMode,
         slanjeOwner: ownerInput,

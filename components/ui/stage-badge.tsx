@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import type { OrderStage } from "@/types/order";
 
 const badgeBase =
-  "inline-flex h-6 items-center gap-1 rounded-full px-2 text-xs font-medium whitespace-nowrap ring-1 ring-inset ring-current/20 transition-[color,background-color,box-shadow] duration-(--duration-base)";
+  "stage-badge inline-flex h-6 items-center gap-1 rounded-full px-2 text-xs font-medium whitespace-nowrap ring-1 ring-inset ring-current/20 transition-[color,background-color,box-shadow] duration-(--duration-base)";
 
 /** Promena statusa: boja prelazi CSS tranzicijom, a bedž kratko pulsira (prvo crtanje i reduced motion bez pulsa). */
 function useStagePulse<T extends HTMLElement>(stage: string) {
