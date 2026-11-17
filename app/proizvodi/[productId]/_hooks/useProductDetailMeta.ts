@@ -66,11 +66,17 @@ export function useProductDetailMeta({ categories, product, setIsGalleryDropActi
   const supplierOffers = useMemo(() => product?.supplierOffers ?? [], [product]);
   const bestSupplierOffer = useMemo(() => {
     if (!supplierOffers.length) return null;
-    return supplierOffers.reduce((best, offer) => {
+    // Pravilo "nabavna po tipu": samo ponude sa variantId izabranog tipa; ako ih nema, page.tsx pali na nabavnaCena.
+    const defaultVariant = product?.variants?.find((variant) => variant.isDefault) ?? product?.variants?.[0];
+    const pool = defaultVariant?.id
+      ? supplierOffers.filter((offer) => offer.variantId === defaultVariant.id)
+      : supplierOffers.filter((offer) => !offer.variantId);
+    if (!pool.length) return null;
+    return pool.reduce((best, offer) => {
       if (!best || offer.price < best.price) return offer;
       return best;
-    }, supplierOffers[0] as (typeof supplierOffers)[number]);
-  }, [supplierOffers]);
+    }, pool[0] as (typeof supplierOffers)[number]);
+  }, [supplierOffers, product]);
 
 
   return { productCategories, uploadTargetLabel, bestSupplierOffer };

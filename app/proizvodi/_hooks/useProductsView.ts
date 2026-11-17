@@ -86,13 +86,13 @@ export function useProductsView({ archiveView, sortBy, productSearch, productFee
       const offers = product.supplierOffers ?? [];
       if (!offers.length) return null;
       const primary = getPrimaryVariant(product);
-      const pool = primary
-        ? offers.filter((offer) => (offer.variantId ?? null) === (primary.id ?? null) || !offer.variantId)
+      // Pravilo "nabavna po tipu": samo ponude sa variantId izabranog tipa; ako ih nema, poziva se fallback na nabavnaCena (u listApi.getPurchase).
+      const pool = primary?.id
+        ? offers.filter((offer) => offer.variantId === primary.id)
         : offers.filter((offer) => !offer.variantId);
-      const relevant = pool.length > 0 ? pool : offers;
-      if (!relevant.length) return null;
-      let best = relevant[0];
-      relevant.forEach((offer) => {
+      if (!pool.length) return null;
+      let best = pool[0];
+      pool.forEach((offer) => {
         if (offer.price < best.price) {
           best = offer;
         }
