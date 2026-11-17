@@ -24,7 +24,7 @@ export function ProductOrdersCard({ productOrders, product }: ProductOrdersCardP
     <section aria-labelledby="proizvod-narudzbine" className="rounded-2xl bg-surface ring-1 ring-border">
       <h2 id="proizvod-narudzbine" className="flex min-h-14 items-center gap-2 px-4 pt-3 pb-2 text-base font-semibold text-text md:px-5">
         Narudžbine sa ovim proizvodom
-        {productOrders ? <span className="num rounded-full bg-surface-2 px-2 text-xs font-medium text-text-muted">{count}</span> : null}
+        {productOrders ? <span className="num rounded-full bg-surface-2 px-2 text-xs font-medium text-text-muted ring-1 ring-border">{count}</span> : null}
       </h2>
 
       {productOrders === undefined ? (

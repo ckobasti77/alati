@@ -171,7 +171,7 @@ function SocialContent() {
       <section aria-labelledby="zakazane" className="rounded-2xl bg-surface ring-1 ring-border">
         <h2 id="zakazane" className="flex min-h-12 items-center gap-2 px-4 pt-3 text-base font-semibold text-text md:px-5">
           Zakazane objave
-          {scheduledCount > 0 ? <span className="num rounded-full bg-surface-2 px-2 text-xs font-medium text-text-muted">{scheduledCount}</span> : null}
+          {scheduledCount > 0 ? <span className="num rounded-full bg-surface-2 px-2 text-xs font-medium text-text-muted ring-1 ring-border">{scheduledCount}</span> : null}
         </h2>
         <div className="pb-2">
           <ScheduledList posts={scheduled.data} error={Boolean(scheduled.error)} removingId={removingScheduledId} onRemove={handleRemoveScheduled} />

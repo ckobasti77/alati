@@ -91,7 +91,7 @@ export function GallerySection({ uploadInputId, adUploadInputId, product, isUplo
             <h2 id="galerija-naslov" className="text-base font-semibold text-text">
               Slike
             </h2>
-            <span className="num rounded-full bg-surface-2 px-2 text-xs font-medium text-text-muted">{filteredGallery.length}</span>
+            <span className="num rounded-full bg-surface-2 px-2 text-xs font-medium text-text-muted ring-1 ring-border">{filteredGallery.length}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {variantCount > 0 ? (
