@@ -1,7 +1,7 @@
 "use client";
 
 // Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
-import { useCallback, useEffect, useRef, type MouseEvent, type TouchEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, type MouseEvent, type TouchEvent } from "react";
 
 export function useLongPress() {
   const longPressTimerRef = useRef<number | null>(null);
@@ -65,6 +65,10 @@ export function useLongPress() {
   /** Long-press se upravo desio (klik posle podizanja prsta treba ignorisati). */
   const wasRecentLongPress = useCallback((windowMs = 600) => Date.now() - lastTriggeredAtRef.current < windowMs, []);
 
-  return { consumeLongPressClick, createLongPressHandlers, wasRecentLongPress };
+  // Isti objekat na svakom renderu: kartice dobijaju stabilan prop, pa React.memo radi.
+  return useMemo(
+    () => ({ consumeLongPressClick, createLongPressHandlers, wasRecentLongPress }),
+    [consumeLongPressClick, createLongPressHandlers, wasRecentLongPress],
+  );
 }
 

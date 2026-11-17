@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -180,7 +180,7 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
     setQuickEdit(null);
   }, [isQuickEditSaving]);
 
-  const handleQuickEditSave = async () => {
+  const handleQuickEditSave = useCallback(async () => {
     if (!quickEdit) return;
     const parseNumber = (value: string) => Number(value.replace(",", "."));
     let patch: QuickPatch;
@@ -243,7 +243,7 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
         setIsQuickEditSaving(false);
       }
     });
-  };
+  }, [mergeIntoList, quickEdit, runGuarded, setIsQuickEditSaving, updateFromFresh]);
 
   const persistStageChange = useCallback(
     async (order: Order, nextStage: OrderStage, patch: QuickPatch = {}) => {
@@ -286,7 +286,7 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
     });
   }, [persistStageChange, runGuarded, shipmentNumberDraft, shipmentStageModal]);
 
-  const handleStageChange = async (order: Order, nextStage: OrderStage) => {
+  const handleStageChange = useCallback(async (order: Order, nextStage: OrderStage) => {
     if (nextStage === "poslato") {
       openShipmentStageModal(order, nextStage);
       return;
@@ -299,10 +299,10 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
         toast.error("Nije moguće promeniti status.");
       }
     });
-  };
+  }, [openShipmentStageModal, persistStageChange, runGuarded]);
 
   /** Vraća `true` kad je oznaka „Povrat urađen“ sačuvana (prikaz može optimistično da je pokaže odmah). */
-  const handlePovratToggle = async (order: Order, nextValue: boolean): Promise<boolean> => {
+  const handlePovratToggle = useCallback(async (order: Order, nextValue: boolean): Promise<boolean> => {
     const saved = await runGuarded(`povrat:${order._id}`, async () => {
       try {
         mergeIntoList(order._id, await updateFromFresh(order._id, { povratVracen: nextValue }));
@@ -315,9 +315,9 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
       }
     });
     return saved === true;
-  };
+  }, [mergeIntoList, runGuarded, updateFromFresh]);
 
-  const handleKasniToggle = async (order: Order, nextValue: boolean) => {
+  const handleKasniToggle = useCallback(async (order: Order, nextValue: boolean) => {
     await runGuarded(`kasni:${order._id}`, async () => {
       setKasniSavingId(order._id);
       try {
@@ -330,9 +330,9 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
         setKasniSavingId(null);
       }
     });
-  };
+  }, [mergeIntoList, runGuarded, setKasniSavingId, updateFromFresh]);
 
-  const handleManualRefund100Toggle = async (order: Order, enabled: boolean) => {
+  const handleManualRefund100Toggle = useCallback(async (order: Order, enabled: boolean) => {
     await runGuarded(`manual:${order._id}`, async () => {
       setManualRefundSavingId(order._id);
       try {
@@ -346,7 +346,31 @@ export function useOrderRowActions({ convex, orderScope, sessionToken, matchesFi
         setManualRefundSavingId(null);
       }
     });
-  };
+  }, [mergeIntoList, orderScope, runGuarded, setManualRefund100, setManualRefundSavingId, sessionToken]);
 
-  return { quickEdit, setQuickEdit, isQuickEditSaving, shipmentStageModal, shipmentNumberDraft, setShipmentNumberDraft, isShipmentStageSaving, manualRefundSavingId, kasniSavingId, copyText, openQuickEdit, closeQuickEdit, handleQuickEditSave, closeShipmentStageModal, handleShipmentStageSubmit, handleStageChange, handlePovratToggle, handleKasniToggle, handleManualRefund100Toggle };
+  // Isti objekat dok se nešto od ovoga ne promeni: ulazi u listContext (React.memo kartica).
+  return useMemo(
+    () => ({ quickEdit, setQuickEdit, isQuickEditSaving, shipmentStageModal, shipmentNumberDraft, setShipmentNumberDraft, isShipmentStageSaving, manualRefundSavingId, kasniSavingId, copyText, openQuickEdit, closeQuickEdit, handleQuickEditSave, closeShipmentStageModal, handleShipmentStageSubmit, handleStageChange, handlePovratToggle, handleKasniToggle, handleManualRefund100Toggle }),
+    [
+      quickEdit,
+      setQuickEdit,
+      isQuickEditSaving,
+      shipmentStageModal,
+      shipmentNumberDraft,
+      setShipmentNumberDraft,
+      isShipmentStageSaving,
+      manualRefundSavingId,
+      kasniSavingId,
+      copyText,
+      openQuickEdit,
+      closeQuickEdit,
+      handleQuickEditSave,
+      closeShipmentStageModal,
+      handleShipmentStageSubmit,
+      handleStageChange,
+      handlePovratToggle,
+      handleKasniToggle,
+      handleManualRefund100Toggle,
+    ],
+  );
 }

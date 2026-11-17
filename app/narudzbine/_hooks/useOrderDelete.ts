@@ -1,7 +1,7 @@
 "use client";
 
 // Doslovno izvuceno iz app/narudzbine/page.tsx (refaktor bez promene ponasanja).
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useConvexMutation } from "@/lib/convex";
 import type { Order } from "@/types/order";
@@ -26,11 +26,11 @@ export function useOrderDelete({ orderScope, sessionToken, resetOrdersFeed, edit
   const deleteRequiresConfirmation = deleteCandidate ? requiresDeleteConfirmation(deleteCandidate.stage) : false;
   const isDeletePhraseValid = matchesDeleteConfirmPhrase(deleteConfirmText);
   const isDeleteDisabled = !deleteCandidate || isDeletingOrder || (deleteRequiresConfirmation && !isDeletePhraseValid);
-  const openDeleteModal = (order: Order) => {
+  const openDeleteModal = useCallback((order: Order) => {
     setDeleteCandidate(order);
     setDeleteConfirmText("");
     setDeleteModalOpen(true);
-  };
+  }, []);
 
   const closeDeleteModal = () => {
     setDeleteModalOpen(false);

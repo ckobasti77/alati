@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Check, ExternalLink, Phone } from "lucide-react";
 import Link from "next/link";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -85,7 +86,7 @@ function SelectMark({ selected }: { selected: boolean }) {
 }
 
 /** Kompaktna kartica (~140px): naslov + status, kupac + poziv, cela adresa, profit · prodajno · datum, oznake, povrat. */
-export function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; longPress: LongPress }) {
+export const OrderCompactCard = memo(function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; longPress: LongPress }) {
   const ctx = useOrdersList();
   const { order, prodajnoUkupno, profitShare } = entry;
   const title = getOrderTitle(order, ctx.productMap);
@@ -154,10 +155,10 @@ export function OrderCompactCard({ entry, longPress }: { entry: OrderEntry; long
       </div>
     </div>
   );
-}
+});
 
 /** Detaljna kartica: sve cifre, adresa, telefon, povrat, pošiljka i ⋯ (bez Obriši u kartici). */
-export function OrderDetailCard({ entry, longPress }: { entry: OrderEntry; longPress: LongPress }) {
+export const OrderDetailCard = memo(function OrderDetailCard({ entry, longPress }: { entry: OrderEntry; longPress: LongPress }) {
   const ctx = useOrdersList();
   const openShipment = useOpenShipment();
   const { order, prodajnoUkupno, nabavnoUkupno, transport, profitShare, povrat, isFullRefund100, isExcludedBecauseReturned } = entry;
@@ -265,4 +266,4 @@ export function OrderDetailCard({ entry, longPress }: { entry: OrderEntry; longP
       </div>
     </div>
   );
-}
+});

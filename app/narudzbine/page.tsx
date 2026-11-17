@@ -138,25 +138,48 @@ function OrdersContent() {
     onToggleView: ordersView.toggleView,
   });
 
-  const listContext: OrdersListContextValue = {
-    productMap,
-    getPreview,
-    rowActions,
-    onStageChange: (order: Order, stage: OrderStage) => void rowActions.handleStageChange(order, stage),
-    onDelete: orderDelete.openDeleteModal,
-    onMove: ordersView.isDesktop ? reorder.moveOrder : undefined,
-    positionOf: (orderId: string) => ({ index: visibleOrderIds.indexOf(orderId), count: visibleOrderIds.length }),
-    selected: selectedOrderIds,
-    toggleSelected: toggleOrderSelection,
-    selectionLocked: selection.bulkAction !== null,
-    selectionMode: selection.selectionMode,
-    enterSelection: selection.enterSelection,
-    activeId: keyboard.activeId,
-    setActiveId: keyboard.setActiveId,
-    orderHref,
-    openOrder,
-    now,
-  };
+  // Stabilna referenca: dok se nešto od ovoga ne promeni, listContext je isti objekat,
+  // pa React.memo kartice zaista preskače render (Q8).
+  const listContext = useMemo<OrdersListContextValue>(
+    () => ({
+      productMap,
+      getPreview,
+      rowActions,
+      onStageChange: (order: Order, stage: OrderStage) => void rowActions.handleStageChange(order, stage),
+      onDelete: orderDelete.openDeleteModal,
+      onMove: ordersView.isDesktop ? reorder.moveOrder : undefined,
+      positionOf: (orderId: string) => ({ index: visibleOrderIds.indexOf(orderId), count: visibleOrderIds.length }),
+      selected: selectedOrderIds,
+      toggleSelected: toggleOrderSelection,
+      selectionLocked: selection.bulkAction !== null,
+      selectionMode: selection.selectionMode,
+      enterSelection: selection.enterSelection,
+      activeId: keyboard.activeId,
+      setActiveId: keyboard.setActiveId,
+      orderHref,
+      openOrder,
+      now,
+    }),
+    [
+      productMap,
+      getPreview,
+      rowActions,
+      orderDelete.openDeleteModal,
+      ordersView.isDesktop,
+      reorder.moveOrder,
+      visibleOrderIds,
+      selectedOrderIds,
+      toggleOrderSelection,
+      selection.bulkAction,
+      selection.selectionMode,
+      selection.enterSelection,
+      keyboard.activeId,
+      keyboard.setActiveId,
+      orderHref,
+      openOrder,
+      now,
+    ],
+  );
 
   const hasQuery = feed.activeFilterCount > 0 || search.trim().length > 0;
   const empty = hasQuery ? (
