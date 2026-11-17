@@ -133,7 +133,7 @@ export function ProductPickCard({
             {marks.length > 0 ? (
               <span className="inline-flex items-center gap-1">
                 {marks.map((mark) => (
-                  <span key={mark.key} title={mark.label} className="rounded-md bg-surface-2 px-1.5 py-px text-[11px] font-medium text-text">
+                  <span key={mark.key} title={mark.label} className="rounded-md bg-surface-2 px-1.5 py-px text-[11px] font-medium text-text ring-1 ring-border">
                     <span aria-hidden>{mark.key}</span>
                     <span className="sr-only">Objavljeno: {mark.label}</span>
                   </span>

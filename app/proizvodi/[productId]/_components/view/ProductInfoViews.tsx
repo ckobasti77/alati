@@ -75,7 +75,7 @@ export function ProductKeyNumbers({
         {marks.map((mark) => (
           <span
             key={mark.key}
-            className={cn("inline-flex h-6 items-center gap-1 rounded-full px-2 font-medium", mark.active ? "bg-accent-soft text-accent-text" : "bg-surface-2 text-text-muted line-through decoration-text-muted/60")}
+            className={cn("inline-flex h-6 items-center gap-1 rounded-full px-2 font-medium ring-1 ring-border", mark.active ? "bg-accent-soft text-accent-text" : "bg-surface-2 text-text-muted line-through decoration-text-muted/60")}
           >
             {mark.active ? <Check className="size-3" aria-hidden /> : null}
             {mark.key}

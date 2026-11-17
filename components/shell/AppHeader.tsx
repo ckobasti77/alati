@@ -122,7 +122,7 @@ export function AppHeader() {
               >
                 <Search className="size-4" aria-hidden />
                 <span className="hidden lg:inline">Pretraga</span>
-                <kbd className="hidden rounded-md bg-surface-2 px-1.5 text-[11px] leading-5 font-medium xl:inline">Ctrl K</kbd>
+                <kbd className="hidden rounded-md bg-surface-2 px-1.5 text-[11px] leading-5 font-medium xl:inline ring-1 ring-border">Ctrl K</kbd>
               </button>
               <Button asChild size="sm" className="ml-1 gap-1.5 rounded-xl">
                 <Link href={NEW_ORDER_HREF} scroll={pathname !== "/narudzbine"}>
