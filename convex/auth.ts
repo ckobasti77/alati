@@ -3,8 +3,6 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 
-const ADMIN_USERNAME = "kodmajstora";
-const ADMIN_PASSWORD = "prekobrdaprekobrega";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 dana
 const encoder = new TextEncoder();
 
@@ -32,24 +30,40 @@ const passwordsMatch = async (password: string, salt: string, hashed: string) =>
 
 const normalizeUsername = (username: string) => username.trim().toLowerCase();
 
+function getAdminCredentials() {
+  const username = process.env.ADMIN_USERNAME?.trim();
+  const password = process.env.ADMIN_PASSWORD?.trim();
+  if (!username || !password) {
+    throw new Error(
+      "Admin nalog nije podešen: postavi ADMIN_USERNAME i ADMIN_PASSWORD u Convex env.",
+    );
+  }
+  return {
+    username: normalizeUsername(username),
+    password,
+  };
+}
+
 const canWrite = (ctx: QueryCtx | MutationCtx): ctx is MutationCtx =>
   typeof (ctx as MutationCtx).db.insert === "function";
 
 async function ensureAdmin(ctx: MutationCtx): Promise<Doc<"users">> {
+  const { username: adminUsername, password: adminPassword } =
+    getAdminCredentials();
   const existing = await ctx.db
     .query("users")
-    .withIndex("by_username", (q: any) => q.eq("username", ADMIN_USERNAME))
+    .withIndex("by_username", (q: any) => q.eq("username", adminUsername))
     .unique();
   if (existing) {
     const roleNeedsUpdate = existing.role !== "admin";
     const passwordUpToDate = await passwordsMatch(
-      ADMIN_PASSWORD,
+      adminPassword,
       existing.salt,
       existing.passwordHash,
     );
     if (!passwordUpToDate || roleNeedsUpdate) {
       const salt = randomHex(16);
-      const passwordHash = await hashPassword(ADMIN_PASSWORD, salt);
+      const passwordHash = await hashPassword(adminPassword, salt);
       await ctx.db.patch(existing._id, { passwordHash, salt, role: "admin" });
       const updated = await ctx.db.get(existing._id);
       return updated ?? { ...existing, passwordHash, salt, role: "admin" };
@@ -58,9 +72,9 @@ async function ensureAdmin(ctx: MutationCtx): Promise<Doc<"users">> {
   }
 
   const salt = randomHex(16);
-  const passwordHash = await hashPassword(ADMIN_PASSWORD, salt);
+  const passwordHash = await hashPassword(adminPassword, salt);
   const id = await ctx.db.insert("users", {
-    username: ADMIN_USERNAME,
+    username: adminUsername,
     passwordHash,
     salt,
     role: "admin",
