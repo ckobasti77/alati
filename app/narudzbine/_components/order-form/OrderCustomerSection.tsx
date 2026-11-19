@@ -4,17 +4,20 @@ import { FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/for
 import { Input } from "@/components/ui/input";
 import type { useOrderForm } from "../../_hooks/useOrderForm";
 import type { useOrderFormActions } from "../../_hooks/useOrderFormActions";
+import type { ScreenshotBadges } from "../../_lib/screenshotApply";
 import { useListboxNav } from "./useListboxNav";
+import { SourceBadge } from "./SourceBadge";
 
 const customerOptionId = (index: number) => `order-customer-opt-${index}`;
 
 type OrderCustomerSectionProps = {
   orderForm: ReturnType<typeof useOrderForm>;
   formActions: ReturnType<typeof useOrderFormActions>;
+  badges?: ScreenshotBadges;
 };
 
 /** Ime → telefon → adresa (adresa se ne prikazuje za lično preuzimanje). */
-export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSectionProps) {
+export function OrderCustomerSection({ orderForm, formActions, badges }: OrderCustomerSectionProps) {
   const { setCustomerQuery, customerMenuOpen, setCustomerMenuOpen, customers, pickupValue } = orderForm;
   const { handleCustomerSelect } = formActions;
   const showSuggestions = customerMenuOpen && (customers?.length ?? 0) > 0;
@@ -36,6 +39,7 @@ export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSe
           <FormItem className="gap-1.5">
             <FormLabel htmlFor="order-customer-name">
               Ime i prezime{pickupValue ? <span className="font-normal text-text-muted"> (neobavezno)</span> : null}
+              {badges?.customerName ? <SourceBadge review={badges.customerName.review} className="ml-1" /> : null}
             </FormLabel>
             <div className="relative">
               <Input
@@ -104,7 +108,9 @@ export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSe
         name="phone"
         render={({ field, fieldState }) => (
           <FormItem className="gap-1.5">
-            <FormLabel htmlFor="order-phone">Telefon</FormLabel>
+            <FormLabel htmlFor="order-phone">
+              Telefon{badges?.phone ? <SourceBadge review={badges.phone.review} className="ml-1" /> : null}
+            </FormLabel>
             <Input
               id="order-phone"
               type="tel"
@@ -125,7 +131,9 @@ export function OrderCustomerSection({ orderForm, formActions }: OrderCustomerSe
           name="address"
           render={({ field, fieldState }) => (
             <FormItem className="gap-1.5">
-              <FormLabel htmlFor="order-address">Adresa</FormLabel>
+              <FormLabel htmlFor="order-address">
+                Adresa{badges?.address ? <SourceBadge review={badges.address.review} className="ml-1" /> : null}
+              </FormLabel>
               <Input
                 id="order-address"
                 autoComplete="street-address"

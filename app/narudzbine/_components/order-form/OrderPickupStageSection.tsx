@@ -6,9 +6,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { STAGE_OPTIONS } from "@/lib/stages";
 import type { OrderStage } from "@/types/order";
+import type { FieldBadge } from "../../_lib/screenshotApply";
+import { SourceBadge } from "./SourceBadge";
 
 /** Lično preuzimanje: na vrhu forme; uključeno sakriva adresu i slanje. */
-export function OrderPickupSwitch() {
+export function OrderPickupSwitch({ badge }: { badge?: FieldBadge }) {
   return (
     <FormField
       name="pickup"
@@ -16,7 +18,12 @@ export function OrderPickupSwitch() {
         <div className="rounded-xl bg-surface-2 px-3">
           <Switch
             ref={field.ref}
-            label="Lično preuzimanje"
+            label={
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                Lično preuzimanje
+                {badge ? <SourceBadge review={badge.review} /> : null}
+              </span>
+            }
             description="Bez adrese i bez slanja"
             checked={Boolean(field.value)}
             onCheckedChange={(checked) => field.onChange(checked)}

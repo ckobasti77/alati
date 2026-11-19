@@ -40,10 +40,11 @@ const COMPLETED_STAGES = new Set(["poslato", "stiglo", "legle_pare", "vraceno"])
 
 type MarkPoslatoResult = { orderId: string; status: "updated" | "skipped"; reason?: string };
 
-async function extractViaApi(file: File): Promise<ReceiptExtraction> {
+async function extractViaApi(file: File, token: string): Promise<ReceiptExtraction> {
   const blob = await downscaleForOcr(file);
   const form = new FormData();
   form.append("file", blob, file.name);
+  form.append("token", token);
   const response = await fetch("/api/receipt-extract", { method: "POST", body: form });
   const data = (await response.json().catch(() => null)) as (ReceiptExtraction & { error?: string }) | null;
   if (!response.ok) {
@@ -140,7 +141,7 @@ function UvozContent() {
     setRows((prev) => prev.map((row) => (row.key === next.key ? { ...row, status: "processing" } : row)));
     void (async () => {
       try {
-        const [extracted, barcode] = await Promise.all([extractViaApi(next.file), decodeReceiptBarcode(next.file)]);
+        const [extracted, barcode] = await Promise.all([extractViaApi(next.file, sessionToken), decodeReceiptBarcode(next.file)]);
         const broj = reconcileBroj(extracted.brojPosiljke, barcode);
         setRows((prev) =>
           prev.map((row) =>
@@ -158,7 +159,7 @@ function UvozContent() {
         processingRef.current = false;
       }
     })();
-  }, [rows]);
+  }, [rows, sessionToken]);
 
   // Sve narudzbine su kandidati (bilo koje stanje, i "licno") — dropdown i prefil
   // koriste ceo spisak. Badge "ceka slanje" broji samo one koje jos nisu zavrsene.

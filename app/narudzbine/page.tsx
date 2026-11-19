@@ -251,7 +251,7 @@ function OrdersContent() {
   return (
     <div className="relative flex flex-col gap-3 md:gap-4">
       <RefundPeriodDialog refund={refund} />
-      <OrderFormSheet orderForm={orderForm} formActions={formActions} catalog={catalog} />
+      <OrderFormSheet orderForm={orderForm} formActions={formActions} catalog={catalog} sessionToken={sessionToken} />
       <ExitConfirmDialog orderForm={orderForm} formActions={formActions} />
       <DeleteOrderDialog orderDelete={orderDelete} />
       <QuickEditDialog rowActions={rowActions} />

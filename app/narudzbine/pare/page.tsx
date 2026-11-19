@@ -22,10 +22,11 @@ import { pluralOrders } from "../_lib/orderView";
 
 type MarkLegloResult = { orderId: string; status: "updated" | "skipped"; reason?: string };
 
-async function extractViaApi(file: File): Promise<LegleExtraction> {
+async function extractViaApi(file: File, token: string): Promise<LegleExtraction> {
   const blob = await downscaleForOcr(file);
   const form = new FormData();
   form.append("file", blob, file.name);
+  form.append("token", token);
   const response = await fetch("/api/legle-extract", { method: "POST", body: form });
   const data = (await response.json().catch(() => null)) as (LegleExtraction & { error?: string }) | null;
   if (!response.ok) {
@@ -109,7 +110,7 @@ function LegleContent() {
     processingRef.current = true;
     void (async () => {
       try {
-        const extraction = await extractViaApi(file);
+        const extraction = await extractViaApi(file, sessionToken);
         const rows: LegleRow[] = extraction.rows ?? [];
         setItems((prev) => [
           ...prev,
@@ -142,7 +143,7 @@ function LegleContent() {
         processingRef.current = false;
       }
     })();
-  }, [uploads]);
+  }, [uploads, sessionToken]);
 
   const dropdownCandidates = useMemo(() => {
     if (!candidates) return [];

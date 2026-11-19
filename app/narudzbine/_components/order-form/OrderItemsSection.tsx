@@ -9,17 +9,20 @@ import { Money } from "@/components/ui/money";
 import type { useOrderCatalog } from "../../_hooks/useOrderCatalog";
 import type { useOrderForm } from "../../_hooks/useOrderForm";
 import type { useOrderFormActions } from "../../_hooks/useOrderFormActions";
+import type { ScreenshotBadges } from "../../_lib/screenshotApply";
 import { OrderProductPicker } from "./OrderProductPicker";
 import { OrderVariantSupplierFields } from "./OrderVariantSupplierFields";
+import { SourceBadge } from "./SourceBadge";
 
 type OrderItemsSectionProps = {
   orderForm: ReturnType<typeof useOrderForm>;
   formActions: ReturnType<typeof useOrderFormActions>;
   catalog: ReturnType<typeof useOrderCatalog>;
+  badges?: ScreenshotBadges;
 };
 
 /** Proizvod: pretraga → tip/dobavljač → količina → Dodaj. Dodate stavke su ispod. */
-export function OrderItemsSection({ orderForm, formActions, catalog }: OrderItemsSectionProps) {
+export function OrderItemsSection({ orderForm, formActions, catalog, badges }: OrderItemsSectionProps) {
   const { setProductInput, draftItems, setItemProductId, setItemVariantId, setItemSupplierId, itemQuantity, setItemQuantity, useManualSalePrice, setUseManualSalePrice, manualSalePrice, setManualSalePrice, useManualPurchasePrice, setUseManualPurchasePrice, manualPurchasePrice, setManualPurchasePrice, selectedProduct } = orderForm;
   const { handleAddItem, handleRemoveItem, draftTotals } = formActions;
 
@@ -39,7 +42,7 @@ export function OrderItemsSection({ orderForm, formActions, catalog }: OrderItem
     <section aria-labelledby="order-items-title" className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-3">
         <FormLabel id="order-items-title" htmlFor="order-product">
-          Proizvod
+          Proizvod{badges?.product ? <SourceBadge review={badges.product.review} className="ml-1" /> : null}
         </FormLabel>
         {draftItems.length > 0 ? (
           <span className="text-[13px] text-text-muted">
@@ -120,8 +123,13 @@ export function OrderItemsSection({ orderForm, formActions, catalog }: OrderItem
           </div>
 
           <details className="group rounded-xl ring-1 ring-border" open={useManualPurchasePrice || useManualSalePrice || undefined}>
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm text-text-muted [&::-webkit-details-marker]:hidden">
-              Ručne cene
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 text-sm text-text-muted [&::-webkit-details-marker]:hidden">
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                Ručne cene
+                {badges?.prodajna || badges?.nabavna ? (
+                  <SourceBadge review={badges.prodajna?.review ?? badges.nabavna?.review ?? false} />
+                ) : null}
+              </span>
               <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden />
             </summary>
             <div className="grid gap-3 px-3 pb-3 sm:grid-cols-2">
